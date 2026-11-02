@@ -8,26 +8,6 @@ use crate::core::flags::{self, FlagError};
 use crate::i18n::{fmt, tr, Lang};
 use crate::theme;
 
-/// (RU, EN, flag, value)
-const PRESETS: [(&str, &str, &str, &str); 16] = [
-    ("FPS 60 (сток)", "FPS 60 (stock)", "DFIntTaskSchedulerTargetFps", "60"),
-    ("FPS 144", "FPS 144", "DFIntTaskSchedulerTargetFps", "144"),
-    ("FPS 240", "FPS 240", "DFIntTaskSchedulerTargetFps", "240"),
-    ("Свет: Future", "Light: Future", "FFlagDebugForceFutureIsBrightPhase3", "true"),
-    ("Свет: ShadowMap", "Light: ShadowMap", "FFlagDebugForceFutureIsBrightPhase2", "true"),
-    ("Свет: Voxel (быстро)", "Light: Voxel (fast)", "DFFlagDebugRenderForceTechnologyVoxel", "true"),
-    ("Без блюма", "No bloom", "FFlagRenderNoLowFrmBloom", "true"),
-    ("Без пост-эффектов", "No post FX", "FFlagDisablePostFx", "true"),
-    ("MSAA x4", "MSAA x4", "FIntDebugForceMSAASamples", "4"),
-    ("MSAA x8", "MSAA x8", "FIntDebugForceMSAASamples", "8"),
-    ("Детали далеко", "Far details", "DFIntCSGLevelOfDetailSwitchingDistance", "5000"),
-    ("Без травы", "No grass", "FIntFRMMaxGrassDistance", "0"),
-    ("Дальний зум", "Far zoom", "FIntCameraMaxZoomDistance", "1000"),
-    ("Без DPI-скейла", "No DPI scale", "DFFlagDisableDPIScale", "true"),
-    ("Рендер: Vulkan", "Render: Vulkan", "FFlagDebugGraphicsPreferVulkan", "true"),
-    ("Пинг в лог", "Ping to log", "DFFlagDebugPrintDataPingBreakDown", "true"),
-];
-
 fn outline_btn(label: &str) -> Button<'static> {
     Button::new(RichText::new(label.to_owned()).size(12.0).color(theme::FG))
         .stroke(Stroke::new(1.0, theme::LINE))
@@ -51,34 +31,6 @@ fn set_flag(flags: &mut Vec<(String, String)>, name: &str, value: &str) {
         Some(row) => row.1 = value.to_string(),
         None => flags.push((name.to_string(), value.to_string())),
     }
-}
-
-fn toggle_preset(app: &mut App, flag: &str, value: &str) {
-    let pos = app
-        .flags
-        .iter()
-        .position(|(n, v)| n.trim().eq_ignore_ascii_case(flag) && v.trim() == value);
-    match pos {
-        Some(i) => {
-            app.flags.remove(i);
-            if let Some(sel) = app.flags_selected {
-                if sel == i {
-                    app.flags_selected = None;
-                } else if sel > i {
-                    app.flags_selected = Some(sel - 1);
-                }
-            }
-        }
-        None => match app
-            .flags
-            .iter_mut()
-            .find(|(n, _)| n.trim().eq_ignore_ascii_case(flag))
-        {
-            Some(row) => row.1 = value.to_string(),
-            None => app.flags.push((flag.to_string(), value.to_string())),
-        },
-    }
-    app.flags_dirty = true;
 }
 
 fn error_text(lang: Lang, name: &str, detail: &str, err: FlagError) -> String {
@@ -350,7 +302,7 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         }
     }
 
-    // ===== Тулбар =====
+    // ===== Тулбар, ряд 1: поиск + добавить … сохранить =====
     ui.horizontal(|ui| {
         ui.add(
             TextEdit::singleline(&mut app.flags_search)
@@ -366,57 +318,6 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(outline_btn(tr(lang, "Flags_Clear"))).clicked() {
-                if !app.flags.is_empty() {
-                    app.confirm = Some(Confirm::ClearAll);
-                }
-            }
-            ui.add_space(6.0);
-            let can_delete = app.flags_selected.is_some();
-            if ui
-                .add_enabled(can_delete, outline_btn(tr(lang, "Flags_Delete")))
-                .clicked()
-            {
-                if let Some(i) = app.flags_selected.take() {
-                    if i < app.flags.len() {
-                        app.flags.remove(i);
-                        app.flags_dirty = true;
-                    }
-                }
-            }
-            ui.add_space(6.0);
-
-            #[cfg(windows)]
-            if ui.add(outline_btn(tr(lang, "Flags_Export"))).clicked() {
-                let json = flags::export_json(&app.flags);
-                let count = app.flags.len().to_string();
-                if let Some(path) = pick_export_file() {
-                    match std::fs::write(path, json) {
-                        Ok(()) => msg(app, lang, "Flags_ExportedFmt", &[&count], false),
-                        Err(e) => msg(app, lang, "Flags_ExportErr", &[&e.to_string()], true),
-                    }
-                }
-            }
-            #[cfg(windows)]
-            if ui.add(outline_btn(tr(lang, "Flags_Paste"))).clicked() {
-                match clipboard_json() {
-                    Some(t) => apply_import(app, lang, &t),
-                    None => msg(app, lang, "Flags_NoClipboard", &[], false),
-                }
-            }
-            #[cfg(windows)]
-            if ui.add(outline_btn(tr(lang, "Flags_Import"))).clicked() {
-                if let Some(text) = pick_import_file(lang) {
-                    apply_import(app, lang, &text);
-                }
-            }
-            ui.add_space(6.0);
-
-            if app.flags_dirty {
-                let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), Sense::hover());
-                ui.painter()
-                    .circle_filled(r.left_center(), 3.0, theme::BAD);
-            }
             let save = if app.flags_dirty {
                 primary_btn(tr(lang, "Flags_Save"))
             } else {
@@ -439,7 +340,60 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                     Err(e) => msg(app, lang, "Flags_SaveErr", &[&e.to_string()], true),
                 }
             }
+            if app.flags_dirty {
+                ui.add_space(8.0);
+                let (r, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), Sense::hover());
+                ui.painter()
+                    .circle_filled(r.left_center(), 3.0, theme::BAD);
+            }
         });
+    });
+
+    // ===== Тулбар, ряд 2: импорт/экспорт/удаление =====
+    ui.add_space(6.0);
+    ui.horizontal_wrapped(|ui| {
+        #[cfg(windows)]
+        if ui.add(outline_btn(tr(lang, "Flags_Import"))).clicked() {
+            if let Some(text) = pick_import_file(lang) {
+                apply_import(app, lang, &text);
+            }
+        }
+        #[cfg(windows)]
+        if ui.add(outline_btn(tr(lang, "Flags_Paste"))).clicked() {
+            match clipboard_json() {
+                Some(t) => apply_import(app, lang, &t),
+                None => msg(app, lang, "Flags_NoClipboard", &[], false),
+            }
+        }
+        #[cfg(windows)]
+        if ui.add(outline_btn(tr(lang, "Flags_Export"))).clicked() {
+            let json = flags::export_json(&app.flags);
+            let count = app.flags.len().to_string();
+            if let Some(path) = pick_export_file() {
+                match std::fs::write(path, json) {
+                    Ok(()) => msg(app, lang, "Flags_ExportedFmt", &[&count], false),
+                    Err(e) => msg(app, lang, "Flags_ExportErr", &[&e.to_string()], true),
+                }
+            }
+        }
+
+        let can_delete = app.flags_selected.is_some();
+        if ui
+            .add_enabled(can_delete, outline_btn(tr(lang, "Flags_Delete")))
+            .clicked()
+        {
+            if let Some(i) = app.flags_selected.take() {
+                if i < app.flags.len() {
+                    app.flags.remove(i);
+                    app.flags_dirty = true;
+                }
+            }
+        }
+        if ui.add(outline_btn(tr(lang, "Flags_Clear"))).clicked() {
+            if !app.flags.is_empty() {
+                app.confirm = Some(Confirm::ClearAll);
+            }
+        }
     });
 
     // ===== Сообщение =====
@@ -449,33 +403,6 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         ui.label(RichText::new(text).size(12.0).family(egui::FontFamily::Monospace).color(color));
     }
     ui.add_space(8.0);
-
-    // ===== Пресеты =====
-    ui.label(
-        RichText::new(tr(lang, "Flags_Presets"))
-            .size(11.0)
-            .family(egui::FontFamily::Monospace)
-            .color(theme::FG_DIMMER),
-    );
-    ui.add_space(4.0);
-    ui.horizontal_wrapped(|ui| {
-        for (ru, en, flag, value) in PRESETS {
-            let label = if lang == Lang::Ru { ru } else { en };
-            let active = app.flags.iter().any(|(n, v)| {
-                n.trim().eq_ignore_ascii_case(flag) && v.trim() == value
-            });
-            let btn = if active {
-                primary_btn(label).min_size(egui::vec2(0.0, 28.0))
-            } else {
-                outline_btn(label).min_size(egui::vec2(0.0, 28.0))
-            };
-            if ui.add(btn).clicked() {
-                toggle_preset(app, flag, value);
-                app.flag_msg = None;
-            }
-        }
-    });
-    ui.add_space(10.0);
 
     // ===== Таблица =====
     let query = app.flags_search.trim().to_lowercase();

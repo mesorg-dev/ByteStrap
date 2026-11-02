@@ -135,13 +135,19 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 };
                 let bar = ProgressBar::new(frac)
                     .desired_height(6.0)
+                    .desired_width(ui.available_width())
                     .fill(crate::theme::GOOD)
                     .animate(true);
-                let bar = match text {
-                    Some(t) => bar.text(t),
-                    None => bar,
-                };
                 ui.add(bar);
+                if let Some(t) = text {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(t)
+                            .size(11.0)
+                            .family(egui::FontFamily::Monospace)
+                            .color(crate::theme::FG_DIM),
+                    );
+                }
             }
 
             ui.add_space(14.0);
