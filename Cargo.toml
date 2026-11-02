@@ -1,0 +1,54 @@
+[package]
+name = "bytestrap"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0"
+repository = "https://github.com/mesorg-dev/ByteStrap"
+description = "ByteStrap — кастомный лаунчер Roblox"
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = [
+    "clipboard",
+    "default_fonts",
+    "glow",
+    "links",
+    "system_fonts",
+    "x11",
+    "wayland",
+] }
+egui = "0.37"
+egui_extras = "0.37"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls",
+    "webpki-roots",
+] }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = "9"
+dirs = "7"
+anyhow = "1"
+
+# eframe/accesskit на Android требует game-activity (C++, не линкуется
+# в Termux) — поэтому accesskit только для Windows, а Android-бэкенд
+# включаем лишь на самом Android-таргете.
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["accesskit"] }
+rfd = "0.17"
+arboard = { version = "3", default-features = false }
+
+[target.'cfg(target_os = "android")'.dependencies]
+eframe = { version = "0.37", default-features = false, features = [
+    "android-native-activity",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true

@@ -1,0 +1,25 @@
+name: ci
+
+# Сборка + тесты на каждый push/PR в main: ловим сломанный код
+# (в том числе windows-only ветки) до релиза.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tests
+        run: cargo test --locked
+
+      - name: Release build (smoke)
+        run: cargo build --release --locked

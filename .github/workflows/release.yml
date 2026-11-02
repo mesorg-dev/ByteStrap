@@ -1,0 +1,48 @@
+name: release
+
+# Сборка релизного exe по пушу тега vX.Y.Z.
+# Апдейтер лаунчера ждёт: тег вида v1.2.3 + ассет *-win-x64.exe в релизе.
+# Версия из тега подставляется в Cargo.toml, чтобы About показывал её же.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          (Get-Content Cargo.toml) -replace '^version = ".*"', "version = `"$tag`"" |
+            Set-Content Cargo.toml -Encoding utf8
+
+      - name: Tests
+        run: cargo test
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Package asset
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/bytestrap.exe `
+            "dist/ByteStrap-${{ github.ref_name }}-win-x64.exe"
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true
