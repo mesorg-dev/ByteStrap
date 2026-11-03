@@ -19,6 +19,13 @@ fn primary_btn(label: &str) -> eframe::egui::Button<'static> {
         .min_size(egui::vec2(0.0, 30.0))
 }
 
+fn icon_btn(glyph: &'static str) -> eframe::egui::Button<'static> {
+    eframe::egui::Button::new(RichText::new(glyph).size(13.0).color(theme::FG))
+        .stroke(eframe::egui::Stroke::new(1.0, theme::LINE))
+        .corner_radius(theme::R_SOFT)
+        .min_size(egui::vec2(26.0, 26.0))
+}
+
 pub fn show(ui: &mut Ui, app: &mut App) {
     let lang = app.lang;
     ui.add_space(6.0);
@@ -93,14 +100,15 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             }
 
             let has_client = app.installed.is_some();
+            let any_enabled = app.mods_list.iter().any(|m| m.enabled);
             if ui
-                .add_enabled(has_client, primary_btn(tr(lang, "Mods_Apply")))
+                .add_enabled(has_client && any_enabled, primary_btn(tr(lang, "Mods_Apply")))
                 .clicked()
             {
                 app.start_mods_apply();
             }
 
-            let can_revert = has_client && !app.mods_files.is_empty();
+            let can_revert = has_client && base.join("Mods/.backup").exists();
             if ui
                 .add_enabled(can_revert, outline_btn(tr(lang, "Mods_Revert")))
                 .clicked()
@@ -123,65 +131,144 @@ pub fn show(ui: &mut Ui, app: &mut App) {
 
     ui.add_space(12.0);
 
-    // ===== Список файлов =====
+    // ===== Моды (папки) =====
     theme::card_frame().show(ui, |ui| {
-        if app.mods_files.is_empty() {
-            ui.label(RichText::new(tr(lang, "Mods_Empty")).color(theme::FG_DIMMER));
+        if app.mods_list.is_empty() {
+            ui.label(
+                RichText::new(tr(lang, "Mods_EmptyManaged")).color(theme::FG_DIMMER),
+            );
             return;
         }
-
-        ui.label(
-            RichText::new(fmt(lang, "Mods_CountFmt", &[&app.mods_files.len().to_string()]))
-                .size(11.0)
-                .family(egui::FontFamily::Monospace)
-                .color(theme::FG_DIMMER),
-        );
-        ui.add_space(6.0);
-
-        let guid = app.installed.clone().unwrap_or_default();
-        egui::ScrollArea::vertical()
-            .max_height(340.0)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for f in &app.mods_files {
-                    let status = if guid.is_empty() {
-                        FileStatus::Missing
+        let list = app.mods_list.clone();
+        for (i, m) in list.iter().enumerate() {
+            ui.horizontal(|ui| {
+                let mut on = m.enabled;
+                if ui.checkbox(&mut on, "").changed() {
+                    let _ = crate::core::mods::set_enabled(&base, &m.id, on);
+                    if app.installed.is_some() {
+                        app.start_mods_reapply();
                     } else {
-                        crate::core::mods::file_status(&base, &guid, &f.rel)
-                    };
-                    let (status_text, color) = match status {
-                        FileStatus::Applied => (tr(lang, "Mods_StApplied"), theme::GOOD),
-                        FileStatus::Missing => (tr(lang, "Mods_StMissing"), theme::WARN),
-                        FileStatus::Clean => (tr(lang, "Mods_StClean"), theme::FG_DIMMER),
-                    };
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(&f.rel)
-                                .size(12.0)
-                                .family(egui::FontFamily::Monospace)
-                                .color(theme::FG),
-                        );
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                ui.label(
-                                    RichText::new(status_text)
-                                        .size(11.0)
-                                        .family(egui::FontFamily::Monospace)
-                                        .color(color),
-                                );
-                                ui.label(
-                                    RichText::new(format!("{} B", f.size))
-                                        .size(11.0)
-                                        .family(egui::FontFamily::Monospace)
-                                        .color(theme::FG_DIMMER),
-                                );
-                            },
-                        );
-                    });
+                        app.refresh_mods();
+                    }
                 }
+                ui.label(RichText::new(&m.id).size(13.0).color(theme::FG));
+                let meta = fmt(lang, "Mods_CountFmt", &[&m.files.to_string()]);
+                ui.label(
+                    RichText::new(format!("{meta} · {}", crate::core::versions::format_size(m.size)))
+                        .size(11.0)
+                        .family(egui::FontFamily::Monospace)
+                        .color(theme::FG_DIMMER),
+                );
+                ui.with_layout(
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        if ui
+                            .add(icon_btn("📂"))
+                            .on_hover_text(tr(lang, "Mods_OpenFolder"))
+                            .clicked()
+                        {
+                            #[cfg(windows)]
+                            {
+                                let p = base.join("Mods").join(&m.id);
+                                let _ = std::process::Command::new("explorer").arg(p).spawn();
+                            }
+                        }
+                        let can_down = i + 1 < list.len();
+                        if ui
+                            .add_enabled(can_down, icon_btn("↓"))
+                            .on_hover_text(tr(lang, "Mods_Down"))
+                            .clicked()
+                        {
+                            let _ = crate::core::mods::move_mod(&base, &m.id, 1);
+                            if app.installed.is_some() {
+                                app.start_mods_reapply();
+                            } else {
+                                app.refresh_mods();
+                            }
+                        }
+                        let can_up = i > 0;
+                        if ui
+                            .add_enabled(can_up, icon_btn("↑"))
+                            .on_hover_text(tr(lang, "Mods_Up"))
+                            .clicked()
+                        {
+                            let _ = crate::core::mods::move_mod(&base, &m.id, -1);
+                            if app.installed.is_some() {
+                                app.start_mods_reapply();
+                            } else {
+                                app.refresh_mods();
+                            }
+                        }
+                    },
+                );
             });
+        }
     });
+
+    // ===== Список файлов =====
+    if !app.mods_list.is_empty() {
+        ui.add_space(12.0);
+        theme::card_frame().show(ui, |ui| {
+            if app.mods_files.is_empty() {
+                ui.label(
+                    RichText::new(tr(lang, "Mods_NoEnabled")).color(theme::FG_DIMMER),
+                );
+                return;
+            }
+
+            ui.label(
+                RichText::new(fmt(lang, "Mods_CountFmt", &[&app.mods_files.len().to_string()]))
+                    .size(11.0)
+                    .family(egui::FontFamily::Monospace)
+                    .color(theme::FG_DIMMER),
+            );
+            ui.add_space(6.0);
+
+            let guid = app.installed.clone().unwrap_or_default();
+            egui::ScrollArea::vertical()
+                .max_height(340.0)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for f in &app.mods_files {
+                        let status = if guid.is_empty() {
+                            FileStatus::Missing
+                        } else {
+                            crate::core::mods::file_status(&base, &guid, &f.rel)
+                        };
+                        let (status_text, color) = match status {
+                            FileStatus::Applied => (tr(lang, "Mods_StApplied"), theme::GOOD),
+                            FileStatus::Missing => (tr(lang, "Mods_StMissing"), theme::WARN),
+                            FileStatus::Clean => (tr(lang, "Mods_StClean"), theme::FG_DIMMER),
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(&f.rel)
+                                    .size(12.0)
+                                    .family(egui::FontFamily::Monospace)
+                                    .color(theme::FG),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new(status_text)
+                                            .size(11.0)
+                                            .family(egui::FontFamily::Monospace)
+                                            .color(color),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!("{} B", f.size))
+                                            .size(11.0)
+                                            .family(egui::FontFamily::Monospace)
+                                            .color(theme::FG_DIMMER),
+                                    );
+                                },
+                            );
+                        });
+                    }
+                });
+        });
+    }
 
     // ===== Профили =====
     ui.add_space(12.0);
@@ -224,7 +311,7 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             .clicked()
         {
             let name = app.profile_sel.clone();
-            if app.mods_files.is_empty() {
+            if app.mods_list.is_empty() {
                 app.start_mod_profile_load(name);
             } else {
                 app.confirm = Some(Confirm::LoadModProfile(name));

@@ -170,10 +170,10 @@ pub fn show(ui: &mut Ui, app: &mut App) {
     ui.add_space(12.0);
 
     // Счётчики: моды / флаги / часы.
-    if app.mods_files.is_empty() && !app.mods_scanned {
+    if !app.mods_scanned {
         app.refresh_mods();
     }
-    let mods_count = app.mods_files.len().to_string();
+    let mods_count = app.mods_list.len().to_string();
     let flags_count = app.flags.len().to_string();
     let hours = app.playtime.total_secs / 3600;
     let hours_str = hours.to_string();

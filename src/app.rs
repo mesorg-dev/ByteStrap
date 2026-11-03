@@ -127,8 +127,10 @@ pub struct App {
     pub channel_checking: bool,
     /// Результат последнего применения/отката модов.
     pub mods_msg: Option<(String, bool)>,
-    /// Файлы модов (относительные пути) для страницы Mods.
+    /// Файлы включённых модов (относительные пути) для таблицы Mods.
     pub mods_files: Vec<crate::core::mods::ModFile>,
+    /// Моды на диске (папки + состояние) для страницы Mods.
+    pub mods_list: Vec<crate::core::mods::ModInfo>,
     /// Первый scan модов уже выполнен.
     pub mods_scanned: bool,
     /// Идёт ли очистка мусора.
@@ -215,6 +217,7 @@ impl App {
             channel_checking: false,
             mods_msg: None,
             mods_files: Vec::new(),
+            mods_list: Vec::new(),
             mods_scanned: false,
             cleanup_busy: false,
             cleanup_msg: None,
@@ -238,9 +241,11 @@ impl App {
         self.config.save();
     }
 
-    /// Перечитать список файлов модов с диска.
+    /// Перечитать список модов и файлов включённых модов с диска.
     pub fn refresh_mods(&mut self) {
-        self.mods_files = mods::scan(&self.config.base()).unwrap_or_default();
+        let base = self.config.base();
+        self.mods_list = mods::scan_mods(&base);
+        self.mods_files = mods::scan_enabled(&base);
         self.mods_scanned = true;
     }
 
@@ -266,6 +271,20 @@ impl App {
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let res = mods::revert(&base, &guid).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
+    }
+
+    /// Пере-применить моды после изменения списка (в фоне): откат → применение.
+    pub fn start_mods_reapply(&mut self) {
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let base = self.config.base();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let _ = mods::revert(&base, &guid); // бэкапов может не быть — ок
+            let res = mods::apply(&base, &guid).map_err(|e| e.to_string());
             let _ = tx.send(AsyncEvent::ModsDone(res));
         });
     }
@@ -701,7 +720,7 @@ impl App {
                         // Моды: после чистой установки накладываем заново.
                         if !already {
                             self.refresh_mods();
-                            if !self.mods_files.is_empty() {
+                            if self.mods_list.iter().any(|m| m.enabled) {
                                 self.start_mods_apply();
                             }
                         }
