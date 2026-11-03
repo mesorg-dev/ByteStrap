@@ -19,7 +19,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Tests
-        run: cargo test --locked
+        shell: pwsh
+        run: |
+          cargo test --locked *>&1 | Tee-Object -FilePath test-out.txt | Write-Host
+          if ($LASTEXITCODE -ne 0) {
+            # Строки ошибок — в аннотации чек-рана (читаются через публичный API).
+            Select-String -Path test-out.txt -Pattern 'error\[E\d+\]|^error:|panicked at|FAILED' |
+              ForEach-Object { Write-Output "::error::$($_.Line)" }
+            exit $LASTEXITCODE
+          }
 
       - name: Release build (smoke)
         run: cargo build --release --locked
