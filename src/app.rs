@@ -144,7 +144,7 @@ pub struct App {
     /// Идёт ли сейчас отсчёт сессии.
     pub session_active: bool,
     /// Фоновый воркер Discord Rich Presence.
-    discord: Sender<discord::Update>,
+    discord: discord::Handle,
     /// Накопленное время по местам и суммарно.
     pub playtime: Playtime,
     pub(crate) tx: Sender<AsyncEvent>,

@@ -18,7 +18,13 @@ eframe = { version = "0.37", default-features = false, features = [
 ] }
 egui = "0.37"
 egui_extras = "0.37"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "sync",
+    "time",
+] }
 reqwest = { version = "0.13", default-features = false, features = [
     "json",
     "stream",
