@@ -222,6 +222,10 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Mods_StMissing" => "не применён",
     "Mods_StClean" => "файл клиента",
     "Mods_AppliedFmt" => "Применено {0}, пропущено {1}",
+    "Mods_Profiles" => "Профили",
+    "Mods_ProfilesEmpty" => "Пока пусто — положите файлы в папку модов и сохрани профиль.",
+    "Mods_LoadConfirm" => "Загрузить профиль «{0}»? Текущие моды будут заменены.",
+    "Mods_ProfileLoadedFmt" => "Профиль «{0}» загружен",
     // Счётчик времени
     "Home_Session" => "в игре {0} · место {1}",
     "Home_Places" => "ВРЕМЯ ПО МЕСТАМ",
@@ -404,6 +408,10 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Mods_StMissing" => "not applied",
     "Mods_StClean" => "client file",
     "Mods_AppliedFmt" => "Applied {0}, skipped {1}",
+    "Mods_Profiles" => "Profiles",
+    "Mods_ProfilesEmpty" => "Empty yet — drop files into the mods folder and save a profile.",
+    "Mods_LoadConfirm" => "Load profile \u{201c}{0}\u{201d}? Current mods will be replaced.",
+    "Mods_ProfileLoadedFmt" => "Profile \u{201c}{0}\u{201d} loaded",
     // Playtime
     "Home_Session" => "in game {0} · place {1}",
     "Home_Places" => "TIME BY PLACE",

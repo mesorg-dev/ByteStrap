@@ -110,6 +110,9 @@ pub fn apply(ctx: &egui::Context) {
     v.widgets.noninteractive.corner_radius = CornerRadius::same(R_SOFT as u8);
     v.widgets.inactive.bg_fill = PANEL;
     v.widgets.inactive.weak_bg_fill = PANEL;
+    // Рамка чекбокса/кнопки/инпута в покое: у egui тут default = нет рамки,
+    // а fill совпадает с карточкой — квадрат был невидим.
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0, FG_DIMMER);
     v.widgets.inactive.fg_stroke = Stroke::new(1.0, FG);
     v.widgets.inactive.corner_radius = CornerRadius::same(R_SOFT as u8);
     v.widgets.inactive.expansion = 0.0;
@@ -135,6 +138,9 @@ pub fn apply(ctx: &egui::Context) {
     style.spacing.window_margin = egui::Margin::same(10);
     style.spacing.menu_margin = egui::Margin::same(8);
     style.spacing.indent = 16.0;
+    // Чекбокс/радио: стандартные 14px слишком мелкие.
+    style.spacing.icon_width = 18.0;
+    style.spacing.icon_width_inner = 11.0;
 
     ctx.set_global_style(style);
 }

@@ -34,21 +34,24 @@ pub fn show(ui: &mut Ui, app: &mut App) {
     if !app.mods_scanned {
         app.refresh_mods();
     }
+    let base = app.config.base();
 
-    // ===== Диалог отката =====
+    // ===== Диалоги =====
+    let confirm_body: Option<String> = match &app.confirm {
+        Some(Confirm::RevertMods) => Some(tr(lang, "Mods_RevertConfirm").to_string()),
+        Some(Confirm::LoadModProfile(n)) => Some(fmt(lang, "Mods_LoadConfirm", &[n])),
+        Some(Confirm::DeleteModProfile(n)) => Some(fmt(lang, "Prof_DelConfirm", &[n])),
+        _ => None,
+    };
     let mut answer: Option<bool> = None;
-    if let Some(Confirm::RevertMods) = &app.confirm {
+    if let Some(body) = confirm_body {
         egui::Window::new("ByteStrap")
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ui.ctx(), |ui| {
                 ui.set_min_width(360.0);
-                ui.label(
-                    RichText::new(tr(lang, "Mods_RevertConfirm"))
-                        .size(13.0)
-                        .color(theme::FG),
-                );
+                ui.label(RichText::new(body).size(13.0).color(theme::FG));
                 ui.add_space(10.0);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(tr(lang, "Btn_No")).clicked() {
@@ -136,7 +139,6 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         ui.add_space(6.0);
 
         let guid = app.installed.clone().unwrap_or_default();
-        let base = app.config.base();
         egui::ScrollArea::vertical()
             .max_height(340.0)
             .auto_shrink([false, false])
@@ -181,11 +183,105 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             });
     });
 
+    // ===== Профили =====
+    ui.add_space(12.0);
+    ui.label(
+        RichText::new(tr(lang, "Mods_Profiles"))
+            .size(11.0)
+            .family(egui::FontFamily::Monospace)
+            .color(theme::FG_DIMMER),
+    );
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut app.mod_profile_name)
+                .hint_text(tr(lang, "Flags_ProfileName"))
+                .desired_width(220.0)
+                .margin(egui::vec2(8.0, 5.0)),
+        );
+        if ui
+            .add(outline_btn(tr(lang, "Flags_DeleteProfile")))
+            .clicked()
+        {
+            let name = app.mod_profile_name.trim().to_string();
+            if name.is_empty() {
+                app.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
+            } else if crate::core::mods::list_profiles(&base).iter().any(|p| p == &name) {
+                app.confirm = Some(Confirm::DeleteModProfile(name));
+            } else {
+                app.mods_msg = Some((fmt(lang, "Prof_NoSuchFmt", &[&name]), false));
+            }
+        }
+        if ui
+            .add(primary_btn(tr(lang, "Flags_SaveProfile")))
+            .clicked()
+        {
+            let name = app.mod_profile_name.trim().to_string();
+            if name.is_empty() {
+                app.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
+            } else {
+                match crate::core::mods::save_profile(&base, &name) {
+                    Ok(()) => {
+                        app.mod_profile_name.clear();
+                        app.mods_msg = Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
+                    }
+                    Err(e) => app.mods_msg = Some((e.to_string(), true)),
+                }
+            }
+        }
+    });
+    ui.add_space(6.0);
+
+    let profiles = crate::core::mods::list_profiles(&base);
+    if profiles.is_empty() {
+        ui.label(
+            RichText::new(tr(lang, "Mods_ProfilesEmpty")).color(theme::FG_DIMMER),
+        );
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            for name in &profiles {
+                let active = app.config.active_mod_profile.eq_ignore_ascii_case(name);
+                let btn = if active {
+                    primary_btn(name).min_size(egui::vec2(0.0, 28.0))
+                } else {
+                    outline_btn(name).min_size(egui::vec2(0.0, 28.0))
+                };
+                if ui.add(btn).clicked() {
+                    if app.mods_files.is_empty() {
+                        app.start_mod_profile_load(name.clone());
+                    } else {
+                        app.confirm = Some(Confirm::LoadModProfile(name.clone()));
+                    }
+                }
+            }
+        });
+    }
+
     // ===== Обработка диалога =====
     if let Some(yes) = answer {
         let confirm = app.confirm.take();
-        if yes && matches!(confirm, Some(Confirm::RevertMods)) {
-            app.start_mods_revert();
+        if yes {
+            match confirm {
+                Some(Confirm::RevertMods) => app.start_mods_revert(),
+                Some(Confirm::LoadModProfile(name)) => app.start_mod_profile_load(name),
+                Some(Confirm::DeleteModProfile(name)) => {
+                    match crate::core::mods::delete_profile(&base, &name) {
+                        Ok(()) => {
+                            if app.mod_profile_name.trim().eq_ignore_ascii_case(&name) {
+                                app.mod_profile_name.clear();
+                            }
+                            if app.config.active_mod_profile.eq_ignore_ascii_case(&name) {
+                                app.config.active_mod_profile.clear();
+                                app.config.save();
+                            }
+                            app.mods_msg =
+                                Some((fmt(lang, "Prof_DeletedFmt", &[&name]), false));
+                        }
+                        Err(e) => app.mods_msg = Some((e.to_string(), true)),
+                    }
+                }
+                _ => {}
+            }
         }
     }
 }

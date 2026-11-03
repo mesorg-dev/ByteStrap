@@ -751,7 +751,10 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                             Err(e) => msg(app, lang, "Flags_SaveErr", &[&e.to_string()], true),
                         }
                     }
-                    Confirm::ApplyChannel(_) | Confirm::RevertMods => {}
+                    Confirm::ApplyChannel(_)
+                    | Confirm::RevertMods
+                    | Confirm::LoadModProfile(_)
+                    | Confirm::DeleteModProfile(_) => {}
                 }
             }
         }

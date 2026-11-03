@@ -178,7 +178,9 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         ui.horizontal(|ui| {
             let mut threads = app.config.download_threads;
             let resp = ui.add(
-                egui::Slider::new(&mut threads, 1..=8).fixed_decimals(0),
+                egui::Slider::new(&mut threads, 1..=8)
+                    .fixed_decimals(0)
+                    .show_value(false),
             );
             if resp.changed() {
                 app.config.download_threads = threads;

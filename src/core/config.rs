@@ -12,6 +12,8 @@ pub struct Config {
     pub installed_version: String,
     pub previous_version: String,
     pub active_flag_profile: String,
+    /// Активный профиль модов (подсветка чипа на странице Mods).
+    pub active_mod_profile: String,
     pub download_threads: u32,
     /// Roblox deployment channel: "LIVE" | "BETA" | "ZNext" | ...
     pub channel: String,
@@ -30,6 +32,7 @@ impl Default for Config {
             installed_version: String::new(),
             previous_version: String::new(),
             active_flag_profile: String::new(),
+            active_mod_profile: String::new(),
             download_threads: 4,
             channel: "LIVE".into(),
             auto_update: true,

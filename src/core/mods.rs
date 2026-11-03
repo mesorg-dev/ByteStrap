@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const BACKUP_DIR: &str = ".backup";
+const PROFILES_DIR: &str = "ModProfiles";
 
 #[derive(Debug, Clone)]
 pub struct ModFile {
@@ -231,6 +232,135 @@ fn paths_safe(files: &[ModFile]) -> bool {
         .all(|f| !f.rel.contains("..") && !f.rel.starts_with('/'))
 }
 
+// ===== Профили модов =====
+
+fn profiles_root(base: &Path) -> PathBuf {
+    base.join(PROFILES_DIR)
+}
+
+/// Имя профиля безопасно для файловой системы (и Windows).
+fn valid_name(name: &str) -> bool {
+    let t = name.trim();
+    !t.is_empty()
+        && t.len() <= 64
+        && !t.starts_with('.')
+        && !t.ends_with('.')
+        && !t
+            .chars()
+            .any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+}
+
+/// Рекурсивная копия дерева; при `skip_hidden` точки-компоненты пропускаются.
+fn copy_tree(src: &Path, dst: &Path, skip_hidden: bool) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if skip_hidden && name.starts_with('.') {
+            continue;
+        }
+        let from = entry.path();
+        let to = dst.join(&name);
+        if from.is_dir() {
+            copy_tree(&from, &to, skip_hidden)?;
+        } else {
+            if let Some(p) = to.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Сохранить текущее содержимое `Mods/` как профиль (перезаписывает).
+pub fn save_profile(base: &Path, name: &str) -> Result<()> {
+    let name = name.trim();
+    anyhow::ensure!(valid_name(name), "invalid profile name");
+    let src = base.join("Mods");
+    let dst = profiles_root(base).join(name);
+    if dst.exists() {
+        std::fs::remove_dir_all(&dst)?;
+    }
+    std::fs::create_dir_all(&dst)?;
+    if src.is_dir() {
+        copy_tree(&src, &dst, true)?; // .backup в профиль не попадает
+    }
+    Ok(())
+}
+
+/// Загрузить профиль: откат (если есть guid) → чистка `Mods/` → копия → применение.
+///
+/// Возвращает статистику применения или `None`, если применять нечего/нет клиента.
+pub fn load_profile(base: &Path, guid: Option<&str>, name: &str) -> Result<Option<ApplyStats>> {
+    let name = name.trim();
+    anyhow::ensure!(valid_name(name), "invalid profile name");
+    let src = profiles_root(base).join(name);
+    anyhow::ensure!(src.is_dir(), "no such profile");
+
+    // Сначала вернуть оригиналы, чтобы старые модовые файлы не остались в версии.
+    if let Some(g) = guid {
+        let _ = revert(base, g); // бэкапов может не быть — это ок
+    }
+
+    let root = base.join("Mods");
+    if root.is_dir() {
+        for entry in std::fs::read_dir(&root)? {
+            let entry = entry?;
+            let fname = entry.file_name().to_string_lossy().to_string();
+            // Без guid бэкап не трогаем (к нему привязаны оригиналы).
+            if guid.is_none() && fname == BACKUP_DIR {
+                continue;
+            }
+            let p = entry.path();
+            if p.is_dir() {
+                std::fs::remove_dir_all(&p)?;
+            } else {
+                std::fs::remove_file(&p)?;
+            }
+        }
+    } else {
+        std::fs::create_dir_all(&root)?;
+    }
+    copy_tree(&src, &root, false)?;
+
+    if let Some(g) = guid {
+        if scan(base)?.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(apply(base, g)?))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Список профилей (имена директорий), по алфавиту.
+pub fn list_profiles(base: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(profiles_root(base)) {
+        for e in rd.flatten() {
+            if e.path().is_dir() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if !n.starts_with('.') {
+                    out.push(n);
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Удалить профиль.
+pub fn delete_profile(base: &Path, name: &str) -> Result<()> {
+    let name = name.trim();
+    anyhow::ensure!(valid_name(name), "invalid profile name");
+    let dst = profiles_root(base).join(name);
+    anyhow::ensure!(dst.is_dir(), "no such profile");
+    std::fs::remove_dir_all(&dst)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,5 +416,94 @@ mod tests {
         let files = scan(base).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].rel, "visible.txt");
+    }
+
+    #[test]
+    fn profile_save_load_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+
+        std::fs::create_dir_all(base.join("Mods/content")).unwrap();
+        std::fs::write(base.join("Mods/content/a.txt"), "mod").unwrap();
+        save_profile(base, "pack").unwrap();
+
+        // Меняем текущие моды: файл перезаписан + лишний добавлен.
+        std::fs::write(base.join("Mods/content/a.txt"), "changed").unwrap();
+        std::fs::write(base.join("Mods/extra.txt"), "x").unwrap();
+
+        let stats = load_profile(base, None, "pack").unwrap();
+        assert!(stats.is_none(), "без клиента применять нечего");
+        assert_eq!(
+            std::fs::read_to_string(base.join("Mods/content/a.txt")).unwrap(),
+            "mod"
+        );
+        assert!(
+            !base.join("Mods/extra.txt").exists(),
+            "файл вне профиля должен исчезнуть"
+        );
+    }
+
+    #[test]
+    fn profile_save_skips_backup_and_lists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        std::fs::create_dir_all(base.join("Mods/.backup")).unwrap();
+        std::fs::write(base.join("Mods/.backup/orig.txt"), "orig").unwrap();
+        std::fs::write(base.join("Mods/mod.txt"), "mod").unwrap();
+
+        save_profile(base, "alpha").unwrap();
+        save_profile(base, "beta").unwrap();
+
+        assert!(!base.join("ModProfiles/alpha/.backup").exists());
+        assert!(base.join("ModProfiles/alpha/mod.txt").exists());
+        assert_eq!(list_profiles(base), vec!["alpha".to_string(), "beta".to_string()]);
+
+        delete_profile(base, "alpha").unwrap();
+        assert_eq!(list_profiles(base), vec!["beta".to_string()]);
+        assert!(delete_profile(base, "alpha").is_err());
+    }
+
+    #[test]
+    fn profile_bad_names_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        for bad in ["", "  ", "..", "a/b", "a\\b", ".hidden", "x:yy", "trailing."] {
+            assert!(
+                save_profile(base, bad).is_err(),
+                "name {bad:?} must be rejected"
+            );
+            assert!(load_profile(base, None, bad).is_err());
+            assert!(delete_profile(base, bad).is_err());
+        }
+        assert!(list_profiles(base).is_empty());
+    }
+
+    #[test]
+    fn profile_load_replaces_applied_version_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        let guid = "version-0000000000000000";
+
+        // Оригинал клиента + мод A поверх.
+        let vdir = base.join("Versions").join(guid).join("content/test.txt");
+        std::fs::create_dir_all(vdir.parent().unwrap()).unwrap();
+        std::fs::write(&vdir, "original").unwrap();
+        std::fs::create_dir_all(base.join("Mods/content")).unwrap();
+        std::fs::write(base.join("Mods/content/test.txt"), "modA").unwrap();
+        save_profile(base, "packA").unwrap();
+
+        apply(base, guid).unwrap();
+        assert_eq!(std::fs::read_to_string(&vdir).unwrap(), "modA");
+
+        // Профиль B меняет мод; после load версия содержит modB, бэкап свежий.
+        std::fs::write(base.join("Mods/content/test.txt"), "modB").unwrap();
+        save_profile(base, "packB").unwrap();
+        load_profile(base, Some(guid), "packB").unwrap();
+        assert_eq!(std::fs::read_to_string(&vdir).unwrap(), "modB");
+        assert_eq!(
+            std::fs::read_to_string(base.join("Mods/.backup/content/test.txt")).unwrap(),
+            "original",
+            "бэкап должен содержать оригинал клиента"
+        );
     }
 }

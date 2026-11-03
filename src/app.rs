@@ -33,6 +33,8 @@ pub enum AsyncEvent {
     UpdateDone(Result<(), String>),
     ChannelPreview(Result<deploy::ClientVersion, String>),
     ModsDone(Result<mods::ApplyStats, String>),
+    /// Загрузка профиля модов завершена: (имя, статистика применения).
+    ProfileLoaded(Result<(String, Option<mods::ApplyStats>), String>),
     Session(SessionEvent),
 }
 
@@ -73,6 +75,8 @@ pub enum Confirm {
     DeleteProfile(String),
     ApplyChannel(String),
     RevertMods,
+    LoadModProfile(String),
+    DeleteModProfile(String),
 }
 
 pub struct App {
@@ -92,6 +96,8 @@ pub struct App {
     /// GUID версии, из которой загружена таблица.
     pub flags_loaded_for: Option<String>,
     pub flag_profile_name: String,
+    /// Имя профиля модов в поле ввода на странице Mods.
+    pub mod_profile_name: String,
     /// (текст, ошибка) — строка-сообщение над таблицей флагов.
     pub flag_msg: Option<(String, bool)>,
     pub confirm: Option<Confirm>,
@@ -177,6 +183,7 @@ impl App {
             flags_selected: None,
             flags_loaded_for: None,
             flag_profile_name: String::new(),
+            mod_profile_name: String::new(),
             flag_msg: None,
             confirm: None,
             import: None,
@@ -239,6 +246,20 @@ impl App {
         std::thread::spawn(move || {
             let res = mods::revert(&base, &guid).map_err(|e| e.to_string());
             let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
+    }
+
+    /// Загрузить профиль модов (в фоне): откат → замена `Mods/` → применение.
+    pub fn start_mod_profile_load(&mut self, name: String) {
+        let base = self.config.base();
+        let guid = self.installed.clone();
+        self.mods_msg = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = mods::load_profile(&base, guid.as_deref(), &name)
+                .map(|stats| (name, stats))
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ProfileLoaded(res));
         });
     }
 
@@ -542,6 +563,21 @@ impl App {
                     }
                     Err(e) => self.mods_msg = Some((e, true)),
                 },
+                AsyncEvent::ProfileLoaded(res) => {
+                    // Дерево меняется в любом случае — пересканировать.
+                    self.refresh_mods();
+                    match res {
+                        Ok((name, _stats)) => {
+                            if self.config.active_mod_profile != name {
+                                self.config.active_mod_profile = name.clone();
+                                self.config.save();
+                            }
+                            let text = fmt(self.lang, "Mods_ProfileLoadedFmt", &[&name]);
+                            self.mods_msg = Some((text, false));
+                        }
+                        Err(e) => self.mods_msg = Some((e, true)),
+                    }
+                }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick { secs, place } => {
                         self.session_secs = secs;
