@@ -9,7 +9,8 @@ use eframe::egui::{
 };
 
 use crate::core::config::Config;
-use crate::core::{deploy, launcher, updater, versions};
+use crate::core::playtime::{self, Playtime, SessionEvent};
+use crate::core::{deploy, launcher, mods, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::theme;
 use crate::ui;
@@ -19,6 +20,8 @@ pub enum Page {
     Home,
     Flags,
     Versions,
+    Mods,
+    Settings,
     About,
 }
 
@@ -28,6 +31,9 @@ pub enum AsyncEvent {
     UpdateCheck(Result<Option<updater::AppRelease>, String>),
     UpdateProgress { done: u64, total: u64 },
     UpdateDone(Result<(), String>),
+    ChannelPreview(Result<deploy::ClientVersion, String>),
+    ModsDone(Result<mods::ApplyStats, String>),
+    Session(SessionEvent),
 }
 
 /// Состояние карточки «обновление лаунчера» на странице About.
@@ -65,6 +71,8 @@ pub enum Confirm {
     ClearAll,
     ApplyProfile(String),
     DeleteProfile(String),
+    ApplyChannel(String),
+    RevertMods,
 }
 
 pub struct App {
@@ -93,7 +101,26 @@ pub struct App {
     pub quit: bool,
     pub selected_version: Option<String>,
     pub integrity: Option<versions::IntegrityReport>,
-    tx: Sender<AsyncEvent>,
+    /// Черновик канала на странице Settings (до применения).
+    pub channel_draft: String,
+    /// Превью версии для черновика канала.
+    pub channel_preview: Option<Result<deploy::ClientVersion, String>>,
+    pub channel_checking: bool,
+    /// Результат последнего применения/отката модов.
+    pub mods_msg: Option<(String, bool)>,
+    /// Файлы модов (относительные пути) для страницы Mods.
+    pub mods_files: Vec<crate::core::mods::ModFile>,
+    /// Первый scan модов уже выполнен.
+    pub mods_scanned: bool,
+    /// Секунды текущей игровой сессии (таймер на Home).
+    pub session_secs: u64,
+    /// Текущее место сессии (id из лога).
+    pub session_place: Option<String>,
+    /// Идёт ли сейчас отсчёт сессии.
+    pub session_active: bool,
+    /// Накопленное время по местам и суммарно.
+    pub playtime: Playtime,
+    pub(crate) tx: Sender<AsyncEvent>,
     rx: Receiver<AsyncEvent>,
     cancel: Option<Arc<AtomicBool>>,
 }
@@ -121,18 +148,21 @@ impl App {
 
         let (tx, rx) = std::sync::mpsc::channel();
         let quiet_tx = tx.clone();
+        let channel = config.channel.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
             let res = rt
-                .block_on(deploy::latest_version())
+                .block_on(deploy::latest_version(&channel))
                 .map_err(|e| e.to_string());
             let _ = quiet_tx.send(AsyncEvent::Latest(res));
         });
 
-        Self {
+        let channel_draft = config.channel.clone();
+        let playtime = Playtime::load(&config.base());
+        let mut app = Self {
             lang,
             page: Page::Home,
             config,
@@ -154,16 +184,62 @@ impl App {
             quit: false,
             selected_version: None,
             integrity: None,
+            channel_draft,
+            channel_preview: None,
+            channel_checking: false,
+            mods_msg: None,
+            mods_files: Vec::new(),
+            mods_scanned: false,
+            session_secs: 0,
+            session_place: None,
+            session_active: false,
+            playtime,
             tx,
             rx,
             cancel: None,
+        };
+        if app.config.auto_update {
+            app.check_updates();
         }
+        app
     }
 
     pub fn set_lang(&mut self, lang: Lang) {
         self.lang = lang;
         self.config.language = lang.code().to_string();
         self.config.save();
+    }
+
+    /// Перечитать список файлов модов с диска.
+    pub fn refresh_mods(&mut self) {
+        self.mods_files = mods::scan(&self.config.base()).unwrap_or_default();
+        self.mods_scanned = true;
+    }
+
+    /// Применить моды к активной версии (в фоне).
+    pub fn start_mods_apply(&mut self) {
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let base = self.config.base();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = mods::apply(&base, &guid).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
+    }
+
+    /// Откатить моды (в фоне).
+    pub fn start_mods_revert(&mut self) {
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let base = self.config.base();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = mods::revert(&base, &guid).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
     }
 
     /// Проверка latest-релиза лаунчера на GitHub.
@@ -376,11 +452,43 @@ impl App {
         };
         match launcher::exe_path(&self.config.base(), &guid) {
             Some(exe) => match launcher::launch(&exe, None) {
-                Ok(()) => self.install.error = None,
+                Ok(()) => {
+                    self.install.error = None;
+                    self.start_session_watch();
+                    if self.config.close_on_launch {
+                        self.quit = true;
+                    }
+                }
                 Err(e) => self.install.error = Some(e.to_string()),
             },
             None => self.start_install(false),
         }
+    }
+
+    /// Фоновый watcher сессии: Tick/End из playtime::watch_session.
+    fn start_session_watch(&mut self) {
+        if self.session_active {
+            return;
+        }
+        self.session_active = true;
+        self.session_secs = 0;
+        self.session_place = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let (stx, srx) = std::sync::mpsc::channel::<SessionEvent>();
+            let relay = {
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    while let Ok(e) = srx.recv() {
+                        if tx.send(AsyncEvent::Session(e)).is_err() {
+                            break;
+                        }
+                    }
+                })
+            };
+            playtime::watch_session(stx);
+            let _ = relay.join();
+        });
     }
 
     fn drain_events(&mut self) {
@@ -418,6 +526,35 @@ impl App {
                     }
                     Err(e) => self.update = UpdateUi::Error(e),
                 },
+                AsyncEvent::ChannelPreview(res) => {
+                    self.channel_checking = false;
+                    self.channel_preview = Some(res);
+                }
+                AsyncEvent::ModsDone(res) => match res {
+                    Ok(stats) => {
+                        let text = fmt(
+                            self.lang,
+                            "Mods_AppliedFmt",
+                            &[&stats.applied.to_string(), &stats.skipped.to_string()],
+                        );
+                        self.mods_msg = Some((text, false));
+                        self.refresh_mods();
+                    }
+                    Err(e) => self.mods_msg = Some((e, true)),
+                },
+                AsyncEvent::Session(ev) => match ev {
+                    SessionEvent::Tick { secs, place } => {
+                        self.session_secs = secs;
+                        self.session_place = place;
+                    }
+                    SessionEvent::End { total, places } => {
+                        self.session_active = false;
+                        self.session_secs = 0;
+                        self.session_place = None;
+                        self.playtime.merge(total, &places);
+                        self.playtime.save(&self.config.base());
+                    }
+                },
                 AsyncEvent::Install(ev) => match ev {
                     deploy::Event::Progress {
                         phase,
@@ -447,6 +584,13 @@ impl App {
                         self.install = InstallUi::default();
                         self.cancel = None;
                         self.integrity = None;
+                        // Моды: после чистой установки накладываем заново.
+                        if !already {
+                            self.refresh_mods();
+                            if !self.mods_files.is_empty() {
+                                self.start_mods_apply();
+                            }
+                        }
                     }
                     deploy::Event::Failed(e) => {
                         if self.install.active {
@@ -610,10 +754,12 @@ impl App {
             .show(ui, |ui| {
                 ui.add_space(4.0);
 
-                let items: [(Page, &str, fn(&egui::Ui, Rect, Color32)); 4] = [
+                let items: [(Page, &str, fn(&egui::Ui, Rect, Color32)); 6] = [
                     (Page::Home, tr(lang, "Nav_Home"), ui::icons::home),
                     (Page::Flags, tr(lang, "Nav_Flags"), ui::icons::sliders),
                     (Page::Versions, tr(lang, "Nav_Versions"), ui::icons::layers),
+                    (Page::Mods, tr(lang, "Nav_Mods"), ui::icons::wrench),
+                    (Page::Settings, tr(lang, "Nav_Settings"), ui::icons::gear),
                     (Page::About, tr(lang, "Nav_About"), ui::icons::info),
                 ];
 
@@ -783,6 +929,8 @@ impl eframe::App for App {
                         Page::Home => ui::home::show(ui, self),
                         Page::Flags => ui::flags::show(ui, self),
                         Page::Versions => ui::versions::show(ui, self),
+                        Page::Mods => ui::mods::show(ui, self),
+                        Page::Settings => ui::settings::show(ui, self),
                         Page::About => ui::about::show(ui, self),
                     });
             });

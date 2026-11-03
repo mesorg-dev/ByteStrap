@@ -13,6 +13,8 @@ pub struct Config {
     pub previous_version: String,
     pub active_flag_profile: String,
     pub download_threads: u32,
+    /// Roblox deployment channel: "LIVE" | "BETA" | "ZNext" | ...
+    pub channel: String,
     pub auto_update: bool,
     pub close_on_launch: bool,
     pub window_max: bool,
@@ -29,6 +31,7 @@ impl Default for Config {
             previous_version: String::new(),
             active_flag_profile: String::new(),
             download_threads: 4,
+            channel: "LIVE".into(),
             auto_update: true,
             close_on_launch: false,
             window_max: false,

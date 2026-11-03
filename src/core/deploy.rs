@@ -112,15 +112,29 @@ fn file_client() -> Result<reqwest::Client> {
         .build()?)
 }
 
-pub async fn latest_version() -> Result<ClientVersion> {
+/// Канал деплоя: LIVE (production) именуется без сегмента в URL,
+/// остальные — через `/channel/<name>` (формат clientsettings API).
+/// Для не-LIVE при ошибке — тихий фолбэк на LIVE.
+pub async fn latest_version(channel: &str) -> Result<ClientVersion> {
+    let ch = channel.trim();
+    if ch.is_empty() || ch.eq_ignore_ascii_case("LIVE") {
+        return fetch_version(None).await;
+    }
+    match fetch_version(Some(ch)).await {
+        Ok(v) => Ok(v),
+        Err(_) => fetch_version(None).await,
+    }
+}
+
+async fn fetch_version(channel: Option<&str>) -> Result<ClientVersion> {
     let client = api_client()?;
-    let v: serde_json::Value = client
-        .get(VERSION_API)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let mut url = reqwest::Url::parse(VERSION_API)?;
+    if let Some(ch) = channel {
+        url.path_segments_mut()
+            .map_err(|_| anyhow!("bad version api url"))?
+            .extend(["channel", ch]);
+    }
+    let v: serde_json::Value = client.get(url).send().await?.error_for_status()?.json().await?;
     let version = v["version"].as_str().unwrap_or("").to_string();
     let guid = v["clientVersionUpload"].as_str().unwrap_or("").to_string();
     if version.is_empty() || !is_version_guid(&guid) {
@@ -264,7 +278,7 @@ pub async fn ensure_installed(
         done: 0,
         total: 0,
     });
-    let latest = latest_version().await.context("version api")?;
+    let latest = latest_version(&cfg.channel).await.context("version api")?;
     if cancel.load(Ordering::Relaxed) {
         send(Event::Cancelled);
         bail!("cancelled");

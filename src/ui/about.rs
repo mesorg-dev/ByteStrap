@@ -1,7 +1,7 @@
 use eframe::egui::{self, Button, RichText, Stroke, Ui};
 
 use crate::app::{App, UpdateUi};
-use crate::i18n::{fmt, tr, Lang};
+use crate::i18n::{fmt, tr};
 use crate::theme;
 
 pub fn show(ui: &mut Ui, app: &mut App) {
@@ -37,36 +37,6 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr(lang, "About_License")).color(theme::FG_DIM));
             ui.label("GPL-3.0");
-        });
-    });
-
-    ui.add_space(12.0);
-
-    theme::card_frame().show(ui, |ui| {
-        ui.label(
-            RichText::new(tr(lang, "About_Lang"))
-                .strong()
-                .color(theme::FG),
-        );
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            for (code, label) in [("ru", "Русский"), ("en", "English")] {
-                let selected = lang.code() == code;
-                let text = if selected {
-                    RichText::new(label).color(theme::BG).strong()
-                } else {
-                    RichText::new(label).color(theme::FG)
-                };
-                let mut btn = Button::new(text);
-                if selected {
-                    btn = btn.fill(theme::FG);
-                } else {
-                    btn = btn.stroke(Stroke::new(1.0, theme::LINE));
-                }
-                if ui.add(btn).clicked() {
-                    app.set_lang(Lang::resolve(code));
-                }
-            }
         });
     });
 

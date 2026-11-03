@@ -215,32 +215,39 @@ pub fn show(ui: &mut Ui, app: &mut App) {
 
     // ===== Окна подтверждений =====
     let mut answer: Option<bool> = None;
-    if let Some(c) = &app.confirm {
-        let text = match c {
-            Confirm::ClearAll => tr(lang, "Flags_ClearConfirm").to_string(),
-            Confirm::ApplyProfile(n) => fmt(lang, "Prof_ApplyConfirm", &[n]),
-            Confirm::DeleteProfile(n) => fmt(lang, "Prof_DelConfirm", &[n]),
-        };
-        egui::Window::new("ByteStrap")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ui.ctx(), |ui| {
-                ui.set_min_width(320.0);
-                ui.label(RichText::new(text).size(13.0).color(theme::FG));
-                ui.add_space(10.0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(tr(lang, "Btn_No")).clicked() {
-                        answer = Some(false);
-                    }
-                    if ui
-                        .add(primary_btn(tr(lang, "Btn_Yes")))
-                        .clicked()
-                    {
-                        answer = Some(true);
-                    }
+    let flags_confirm = matches!(
+        app.confirm,
+        Some(Confirm::ClearAll | Confirm::ApplyProfile(_) | Confirm::DeleteProfile(_))
+    );
+    if flags_confirm {
+        if let Some(c) = &app.confirm {
+            let text = match c {
+                Confirm::ClearAll => tr(lang, "Flags_ClearConfirm").to_string(),
+                Confirm::ApplyProfile(n) => fmt(lang, "Prof_ApplyConfirm", &[n]),
+                Confirm::DeleteProfile(n) => fmt(lang, "Prof_DelConfirm", &[n]),
+                _ => String::new(),
+            };
+            egui::Window::new("ByteStrap")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ui.ctx(), |ui| {
+                    ui.set_min_width(320.0);
+                    ui.label(RichText::new(text).size(13.0).color(theme::FG));
+                    ui.add_space(10.0);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(tr(lang, "Btn_No")).clicked() {
+                            answer = Some(false);
+                        }
+                        if ui
+                            .add(primary_btn(tr(lang, "Btn_Yes")))
+                            .clicked()
+                        {
+                            answer = Some(true);
+                        }
+                    });
                 });
-            });
+        }
     }
 
     // ===== Окно конфликта импорта =====
@@ -654,6 +661,7 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                             Err(e) => msg(app, lang, "Flags_SaveErr", &[&e.to_string()], true),
                         }
                     }
+                    Confirm::ApplyChannel(_) | Confirm::RevertMods => {}
                 }
             }
         }

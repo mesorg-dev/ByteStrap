@@ -169,8 +169,19 @@ pub fn show(ui: &mut Ui, app: &mut App) {
 
     ui.add_space(12.0);
 
+    // Счётчики: моды / флаги / часы.
+    if app.mods_files.is_empty() && !app.mods_scanned {
+        app.refresh_mods();
+    }
+    let mods_count = app.mods_files.len().to_string();
     let flags_count = app.flags.len().to_string();
-    let entries = [("MODS", "0"), ("FLAGS", flags_count.as_str()), ("HOURS", "0")];
+    let hours = app.playtime.total_secs / 3600;
+    let hours_str = hours.to_string();
+    let entries = [
+        ("MODS", mods_count.as_str()),
+        ("FLAGS", flags_count.as_str()),
+        ("HOURS", hours_str.as_str()),
+    ];
 
     Frame::NONE
         .fill(crate::theme::PANEL)
@@ -178,6 +189,25 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         .corner_radius(crate::theme::R_CARD)
         .inner_margin(egui::Margin::same(20))
         .show(ui, |ui| {
+            // Живая сессия.
+            if app.session_active {
+                let place = app.session_place.as_deref().unwrap_or("…");
+                ui.label(
+                    RichText::new(fmt(
+                        lang,
+                        "Home_Session",
+                        &[
+                            &crate::core::playtime::fmt_duration(app.session_secs),
+                            place,
+                        ],
+                    ))
+                    .family(egui::FontFamily::Monospace)
+                    .size(12.0)
+                    .color(crate::theme::GOOD),
+                );
+                ui.add_space(12.0);
+            }
+
             ui.horizontal(|ui| {
                 for (i, (label, value)) in entries.into_iter().enumerate() {
                     ui.vertical(|ui| {
@@ -200,4 +230,46 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 }
             });
         });
+
+    // Топ мест по времени.
+    let top = app.playtime.top(5);
+    if !top.is_empty() {
+        ui.add_space(12.0);
+        Frame::NONE
+            .fill(crate::theme::PANEL)
+            .stroke(Stroke::new(1.0, crate::theme::LINE))
+            .corner_radius(crate::theme::R_CARD)
+            .inner_margin(egui::Margin::same(20))
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new(tr(lang, "Home_Places"))
+                        .size(11.0)
+                        .family(egui::FontFamily::Monospace)
+                        .color(crate::theme::FG_DIMMER),
+                );
+                ui.add_space(8.0);
+                for (id, e) in top {
+                    ui.horizontal(|ui| {
+                        let name = if e.name.is_empty() {
+                            id.as_str()
+                        } else {
+                            e.name.as_str()
+                        };
+                        ui.label(
+                            RichText::new(name)
+                                .size(13.0)
+                                .color(crate::theme::FG),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(crate::core::playtime::fmt_duration(e.secs))
+                                    .family(egui::FontFamily::Monospace)
+                                    .size(12.0)
+                                    .color(crate::theme::FG_DIM),
+                            );
+                        });
+                    });
+                }
+            });
+    }
 }

@@ -67,3 +67,44 @@ pub fn info(ui: &Ui, r: Rect, c: Color32) {
     );
     p.circle_filled(Pos2::new(cx, r.bottom() - 5.0), 1.2, c);
 }
+
+/// Шестерёнка (настройки).
+pub fn gear(ui: &Ui, r: Rect, c: Color32) {
+    let p = ui.painter();
+    let cx = r.center().x;
+    let cy = r.center().y;
+    let outer = r.width() / 2.0 - 1.5;
+    let inner = outer * 0.55;
+    p.circle_stroke(r.center(), inner, stroke(c));
+    for i in 0..8 {
+        let a = std::f32::consts::FRAC_PI_4 * i as f32;
+        let dx = a.cos();
+        let dy = a.sin();
+        p.line_segment(
+            [
+                Pos2::new(cx + dx * (inner + 1.0), cy + dy * (inner + 1.0)),
+                Pos2::new(cx + dx * outer, cy + dy * outer),
+            ],
+            stroke(c),
+        );
+    }
+}
+
+/// Гаечный ключ (моды).
+pub fn wrench(ui: &Ui, r: Rect, c: Color32) {
+    let p = ui.painter();
+    let (x0, y0, x1, y1) = (r.left(), r.top(), r.right(), r.bottom());
+    // Рукоять (диагональ слева-снизу направо-вверх)
+    p.line_segment(
+        [Pos2::new(x0 + 3.0, y1 - 3.0), Pos2::new(x1 - 7.0, y0 + 7.0)],
+        stroke(c),
+    );
+    // Головка: «C»-образный хомут в правом верхнем углу
+    let head = Pos2::new(x1 - 4.5, y0 + 4.5);
+    p.circle_stroke(head, 4.5, stroke(c));
+    // Прорезь головки
+    p.line_segment(
+        [Pos2::new(head.x - 1.5, head.y - 6.5), Pos2::new(head.x + 2.5, head.y - 2.5)],
+        Stroke::new(3.0, crate::theme::BG),
+    );
+}
