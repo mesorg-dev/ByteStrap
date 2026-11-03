@@ -247,17 +247,14 @@ struct Conn {
 #[cfg(windows)]
 impl Conn {
     async fn connect() -> std::io::Result<Self> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::AsyncWriteExt;
         use tokio::net::windows::named_pipe::ClientOptions;
 
         let mut last_err =
             std::io::Error::new(std::io::ErrorKind::NotFound, "discord pipe not found");
         let mut client = None;
         for i in 0..10u8 {
-            match ClientOptions::new()
-                .open(format!(r"\\.\pipe\discord-ipc-{i}"))
-                .await
-            {
+            match ClientOptions::new().open(format!(r"\\.\pipe\discord-ipc-{i}")) {
                 Ok(p) => {
                     client = Some(p);
                     break;
