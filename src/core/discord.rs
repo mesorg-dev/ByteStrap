@@ -12,8 +12,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 /// ID приложения Discord (Developer Portal → New Application).
-/// TODO: подставить реальный ID перед релизом.
-const DISCORD_CLIENT_ID: &str = "0";
+const DISCORD_CLIENT_ID: &str = "1567290388354437191";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Update {
