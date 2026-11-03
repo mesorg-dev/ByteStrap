@@ -1,6 +1,7 @@
 pub mod cleanup;
 pub mod config;
 pub mod deploy;
+pub mod discord;
 pub mod flags;
 pub mod launcher;
 pub mod mods;

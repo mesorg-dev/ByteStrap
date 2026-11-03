@@ -80,7 +80,7 @@ pub fn fmt_duration(secs: u64) -> String {
     format!("{h:02}:{m:02}:{s:02}")
 }
 
-fn now_unix() -> u64 {
+pub fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -89,7 +89,12 @@ fn now_unix() -> u64 {
 
 pub enum SessionEvent {
     /// Каждую секунду: суммарное время сессии и текущее место.
-    Tick { secs: u64, place: Option<String> },
+    Tick {
+        secs: u64,
+        place: Option<String>,
+        /// Имя места из API (если уже разрешено).
+        place_name: Option<String>,
+    },
     /// Процесс завершён: итог и разбивка по местам (id, name, secs).
     End {
         total: u64,
@@ -137,6 +142,7 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
         let _ = tx.send(SessionEvent::Tick {
             secs: total,
             place: place.clone(),
+            place_name: place.as_ref().and_then(|id| names.get(id)).cloned(),
         });
     }
 

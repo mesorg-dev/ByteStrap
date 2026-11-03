@@ -10,7 +10,7 @@ use eframe::egui::{
 
 use crate::core::config::Config;
 use crate::core::playtime::{self, Playtime, SessionEvent};
-use crate::core::{deploy, launcher, mods, updater, versions};
+use crate::core::{deploy, discord, launcher, mods, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::theme;
 use crate::ui;
@@ -143,6 +143,8 @@ pub struct App {
     pub session_place: Option<String>,
     /// Идёт ли сейчас отсчёт сессии.
     pub session_active: bool,
+    /// Фоновый воркер Discord Rich Presence.
+    discord: Sender<discord::Update>,
     /// Накопленное время по местам и суммарно.
     pub playtime: Playtime,
     pub(crate) tx: Sender<AsyncEvent>,
@@ -224,6 +226,7 @@ impl App {
             session_secs: 0,
             session_place: None,
             session_active: false,
+            discord: discord::spawn(),
             playtime,
             tx,
             rx,
@@ -676,14 +679,27 @@ impl App {
                     self.cleanup_msg = Some((text, false));
                 }
                 AsyncEvent::Session(ev) => match ev {
-                    SessionEvent::Tick { secs, place } => {
+                    SessionEvent::Tick {
+                        secs,
+                        place,
+                        place_name,
+                    } => {
                         self.session_secs = secs;
+                        // Discord RP: state = имя места (fallback — id).
+                        if let Some(display) = place_name.as_ref().or(place.as_ref()) {
+                            let start = playtime::now_unix().saturating_sub(secs);
+                            let _ = self.discord.send(discord::Update::Session {
+                                place: display.clone(),
+                                start,
+                            });
+                        }
                         self.session_place = place;
                     }
                     SessionEvent::End { total, places } => {
                         self.session_active = false;
                         self.session_secs = 0;
                         self.session_place = None;
+                        let _ = self.discord.send(discord::Update::Idle);
                         self.playtime.merge(total, &places);
                         self.playtime.save(&self.config.base());
                     }
