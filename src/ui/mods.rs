@@ -282,7 +282,7 @@ pub fn show(ui: &mut Ui, app: &mut App) {
 
     let profiles = crate::core::mods::list_profiles(&base);
 
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let sel_valid = profiles.iter().any(|n| n == &app.profile_sel);
         let sel_text = if sel_valid {
             app.profile_sel.clone()
@@ -330,6 +330,45 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             .clicked()
         {
             app.confirm = Some(Confirm::DeleteModProfile(app.profile_sel.clone()));
+        }
+        #[cfg(windows)]
+        if ui
+            .add_enabled(sel_valid, outline_btn(tr(lang, "Prof_Export")))
+            .clicked()
+        {
+            let name = app.profile_sel.clone();
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title(tr(lang, "Dlg_ProfExport"))
+                .add_filter("ZIP", &["zip"])
+                .set_file_name(format!("{name}.zip"))
+                .save_file()
+            {
+                match crate::core::share::export_mod_profile(&base, &name, &path) {
+                    Ok(()) => {
+                        app.mods_msg =
+                            Some((fmt(lang, "Prof_ExportedFmt", &[&name]), false));
+                    }
+                    Err(e) => app.mods_msg = Some((fmt(lang, "Prof_ShareErr", &[&e.to_string()]), true)),
+                }
+            }
+        }
+        #[cfg(windows)]
+        if ui.add(outline_btn(tr(lang, "Prof_Import"))).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title(tr(lang, "Dlg_ProfImport"))
+                .add_filter("ZIP", &["zip"])
+                .add_filter(tr(lang, "Dlg_AllFiles"), &["*"])
+                .pick_file()
+            {
+                match crate::core::share::import_mod_profile(&base, &path) {
+                    Ok(name) => {
+                        app.profile_sel = name.clone();
+                        app.mods_msg =
+                            Some((fmt(lang, "Prof_ImportedFmt", &[&name]), false));
+                    }
+                    Err(e) => app.mods_msg = Some((fmt(lang, "Prof_ShareErr", &[&e.to_string()]), true)),
+                }
+            }
         }
     });
     if profiles.is_empty() {

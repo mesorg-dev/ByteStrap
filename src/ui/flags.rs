@@ -643,7 +643,7 @@ pub fn show(ui: &mut Ui, app: &mut App) {
     let profiles = flags::load_profiles(&app.config.base());
     let names: Vec<String> = profiles.profiles.keys().cloned().collect();
 
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let sel_valid = names.iter().any(|n| n == &app.profile_sel);
         let sel_text = if sel_valid {
             app.profile_sel.clone()
@@ -691,6 +691,41 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             .clicked()
         {
             app.confirm = Some(Confirm::DeleteProfile(app.profile_sel.clone()));
+        }
+        #[cfg(windows)]
+        if ui
+            .add_enabled(sel_valid, outline_btn(tr(lang, "Prof_Export")))
+            .clicked()
+        {
+            let name = app.profile_sel.clone();
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title(tr(lang, "Dlg_ProfExport"))
+                .add_filter("JSON", &["json"])
+                .set_file_name(format!("{name}.json"))
+                .save_file()
+            {
+                match crate::core::share::export_flag_profile(&app.config.base(), &name, &path) {
+                    Ok(()) => msg(app, lang, "Prof_ExportedFmt", &[&name], false),
+                    Err(e) => msg(app, lang, "Prof_ShareErr", &[&e.to_string()], true),
+                }
+            }
+        }
+        #[cfg(windows)]
+        if ui.add(outline_btn(tr(lang, "Prof_Import"))).clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title(tr(lang, "Dlg_ProfImport"))
+                .add_filter("JSON", &["json"])
+                .add_filter(tr(lang, "Dlg_AllFiles"), &["*"])
+                .pick_file()
+            {
+                match crate::core::share::import_flag_profile(&app.config.base(), &path) {
+                    Ok(name) => {
+                        app.profile_sel = name.clone();
+                        msg(app, lang, "Prof_ImportedFmt", &[&name], false);
+                    }
+                    Err(e) => msg(app, lang, "Prof_ShareErr", &[&e.to_string()], true),
+                }
+            }
         }
     });
     if names.is_empty() {
