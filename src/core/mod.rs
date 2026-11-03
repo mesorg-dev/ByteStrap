@@ -4,5 +4,6 @@ pub mod flags;
 pub mod launcher;
 pub mod mods;
 pub mod playtime;
+pub mod presets;
 pub mod updater;
 pub mod versions;

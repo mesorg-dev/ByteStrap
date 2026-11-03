@@ -225,6 +225,24 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     // Счётчик времени
     "Home_Session" => "в игре {0} · место {1}",
     "Home_Places" => "ВРЕМЯ ПО МЕСТАМ",
+    // Пресеты
+    "Flags_Presets" => "Пресеты",
+    "Pr_Fps" => "Лимит FPS",
+    "Pr_FpsDesc" => "Кадры в секунду; «Авто» = без ограничения",
+    "Pr_Msaa" => "MSAA",
+    "Pr_MsaaDesc" => "Сглаживание рёбер; выше = чище и тяжелее",
+    "Pr_Render" => "API рендера",
+    "Pr_RenderDesc" => "Vulkan или D3D11; «Авто» = по умолчанию",
+    "Pr_Lod" => "Детализация моделей",
+    "Pr_LodDesc" => "На каком расстоянии упрощать блоки",
+    "Pr_Grass" => "Трава",
+    "Pr_GrassDesc" => "Дальность прорисовки травы",
+    "Pr_Zoom" => "Зум камеры",
+    "Pr_ZoomDesc" => "Максимальная дальность обзора",
+    "Pr_Dpi" => "Без DPI-скейла",
+    "Pr_DpiDesc" => "Отключить масштабирование интерфейса Windows",
+    "Pr_PostFx" => "Без пост-эффектов",
+    "Pr_PostFxDesc" => "Отключить bloom и прочие эффекты",
 });
 
 static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict! {
@@ -389,6 +407,24 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     // Playtime
     "Home_Session" => "in game {0} · place {1}",
     "Home_Places" => "TIME BY PLACE",
+    // Presets
+    "Flags_Presets" => "Presets",
+    "Pr_Fps" => "FPS limit",
+    "Pr_FpsDesc" => "Frames per second; \"Auto\" = uncapped",
+    "Pr_Msaa" => "MSAA",
+    "Pr_MsaaDesc" => "Edge antialiasing; higher = cleaner but heavier",
+    "Pr_Render" => "Rendering API",
+    "Pr_RenderDesc" => "Vulkan or D3D11; \"Auto\" = default",
+    "Pr_Lod" => "Mesh detail",
+    "Pr_LodDesc" => "Distance at which blocks simplify",
+    "Pr_Grass" => "Grass",
+    "Pr_GrassDesc" => "Grass render distance",
+    "Pr_Zoom" => "Camera zoom",
+    "Pr_ZoomDesc" => "Maximum view distance",
+    "Pr_Dpi" => "No DPI scaling",
+    "Pr_DpiDesc" => "Disable Windows interface scaling",
+    "Pr_PostFx" => "No post FX",
+    "Pr_PostFxDesc" => "Disable bloom and other effects",
 });
 
 pub fn tr(lang: Lang, key: &'static str) -> &'static str {

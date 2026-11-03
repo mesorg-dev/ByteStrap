@@ -26,6 +26,22 @@ fn msg(app: &mut App, lang: Lang, key: &'static str, args: &[&str], error: bool)
     app.flag_msg = Some((fmt(lang, key, args), error));
 }
 
+/// Локализация опций пресетов (канон EN → RU).
+fn local_option(lang: Lang, opt: &str) -> String {
+    if lang != Lang::Ru {
+        return opt.to_string();
+    }
+    match opt {
+        "Auto" => "Авто".into(),
+        "Low" => "Низкая".into(),
+        "Medium" => "Средняя".into(),
+        "High" => "Высокая".into(),
+        "Off" => "Выкл".into(),
+        "Far" => "Дальняя".into(),
+        _ => opt.to_string(),
+    }
+}
+
 fn set_flag(flags: &mut Vec<(String, String)>, name: &str, value: &str) {
     match flags.iter_mut().find(|(n, _)| n == name) {
         Some(row) => row.1 = value.to_string(),
@@ -410,6 +426,80 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         ui.label(RichText::new(text).size(12.0).family(egui::FontFamily::Monospace).color(color));
     }
     ui.add_space(8.0);
+
+    // ===== Пресеты (дропдауны, схема Voidstrap) =====
+    ui.label(
+        RichText::new(tr(lang, "Flags_Presets"))
+            .size(11.0)
+            .family(egui::FontFamily::Monospace)
+            .color(theme::FG_DIMMER),
+    );
+    ui.add_space(6.0);
+    crate::theme::card_frame().show(ui, |ui| {
+        for p in crate::core::presets::PRESETS {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(tr(lang, p.label_key))
+                            .size(13.0)
+                            .color(theme::FG),
+                    );
+                    ui.label(
+                        RichText::new(tr(lang, p.desc_key))
+                            .size(11.0)
+                            .color(theme::FG_DIMMER),
+                    );
+                });
+                ui.with_layout(
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        let cur = crate::core::presets::current_index(&app.flags, p);
+                        match p.kind {
+                            crate::core::presets::Kind::Toggle => {
+                                let mut on = cur == 1;
+                                if ui.checkbox(&mut on, "").changed() {
+                                    let idx = usize::from(on);
+                                    crate::core::presets::apply(&mut app.flags, p, idx);
+                                    app.flags_dirty = true;
+                                    app.flag_msg = None;
+                                }
+                            }
+                            crate::core::presets::Kind::Combo => {
+                                let selected = p.options.get(cur).copied().unwrap_or("Auto");
+                                let mut chosen: Option<usize> = None;
+                                egui::ComboBox::from_id_salt(("preset", p.label_key))
+                                    .selected_text(
+                                        RichText::new(local_option(lang, selected))
+                                            .size(12.0)
+                                            .color(theme::FG),
+                                    )
+                                    .width(130.0)
+                                    .show_ui(ui, |ui| {
+                                        for (i, opt) in p.options.iter().enumerate() {
+                                            let label = local_option(lang, opt);
+                                            if ui
+                                                .selectable_label(i == cur, label)
+                                                .clicked()
+                                            {
+                                                chosen = Some(i);
+                                            }
+                                        }
+                                    });
+                                if let Some(i) = chosen {
+                                    crate::core::presets::apply(&mut app.flags, p, i);
+                                    app.flags_dirty = true;
+                                    app.flag_msg = None;
+                                }
+                            }
+                        }
+                    },
+                );
+            });
+            ui.add_space(8.0);
+        }
+    });
+
+    ui.add_space(10.0);
 
     // ===== Таблица =====
     let query = app.flags_search.trim().to_lowercase();
