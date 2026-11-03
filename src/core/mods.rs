@@ -361,6 +361,29 @@ pub fn delete_profile(base: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Импорт перетащенных файлов/папок в `Mods/` (слияние, перезапись).
+///
+/// Содержимое папки сливается в корень `Mods/` (клиентская раскладка),
+/// одиночный файл кладётся в корень. Возвращает количество элементов.
+pub fn import_paths(base: &Path, paths: &[PathBuf]) -> Result<usize> {
+    let root = base.join("Mods");
+    std::fs::create_dir_all(&root)?;
+    let mut n = 0usize;
+    for src in paths {
+        if !src.exists() {
+            continue;
+        }
+        if src.is_dir() {
+            copy_tree(src, &root, false)?;
+            n += 1;
+        } else if let Some(name) = src.file_name() {
+            std::fs::copy(src, root.join(name))?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,5 +528,42 @@ mod tests {
             "original",
             "бэкап должен содержать оригинал клиента"
         );
+    }
+
+    #[test]
+    fn import_paths_merges_files_and_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+
+        let src_dir = tmp.path().join("src");
+        std::fs::create_dir_all(src_dir.join("content")).unwrap();
+        std::fs::write(src_dir.join("content/a.txt"), "from-dir").unwrap();
+        let src_file = tmp.path().join("single.txt");
+        std::fs::write(&src_file, "from-file").unwrap();
+
+        // Существующий файл в Mods перезаписывается при слиянии.
+        std::fs::create_dir_all(base.join("Mods/content")).unwrap();
+        std::fs::write(base.join("Mods/content/a.txt"), "old").unwrap();
+        std::fs::write(base.join("Mods/content/b.txt"), "keep").unwrap();
+
+        let n = import_paths(base, &[src_dir.clone(), src_file.clone()]).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            std::fs::read_to_string(base.join("Mods/content/a.txt")).unwrap(),
+            "from-dir"
+        );
+        assert_eq!(
+            std::fs::read_to_string(base.join("Mods/content/b.txt")).unwrap(),
+            "keep",
+            "слияние не должно удалять чужие файлы"
+        );
+        assert_eq!(
+            std::fs::read_to_string(base.join("Mods/single.txt")).unwrap(),
+            "from-file"
+        );
+
+        // Несуществующий путь просто пропускается.
+        let n = import_paths(base, &[tmp.path().join("ghost")]).unwrap();
+        assert_eq!(n, 0);
     }
 }

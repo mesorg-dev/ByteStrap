@@ -171,7 +171,7 @@ fn player_running() -> bool {
     }
 }
 
-fn logs_dir() -> PathBuf {
+pub(crate) fn logs_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Roblox")

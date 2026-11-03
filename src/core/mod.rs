@@ -1,3 +1,4 @@
+pub mod cleanup;
 pub mod config;
 pub mod deploy;
 pub mod flags;

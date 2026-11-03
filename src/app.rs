@@ -35,6 +35,8 @@ pub enum AsyncEvent {
     ModsDone(Result<mods::ApplyStats, String>),
     /// Загрузка профиля модов завершена: (имя, статистика применения).
     ProfileLoaded(Result<(String, Option<mods::ApplyStats>), String>),
+    /// Очистка мусора завершена: (байт, файлов).
+    CleanupDone(u64, usize),
     Session(SessionEvent),
 }
 
@@ -129,6 +131,10 @@ pub struct App {
     pub mods_files: Vec<crate::core::mods::ModFile>,
     /// Первый scan модов уже выполнен.
     pub mods_scanned: bool,
+    /// Идёт ли очистка мусора.
+    pub cleanup_busy: bool,
+    /// Результат последней очистки: (текст, ошибка).
+    pub cleanup_msg: Option<(String, bool)>,
     /// Секунды текущей игровой сессии (таймер на Home).
     pub session_secs: u64,
     /// Текущее место сессии (id из лога).
@@ -210,6 +216,8 @@ impl App {
             mods_msg: None,
             mods_files: Vec::new(),
             mods_scanned: false,
+            cleanup_busy: false,
+            cleanup_msg: None,
             session_secs: 0,
             session_place: None,
             session_active: false,
@@ -274,6 +282,46 @@ impl App {
                 .map_err(|e| e.to_string());
             let _ = tx.send(AsyncEvent::ProfileLoaded(res));
         });
+    }
+
+    /// Очистка мусора (в фоне).
+    pub fn start_cleanup(&mut self) {
+        if self.cleanup_busy || self.install.active {
+            return;
+        }
+        let base = self.config.base();
+        self.cleanup_busy = true;
+        self.cleanup_msg = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let r = crate::core::cleanup::clean(&base);
+            let _ = tx.send(AsyncEvent::CleanupDone(r.freed, r.files));
+        });
+    }
+
+    /// Перетащенные в окно файлы → папка модов (только на странице Mods).
+    fn handle_drops(&mut self, ctx: &egui::Context) {
+        if self.page != Page::Mods {
+            return;
+        }
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect()
+        });
+        if dropped.is_empty() {
+            return;
+        }
+        match mods::import_paths(&self.config.base(), &dropped) {
+            Ok(n) => {
+                self.refresh_mods();
+                let text = fmt(self.lang, "Mods_ImportedFmt", &[&n.to_string()]);
+                self.mods_msg = Some((text, false));
+            }
+            Err(e) => self.mods_msg = Some((e.to_string(), true)),
+        }
     }
 
     /// Проверка latest-релиза лаунчера на GitHub.
@@ -591,6 +639,22 @@ impl App {
                         }
                         Err(e) => self.mods_msg = Some((e, true)),
                     }
+                }
+                AsyncEvent::CleanupDone(freed, files) => {
+                    self.cleanup_busy = false;
+                    let text = if files == 0 {
+                        tr(self.lang, "Settings_CleanupNone").to_string()
+                    } else {
+                        fmt(
+                            self.lang,
+                            "Settings_CleanupDoneFmt",
+                            &[
+                                &versions::format_size(freed),
+                                &files.to_string(),
+                            ],
+                        )
+                    };
+                    self.cleanup_msg = Some((text, false));
                 }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick { secs, place } => {
@@ -956,6 +1020,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.drain_events();
+        self.handle_drops(&ctx);
         self.compute_status();
         if self.quit {
             self.quit = false;

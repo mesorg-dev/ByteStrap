@@ -267,6 +267,35 @@ pub fn show(ui: &mut Ui, app: &mut App) {
         });
     });
 
+    ui.add_space(12.0);
+
+    // ===== Очистка =====
+    theme::card_frame().show(ui, |ui| {
+        card_label(ui, lang, "Settings_Cleanup", "Settings_CleanupDesc");
+        ui.horizontal(|ui| {
+            let busy = app.cleanup_busy;
+            let label = if busy {
+                tr(lang, "Settings_CleanupBusy")
+            } else {
+                tr(lang, "Settings_CleanupBtn")
+            };
+            if ui
+                .add_enabled(!busy && !app.install.active, primary_btn(label))
+                .clicked()
+            {
+                app.start_cleanup();
+            }
+            if let Some((text, err)) = &app.cleanup_msg {
+                ui.label(
+                    RichText::new(text)
+                        .size(12.0)
+                        .family(egui::FontFamily::Monospace)
+                        .color(if *err { theme::BAD } else { theme::GOOD }),
+                );
+            }
+        });
+    });
+
     // ===== Обработка диалога =====
     if let Some(yes) = answer {
         let confirm = app.confirm.take();
