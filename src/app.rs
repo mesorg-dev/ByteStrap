@@ -79,6 +79,13 @@ pub enum Confirm {
     DeleteModProfile(String),
 }
 
+/// Какая страница показывает модалку «Сохранить как…».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileDlg {
+    Flags,
+    Mods,
+}
+
 pub struct App {
     pub lang: Lang,
     pub page: Page,
@@ -96,6 +103,10 @@ pub struct App {
     /// GUID версии, из которой загружена таблица.
     pub flags_loaded_for: Option<String>,
     pub flag_profile_name: String,
+    /// Выбранный в комбобоксе профиль (общий для страниц Flags/Mods).
+    pub profile_sel: String,
+    /// Открытая модалка «Сохранить как…».
+    pub profile_dlg: Option<ProfileDlg>,
     /// Имя профиля модов в поле ввода на странице Mods.
     pub mod_profile_name: String,
     /// (текст, ошибка) — строка-сообщение над таблицей флагов.
@@ -183,6 +194,8 @@ impl App {
             flags_selected: None,
             flags_loaded_for: None,
             flag_profile_name: String::new(),
+            profile_sel: String::new(),
+            profile_dlg: None,
             mod_profile_name: String::new(),
             flag_msg: None,
             confirm: None,
@@ -572,6 +585,7 @@ impl App {
                                 self.config.active_mod_profile = name.clone();
                                 self.config.save();
                             }
+                            self.profile_sel = name.clone();
                             let text = fmt(self.lang, "Mods_ProfileLoadedFmt", &[&name]);
                             self.mods_msg = Some((text, false));
                         }

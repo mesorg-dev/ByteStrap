@@ -1,6 +1,6 @@
 use eframe::egui::{self, RichText, Ui};
 
-use crate::app::{App, Confirm};
+use crate::app::{App, Confirm, ProfileDlg};
 use crate::core::mods::FileStatus;
 use crate::i18n::{fmt, tr};
 use crate::theme;
@@ -192,69 +192,135 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             .color(theme::FG_DIMMER),
     );
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.add(
-            egui::TextEdit::singleline(&mut app.mod_profile_name)
-                .hint_text(tr(lang, "Flags_ProfileName"))
-                .desired_width(220.0)
-                .margin(egui::vec2(8.0, 5.0)),
-        );
-        if ui
-            .add(outline_btn(tr(lang, "Flags_DeleteProfile")))
-            .clicked()
-        {
-            let name = app.mod_profile_name.trim().to_string();
-            if name.is_empty() {
-                app.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
-            } else if crate::core::mods::list_profiles(&base).iter().any(|p| p == &name) {
-                app.confirm = Some(Confirm::DeleteModProfile(name));
-            } else {
-                app.mods_msg = Some((fmt(lang, "Prof_NoSuchFmt", &[&name]), false));
-            }
-        }
-        if ui
-            .add(primary_btn(tr(lang, "Flags_SaveProfile")))
-            .clicked()
-        {
-            let name = app.mod_profile_name.trim().to_string();
-            if name.is_empty() {
-                app.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
-            } else {
-                match crate::core::mods::save_profile(&base, &name) {
-                    Ok(()) => {
-                        app.mod_profile_name.clear();
-                        app.mods_msg = Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
-                    }
-                    Err(e) => app.mods_msg = Some((e.to_string(), true)),
-                }
-            }
-        }
-    });
-    ui.add_space(6.0);
 
     let profiles = crate::core::mods::list_profiles(&base);
+
+    ui.horizontal(|ui| {
+        let sel_valid = profiles.iter().any(|n| n == &app.profile_sel);
+        let sel_text = if sel_valid {
+            app.profile_sel.clone()
+        } else if !app.config.active_mod_profile.is_empty()
+            && profiles
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(&app.config.active_mod_profile))
+        {
+            app.config.active_mod_profile.clone()
+        } else {
+            tr(lang, "Prof_Select").to_string()
+        };
+        egui::ComboBox::from_id_salt("mod_profile_sel")
+            .selected_text(RichText::new(sel_text).size(12.0).color(theme::FG))
+            .width(240.0)
+            .show_ui(ui, |ui| {
+                for n in &profiles {
+                    if ui.selectable_label(app.profile_sel == *n, n).clicked() {
+                        app.profile_sel = n.clone();
+                    }
+                }
+            });
+
+        if ui
+            .add_enabled(sel_valid, primary_btn(tr(lang, "Prof_Load")))
+            .clicked()
+        {
+            let name = app.profile_sel.clone();
+            if app.mods_files.is_empty() {
+                app.start_mod_profile_load(name);
+            } else {
+                app.confirm = Some(Confirm::LoadModProfile(name));
+            }
+        }
+        if ui.add(outline_btn(tr(lang, "Prof_SaveAs"))).clicked() {
+            app.mod_profile_name = if sel_valid {
+                app.profile_sel.clone()
+            } else {
+                app.config.active_mod_profile.clone()
+            };
+            app.profile_dlg = Some(ProfileDlg::Mods);
+        }
+        if ui
+            .add_enabled(sel_valid, outline_btn(tr(lang, "Prof_Delete")))
+            .clicked()
+        {
+            app.confirm = Some(Confirm::DeleteModProfile(app.profile_sel.clone()));
+        }
+    });
     if profiles.is_empty() {
         ui.label(
             RichText::new(tr(lang, "Mods_ProfilesEmpty")).color(theme::FG_DIMMER),
         );
-    } else {
-        ui.horizontal_wrapped(|ui| {
-            for name in &profiles {
-                let active = app.config.active_mod_profile.eq_ignore_ascii_case(name);
-                let btn = if active {
-                    primary_btn(name).min_size(egui::vec2(0.0, 28.0))
-                } else {
-                    outline_btn(name).min_size(egui::vec2(0.0, 28.0))
-                };
-                if ui.add(btn).clicked() {
-                    if app.mods_files.is_empty() {
-                        app.start_mod_profile_load(name.clone());
-                    } else {
-                        app.confirm = Some(Confirm::LoadModProfile(name.clone()));
-                    }
+    }
+
+    // ===== Диалог «Сохранить как…» =====
+    let mut save_as: Option<String> = None;
+    let mut dlg_cancel = false;
+    if app.profile_dlg == Some(ProfileDlg::Mods) {
+        let exists = {
+            let n = app.mod_profile_name.trim();
+            !n.is_empty() && profiles.iter().any(|p| p == n)
+        };
+        egui::Window::new("ByteStrap")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.set_min_width(380.0);
+                ui.label(
+                    RichText::new(tr(lang, "Prof_SaveAsDesc"))
+                        .size(13.0)
+                        .color(theme::FG),
+                );
+                ui.add_space(8.0);
+                let mut out = egui::TextEdit::singleline(&mut app.mod_profile_name)
+                    .hint_text(tr(lang, "Flags_ProfileName"))
+                    .desired_width(340.0)
+                    .margin(egui::vec2(8.0, 5.0))
+                    .show(ui);
+                out.response.request_focus();
+                if out.response.gained_focus() {
+                    let max = egui::text::CCursor::new(out.galley.text().chars().count());
+                    out.state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            max,
+                        )));
+                    out.state.store(ui.ctx(), out.response.id);
                 }
+                ui.add_space(10.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(tr(lang, "Btn_Cancel")).clicked() {
+                        dlg_cancel = true;
+                    }
+                    let label = if exists {
+                        tr(lang, "Prof_Overwrite")
+                    } else {
+                        tr(lang, "Prof_Save")
+                    };
+                    if ui.add(primary_btn(label)).clicked() {
+                        save_as = Some(app.mod_profile_name.trim().to_string());
+                    }
+                });
+            });
+    }
+    if let Some(name) = save_as {
+        if name.is_empty() {
+            app.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
+        } else {
+            match crate::core::mods::save_profile(&base, &name) {
+                Ok(()) => {
+                    app.profile_dlg = None;
+                    app.mod_profile_name.clear();
+                    app.profile_sel = name.clone();
+                    app.mods_msg = Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
+                }
+                Err(e) => app.mods_msg = Some((e.to_string(), true)),
             }
-        });
+        }
+    }
+    if dlg_cancel {
+        app.profile_dlg = None;
+        app.mod_profile_name.clear();
     }
 
     // ===== Обработка диалога =====
@@ -269,6 +335,9 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                         Ok(()) => {
                             if app.mod_profile_name.trim().eq_ignore_ascii_case(&name) {
                                 app.mod_profile_name.clear();
+                            }
+                            if app.profile_sel.eq_ignore_ascii_case(&name) {
+                                app.profile_sel.clear();
                             }
                             if app.config.active_mod_profile.eq_ignore_ascii_case(&name) {
                                 app.config.active_mod_profile.clear();

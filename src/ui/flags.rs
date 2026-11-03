@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use eframe::egui::{self, Button, RichText, Sense, Stroke, TextEdit, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::app::{App, Confirm, ImportQueue};
+use crate::app::{App, Confirm, ImportQueue, ProfileDlg};
 use crate::core::flags::{self, FlagError};
 use crate::i18n::{fmt, tr, Lang};
 use crate::theme;
@@ -639,79 +639,142 @@ pub fn show(ui: &mut Ui, app: &mut App) {
             .color(theme::FG_DIMMER),
     );
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.add(
-            TextEdit::singleline(&mut app.flag_profile_name)
-                .hint_text(tr(lang, "Flags_ProfileName"))
-                .desired_width(220.0)
-                .margin(egui::vec2(8.0, 5.0)),
-        );
-        if ui
-            .add(outline_btn(tr(lang, "Flags_DeleteProfile")))
-            .clicked()
-        {
-            let name = app.flag_profile_name.trim().to_string();
-            if name.is_empty() {
-                msg(app, lang, "Prof_NeedName", &[], false);
-            } else {
-                let profiles = flags::load_profiles(&app.config.base());
-                if profiles.profiles.contains_key(&name) {
-                    app.confirm = Some(Confirm::DeleteProfile(name));
-                } else {
-                    msg(app, lang, "Prof_NoSuchFmt", &[&name], false);
-                }
-            }
-        }
-        if ui
-            .add(primary_btn(tr(lang, "Flags_SaveProfile")))
-            .clicked()
-        {
-            let name = app.flag_profile_name.trim().to_string();
-            if name.is_empty() {
-                msg(app, lang, "Prof_NeedName", &[], false);
-            } else if app.flags.is_empty() {
-                msg(app, lang, "Prof_EmptyTable", &[], false);
-            } else {
-                let mut profiles = flags::load_profiles(&app.config.base());
-                profiles
-                    .profiles
-                    .insert(name.clone(), flags::flags_to_profile(&app.flags));
-                match flags::save_profiles(&app.config.base(), &profiles) {
-                    Ok(()) => {
-                        app.flag_profile_name.clear();
-                        msg(app, lang, "Prof_SavedFmt", &[&name], false);
-                    }
-                    Err(e) => msg(app, lang, "Flags_SaveErr", &[&e.to_string()], true),
-                }
-            }
-        }
-    });
-    ui.add_space(6.0);
 
     let profiles = flags::load_profiles(&app.config.base());
-    if profiles.profiles.is_empty() {
+    let names: Vec<String> = profiles.profiles.keys().cloned().collect();
+
+    ui.horizontal(|ui| {
+        let sel_valid = names.iter().any(|n| n == &app.profile_sel);
+        let sel_text = if sel_valid {
+            app.profile_sel.clone()
+        } else if !app.config.active_flag_profile.is_empty()
+            && names
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(&app.config.active_flag_profile))
+        {
+            app.config.active_flag_profile.clone()
+        } else {
+            tr(lang, "Prof_Select").to_string()
+        };
+        egui::ComboBox::from_id_salt("flag_profile_sel")
+            .selected_text(RichText::new(sel_text).size(12.0).color(theme::FG))
+            .width(240.0)
+            .show_ui(ui, |ui| {
+                for n in &names {
+                    if ui.selectable_label(app.profile_sel == *n, n).clicked() {
+                        app.profile_sel = n.clone();
+                    }
+                }
+            });
+
+        if ui
+            .add_enabled(sel_valid, primary_btn(tr(lang, "Prof_Load")))
+            .clicked()
+        {
+            let name = app.profile_sel.clone();
+            if app.flags.is_empty() {
+                apply_profile(app, lang, &name, &profiles, &dir);
+            } else {
+                app.confirm = Some(Confirm::ApplyProfile(name));
+            }
+        }
+        if ui.add(outline_btn(tr(lang, "Prof_SaveAs"))).clicked() {
+            app.flag_profile_name = if sel_valid {
+                app.profile_sel.clone()
+            } else {
+                app.config.active_flag_profile.clone()
+            };
+            app.profile_dlg = Some(ProfileDlg::Flags);
+        }
+        if ui
+            .add_enabled(sel_valid, outline_btn(tr(lang, "Prof_Delete")))
+            .clicked()
+        {
+            app.confirm = Some(Confirm::DeleteProfile(app.profile_sel.clone()));
+        }
+    });
+    if names.is_empty() {
         ui.label(
             RichText::new(tr(lang, "Flags_ProfilesEmpty")).color(theme::FG_DIMMER),
         );
-    } else {
-        ui.horizontal_wrapped(|ui| {
-            let names: Vec<String> = profiles.profiles.keys().cloned().collect();
-            for name in names {
-                let active = app.config.active_flag_profile.eq_ignore_ascii_case(&name);
-                let btn = if active {
-                    primary_btn(&name).min_size(egui::vec2(0.0, 28.0))
-                } else {
-                    outline_btn(&name).min_size(egui::vec2(0.0, 28.0))
-                };
-                if ui.add(btn).clicked() {
-                    if app.flags.is_empty() {
-                        apply_profile(app, lang, &name, &profiles, &dir);
-                    } else {
-                        app.confirm = Some(Confirm::ApplyProfile(name));
-                    }
+    }
+
+    // ===== Диалог «Сохранить как…» =====
+    let mut save_as: Option<String> = None;
+    let mut dlg_cancel = false;
+    if app.profile_dlg == Some(ProfileDlg::Flags) {
+        let exists = {
+            let n = app.flag_profile_name.trim();
+            !n.is_empty() && profiles.profiles.contains_key(n)
+        };
+        egui::Window::new("ByteStrap")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ui.ctx(), |ui| {
+                ui.set_min_width(380.0);
+                ui.label(
+                    RichText::new(tr(lang, "Prof_SaveAsDesc"))
+                        .size(13.0)
+                        .color(theme::FG),
+                );
+                ui.add_space(8.0);
+                let mut out = TextEdit::singleline(&mut app.flag_profile_name)
+                    .hint_text(tr(lang, "Flags_ProfileName"))
+                    .desired_width(340.0)
+                    .margin(egui::vec2(8.0, 5.0))
+                    .show(ui);
+                out.response.request_focus();
+                if out.response.gained_focus() {
+                    let max = egui::text::CCursor::new(out.galley.text().chars().count());
+                    out.state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            max,
+                        )));
+                    out.state.store(ui.ctx(), out.response.id);
                 }
+                ui.add_space(10.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(tr(lang, "Btn_Cancel")).clicked() {
+                        dlg_cancel = true;
+                    }
+                    let label = if exists {
+                        tr(lang, "Prof_Overwrite")
+                    } else {
+                        tr(lang, "Prof_Save")
+                    };
+                    if ui.add(primary_btn(label)).clicked() {
+                        save_as = Some(app.flag_profile_name.trim().to_string());
+                    }
+                });
+            });
+    }
+    if let Some(name) = save_as {
+        if name.is_empty() {
+            msg(app, lang, "Prof_NeedName", &[], false);
+        } else if app.flags.is_empty() {
+            msg(app, lang, "Prof_EmptyTable", &[], false);
+        } else {
+            let mut profiles = flags::load_profiles(&app.config.base());
+            profiles
+                .profiles
+                .insert(name.clone(), flags::flags_to_profile(&app.flags));
+            match flags::save_profiles(&app.config.base(), &profiles) {
+                Ok(()) => {
+                    app.profile_dlg = None;
+                    app.flag_profile_name.clear();
+                    app.profile_sel = name.clone();
+                    msg(app, lang, "Prof_SavedFmt", &[&name], false);
+                }
+                Err(e) => msg(app, lang, "Flags_SaveErr", &[&e.to_string()], true),
             }
-        });
+        }
+    }
+    if dlg_cancel {
+        app.profile_dlg = None;
+        app.flag_profile_name.clear();
     }
 
     // ===== Обработка решений =====
@@ -737,6 +800,9 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                             Ok(()) => {
                                 if app.flag_profile_name.trim().eq_ignore_ascii_case(&name) {
                                     app.flag_profile_name.clear();
+                                }
+                                if app.profile_sel.eq_ignore_ascii_case(&name) {
+                                    app.profile_sel.clear();
                                 }
                                 if app
                                     .config
