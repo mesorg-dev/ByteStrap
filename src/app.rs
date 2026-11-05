@@ -147,6 +147,10 @@ pub struct App {
     pub session_active: bool,
     /// Фоновый воркер Discord Rich Presence.
     discord: discord::Handle,
+    /// Приёмник статуса подключения Discord RP.
+    discord_rx: discord::StatusRx,
+    /// Последний известный статус подключения Discord RP.
+    pub discord_status: discord::Status,
     /// Накопленное время по местам и суммарно.
     pub playtime: Playtime,
     pub(crate) tx: Sender<AsyncEvent>,
@@ -191,6 +195,7 @@ impl App {
 
         let channel_draft = config.channel.clone();
         let playtime = Playtime::load(&config.base());
+        let (discord, discord_rx) = discord::spawn();
         let mut app = Self {
             lang,
             page: Page::Home,
@@ -229,7 +234,9 @@ impl App {
             session_place: None,
             session_display: None,
             session_active: false,
-            discord: discord::spawn(),
+            discord,
+            discord_rx,
+            discord_status: discord::Status::Idle,
             playtime,
             tx,
             rx,
@@ -602,24 +609,44 @@ impl App {
     /// Синхронизировать Discord RP с конфигом: выключили — Idle,
     /// включили — текущая сессия (если идёт).
     pub fn sync_discord(&self) {
-        if !self.config.discord_rp {
+        if !self.config.discord_rp || !self.session_active {
             let _ = self.discord.send(discord::Update::Idle);
-            return;
-        }
-        if self.session_active {
-            if let Some(display) = self.session_display.clone() {
-                let start = playtime::now_unix().saturating_sub(self.session_secs);
-                let _ = self.discord.send(discord::Update::Session {
-                    place: display,
-                    start,
-                });
-            }
-        } else {
-            let _ = self.discord.send(discord::Update::Idle);
+        } else if self.session_display.is_some() {
+            self.push_discord(self.session_secs);
         }
     }
 
+    /// Отправить в Discord активность по настройкам RP (что показывать).
+    fn push_discord(&self, secs: u64) {
+        let details = self
+            .config
+            .discord_rp_brand
+            .then(|| "ByteStrap".to_string());
+        let state = if self.config.discord_rp_place {
+            self.session_display.clone()
+        } else {
+            None
+        };
+        let start = self
+            .config
+            .discord_rp_time
+            .then(|| playtime::now_unix().saturating_sub(secs));
+        let msg = if details.is_some() || state.is_some() || start.is_some() {
+            discord::Update::Session {
+                details,
+                state,
+                start,
+            }
+        } else {
+            discord::Update::Idle
+        };
+        let _ = self.discord.send(msg);
+    }
+
     fn drain_events(&mut self) {
+        while let Ok(s) = self.discord_rx.try_recv() {
+            self.discord_status = s;
+        }
         while let Ok(ev) = self.rx.try_recv() {
             match ev {
                 AsyncEvent::Latest(Ok(v)) => {
@@ -712,13 +739,7 @@ impl App {
                         // Discord RP: state = имя места (fallback — id).
                         self.session_display = place_name.or_else(|| place.clone());
                         if self.config.discord_rp {
-                            if let Some(display) = self.session_display.clone() {
-                                let start = playtime::now_unix().saturating_sub(secs);
-                                let _ = self.discord.send(discord::Update::Session {
-                                    place: display,
-                                    start,
-                                });
-                            }
+                            self.push_discord(secs);
                         }
                         self.session_place = place;
                     }

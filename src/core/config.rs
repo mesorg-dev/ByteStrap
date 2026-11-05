@@ -21,6 +21,12 @@ pub struct Config {
     pub close_on_launch: bool,
     /// Показывать статус сессии в Discord (Rich Presence).
     pub discord_rp: bool,
+    /// Discord RP: показывать название места.
+    pub discord_rp_place: bool,
+    /// Discord RP: показывать время сессии.
+    pub discord_rp_time: bool,
+    /// Discord RP: показывать надпись «ByteStrap».
+    pub discord_rp_brand: bool,
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
@@ -40,6 +46,9 @@ impl Default for Config {
             auto_update: true,
             close_on_launch: false,
             discord_rp: true,
+            discord_rp_place: true,
+            discord_rp_time: true,
+            discord_rp_brand: true,
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,

@@ -265,6 +265,78 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 }
             });
         });
+
+        if app.config.discord_rp {
+            // Что показывать в presence.
+            ui.add_space(6.0);
+            #[derive(Clone, Copy)]
+            enum Rp {
+                Place,
+                Time,
+                Brand,
+            }
+            let rows: [(&str, Rp, bool); 3] = [
+                (
+                    "Settings_DiscordRP_Place",
+                    Rp::Place,
+                    app.config.discord_rp_place,
+                ),
+                (
+                    "Settings_DiscordRP_Time",
+                    Rp::Time,
+                    app.config.discord_rp_time,
+                ),
+                (
+                    "Settings_DiscordRP_Brand",
+                    Rp::Brand,
+                    app.config.discord_rp_brand,
+                ),
+            ];
+            ui.indent("discord_rp_opts", |ui| {
+                for (key, field, mut value) in rows {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(tr(lang, key))
+                                .size(12.0)
+                                .color(theme::FG),
+                        );
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                if ui.checkbox(&mut value, "").changed() {
+                                    match field {
+                                        Rp::Place => app.config.discord_rp_place = value,
+                                        Rp::Time => app.config.discord_rp_time = value,
+                                        Rp::Brand => app.config.discord_rp_brand = value,
+                                    }
+                                    app.config.save();
+                                    app.sync_discord();
+                                }
+                            },
+                        );
+                    });
+                }
+            });
+
+            // Статус подключения — чтобы видеть, дошёл ли presence до Discord.
+            ui.add_space(4.0);
+            let (color, text) = match &app.discord_status {
+                crate::core::discord::Status::Connected => {
+                    (theme::GOOD, tr(lang, "Settings_DiscordRP_Connected").to_string())
+                }
+                crate::core::discord::Status::Disconnected(reason) => (
+                    theme::BAD,
+                    format!("{}: {}", tr(lang, "Settings_DiscordRP_NoDiscord"), reason),
+                ),
+                crate::core::discord::Status::Idle => {
+                    (theme::FG_DIMMER, tr(lang, "Settings_DiscordRP_Wait").to_string())
+                }
+            };
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("●").size(10.0).color(color));
+                ui.label(RichText::new(text).size(11.0).color(color));
+            });
+        }
     });
 
     ui.add_space(12.0);

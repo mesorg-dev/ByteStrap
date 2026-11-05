@@ -1,9 +1,13 @@
 //! Discord Rich Presence: named pipe `\\.\pipe\discord-ipc-{0..9}` (Windows).
 //!
-//! Кадр: u32 opcode LE + u32 длина LE + JSON. Оpcodes: 0 HANDSHAKE,
+//! Кадр: u32 opcode LE + u32 длина LE + JSON. Opcodes: 0 HANDSHAKE,
 //! 1 FRAME (команды), 2 CLOSE, 3 PING, 4 PONG. Воркер ленивое подключается
 //! при старте сессии и закрывает соединение при её завершении (presence
 //! пропадает вместе с пайпом).
+//!
+//! Активность повторяется каждые [`KEEPALIVE`] секунд: Roblox сам регистрирует
+//! presence через Discord Game SDK и перетирает чужой слот — без повторов
+//! в Discord остаётся только «играю в Roblox».
 #![cfg_attr(not(windows), allow(dead_code))]
 
 #[cfg(windows)]
@@ -14,34 +18,56 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 /// ID приложения Discord (Developer Portal → New Application).
 const DISCORD_CLIENT_ID: &str = "1567290388354437191";
 
+/// Повтор SET_ACTIVITY с неизменным содержимым (защита от перетирания).
+#[cfg(windows)]
+const KEEPALIVE: Duration = Duration::from_secs(15);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Update {
-    /// Игра идёт: отображаемое имя места + unix-секунды начала сессии.
-    Session { place: String, start: u64 },
-    /// Сессия завершена — снять активность.
+    /// Игра идёт: строки активности (`None` — не показывать) + старт сессии.
+    Session {
+        details: Option<String>,
+        state: Option<String>,
+        start: Option<u64>,
+    },
+    /// Сессии нет — снять активность.
     Idle,
+}
+
+/// Состояние подключения к Discord (для карточки в Settings).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Status {
+    /// Сессии нет — не пытались подключаться.
+    Idle,
+    /// Handshake прошёл, активность отправляется.
+    Connected,
+    /// Подключение не удалось (причина).
+    Disconnected(String),
 }
 
 /// Хэндлер воркера: отправляй ему `Update`.
 pub type Handle = UnboundedSender<Update>;
+/// Приёмник состояния подключения (воркер → UI).
+pub type StatusRx = UnboundedReceiver<Status>;
 
-/// Запускает фоновый воркер Discord RP.
-pub fn spawn() -> Handle {
+/// Запускает фоновый воркер Discord RP: `(Update-хэндлер, статус-приёмник)`.
+pub fn spawn() -> (Handle, StatusRx) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let (stx, srx) = tokio::sync::mpsc::unbounded_channel();
     let _ = std::thread::Builder::new()
         .name("discord-rp".into())
-        .spawn(move || run(rx));
-    tx
+        .spawn(move || run(rx, stx));
+    (tx, srx)
 }
 
 #[cfg(not(windows))]
-fn run(rx: UnboundedReceiver<Update>) {
+fn run(rx: UnboundedReceiver<Update>, _status: UnboundedSender<Status>) {
     let mut rx = rx;
     while rx.blocking_recv().is_some() {}
 }
 
 #[cfg(windows)]
-fn run(rx: UnboundedReceiver<Update>) {
+fn run(rx: UnboundedReceiver<Update>, status: UnboundedSender<Status>) {
     let rt = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -49,7 +75,15 @@ fn run(rx: UnboundedReceiver<Update>) {
         Ok(rt) => rt,
         Err(_) => return,
     };
-    rt.block_on(worker(rx));
+    rt.block_on(worker(rx, status));
+}
+
+/// Отправить статус, если он изменился.
+fn push_status(tx: &UnboundedSender<Status>, last: &mut Status, s: Status) {
+    if *last != s {
+        *last = s.clone();
+        let _ = tx.send(s);
+    }
 }
 
 #[cfg(windows)]
@@ -62,13 +96,14 @@ const OP_PING: u32 = 3;
 const OP_PONG: u32 = 4;
 
 #[cfg(windows)]
-async fn worker(mut rx: UnboundedReceiver<Update>) {
+async fn worker(mut rx: UnboundedReceiver<Update>, status: UnboundedSender<Status>) {
     use tokio::sync::mpsc::error::TryRecvError;
 
     let nonce = std::sync::atomic::AtomicU64::new(1);
     let mut conn: Option<Conn> = None;
     let mut desired: Option<Update> = None;
-    let mut last_sent: Option<(String, u64)> = None;
+    let mut last_sent: Option<(Update, Instant)> = None;
+    let mut last_status = Status::Idle;
     let mut next_retry = Instant::now();
 
     loop {
@@ -86,12 +121,24 @@ async fn worker(mut rx: UnboundedReceiver<Update>) {
                         Ok(Ok(Some((OP_CLOSE, _)))) => {
                             conn = None;
                             last_sent = None;
+                            push_status(&status, &mut last_status,
+                                Status::Disconnected("connection closed".into()));
+                        }
+                        Ok(Ok(Some((OP_FRAME, payload)))) => {
+                            if payload.contains(r#""evt":"ERROR""#) {
+                                conn = None;
+                                last_sent = None;
+                                push_status(&status, &mut last_status,
+                                    Status::Disconnected(error_reason(&payload)));
+                            }
                         }
                         Ok(Ok(Some(_))) => {} // прочие кадры — прочитаны, отброшены
                         Ok(Ok(None)) => {} // неполный кадр — ждём продолжения
                         Ok(Err(_)) => {
                             conn = None;
                             last_sent = None;
+                            push_status(&status, &mut last_status,
+                                Status::Disconnected("connection lost".into()));
                         }
                     }
                 }
@@ -115,51 +162,82 @@ async fn worker(mut rx: UnboundedReceiver<Update>) {
             desired = Some(u);
         }
 
-        let want: Option<(String, u64)> = match &desired {
-            Some(Update::Session { place, start }) => Some((place.clone(), *start)),
-            _ => None,
-        };
+        let wants_session = matches!(&desired, Some(Update::Session { .. }));
 
         // Ленивое подключение: только пока есть сессия, с паузой при ошибках.
-        if conn.is_none() && want.is_some() && Instant::now() >= next_retry {
+        if conn.is_none() && wants_session && Instant::now() >= next_retry {
             match Conn::connect().await {
                 Ok(c) => {
                     conn = Some(c);
                     last_sent = None; // после (ре)коннекта отправить заново
+                    push_status(&status, &mut last_status, Status::Connected);
                 }
-                Err(_) => next_retry = Instant::now() + Duration::from_secs(5),
+                Err(e) => {
+                    next_retry = Instant::now() + Duration::from_secs(5);
+                    push_status(&status, &mut last_status, Status::Disconnected(connect_reason(&e)));
+                }
             }
         }
 
         // Отправка активности / снятие / закрытие.
         if let Some(c) = &mut conn {
-            match (&want, &last_sent) {
-                (Some((place, start)), last) => {
-                    let needs = match last {
+            match &desired {
+                // Keepalive: тот же кадр повторяем, чтобы Roblox SDK не
+                // занимал слот активности после нас.
+                Some(u @ Update::Session { .. }) => {
+                    let needs = match &last_sent {
                         None => true,
-                        Some((lp, ls)) => lp != place || start.abs_diff(*ls) > 5,
+                        Some((prev, at)) => prev != u || at.elapsed() >= KEEPALIVE,
                     };
                     if needs {
-                        let payload = set_activity_json(&nonce, place, *start);
+                        let payload = set_activity_json(&nonce, u);
                         if c.send(OP_FRAME, &payload).await.is_ok() {
-                            last_sent = Some((place.clone(), *start));
+                            last_sent = Some((u.clone(), Instant::now()));
                         } else {
                             conn = None;
+                            last_sent = None;
+                            push_status(&status, &mut last_status,
+                                Status::Disconnected("connection lost".into()));
                         }
                     }
                 }
-                // Сессии нет: снять активность один раз и закрыть пайп.
-                (None, Some(_)) => {
-                    let payload = clear_activity_json(&nonce);
-                    let _ = c.send(OP_FRAME, &payload).await;
+                // Сессии нет: снять активность (если что-то отправляли) и закрыть пайп.
+                _ => {
+                    if last_sent.is_some() {
+                        let payload = clear_activity_json(&nonce);
+                        let _ = c.send(OP_FRAME, &payload).await;
+                    }
                     conn = None;
                     last_sent = None;
+                    push_status(&status, &mut last_status, Status::Idle);
                 }
-                (None, None) => conn = None,
             }
+        } else if !wants_session {
+            // Пайп уже закрыт (или не открывался) — сессии нет, статус спокоен.
+            push_status(&status, &mut last_status, Status::Idle);
         }
     }
     // Канал закрыт (выход из приложения) — соединение закроется само.
+}
+
+/// Причина из ошибки подключения (короткая строка для UI).
+#[cfg(windows)]
+fn connect_reason(e: &std::io::Error) -> String {
+    use std::io::ErrorKind;
+    match e.kind() {
+        ErrorKind::NotFound => "discord not running".into(),
+        ErrorKind::TimedOut => "no response from discord".into(),
+        _ => e.to_string(),
+    }
+}
+
+/// `data.message` из кадра `{"evt":"ERROR",...}` (или запасной текст).
+fn error_reason(payload: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|v| v.pointer("/data/message").and_then(|m| m.as_str()).map(str::to_owned))
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "discord error".into())
 }
 
 // ===== Протокол =====
@@ -191,21 +269,35 @@ fn take_frame(buf: &mut Vec<u8>) -> Option<(u32, String)> {
     Some((opcode, payload))
 }
 
-fn set_activity_json(nonce: &std::sync::atomic::AtomicU64, place: &str, start: u64) -> String {
+fn set_activity_json(nonce: &std::sync::atomic::AtomicU64, u: &Update) -> String {
+    let Update::Session {
+        details,
+        state,
+        start,
+    } = u
+    else {
+        return clear_activity_json(nonce);
+    };
+    let mut act = String::new();
+    if let Some(d) = details {
+        let d: String = d.chars().take(128).collect();
+        act.push_str(&format!(r#""details":"{}","#, json_escape(&d)));
+    }
+    if let Some(s) = state {
+        let s: String = s.chars().take(128).collect();
+        act.push_str(&format!(r#""state":"{}","#, json_escape(&s)));
+    }
+    if let Some(t) = start {
+        act.push_str(&format!(r#""timestamps":{{"start":{t}}},"#));
+    }
+    act.push_str(r#""instance":false"#);
     use std::sync::atomic::Ordering;
     let n = nonce.fetch_add(1, Ordering::Relaxed);
-    let state: String = place.chars().take(128).collect();
-    let state = json_escape(&state);
     format!(
-        concat!(
-            r#"{{"cmd":"SET_ACTIVITY","nonce":"{n}","#,
-            r#""args":{{"pid":{pid},"activity":{{"details":"ByteStrap","#,
-            r#""state":"{state}","timestamps":{{"start":{start}}}}}}}}}"#
-        ),
+        r#"{{"cmd":"SET_ACTIVITY","nonce":"{n}","args":{{"pid":{pid},"activity":{{{act}}}}}}}"#,
         n = n,
         pid = std::process::id(),
-        state = state,
-        start = start,
+        act = act,
     )
 }
 
@@ -290,7 +382,7 @@ impl Conn {
                     if payload.contains(r#""evt":"ERROR""#) {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::ConnectionRefused,
-                            "discord handshake error",
+                            error_reason(&payload),
                         ));
                     }
                 }
@@ -362,9 +454,17 @@ mod tests {
     fn activity_json_is_valid() {
         use std::sync::atomic::AtomicU64;
         let nonce = AtomicU64::new(1);
-        let s = set_activity_json(&nonce, r#"Место "x" №1"#, 1_700_000_000);
+        let s = set_activity_json(
+            &nonce,
+            &Update::Session {
+                details: Some("ByteStrap".into()),
+                state: Some(r#"Место "x" №1"#.into()),
+                start: Some(1_700_000_000),
+            },
+        );
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["cmd"], "SET_ACTIVITY");
+        assert_eq!(v["args"]["activity"]["details"], "ByteStrap");
         assert_eq!(v["args"]["activity"]["state"], "Место \"x\" №1");
         assert_eq!(v["args"]["activity"]["timestamps"]["start"], 1_700_000_000u64);
 
@@ -374,8 +474,35 @@ mod tests {
     }
 
     #[test]
+    fn activity_omits_disabled_fields() {
+        use std::sync::atomic::AtomicU64;
+        let nonce = AtomicU64::new(1);
+        let s = set_activity_json(
+            &nonce,
+            &Update::Session {
+                details: None,
+                state: Some("Только место".into()),
+                start: None,
+            },
+        );
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        let act = &v["args"]["activity"];
+        assert!(act.get("details").is_none());
+        assert!(act.get("timestamps").is_none());
+        assert_eq!(act["state"], "Только место");
+        assert_eq!(act["instance"], false);
+    }
+
+    #[test]
     fn escape_control_chars() {
         assert_eq!(json_escape("a\nb\"c\\d"), "a\\nb\\\"c\\\\d");
         assert_eq!(json_escape("\u{1}"), "\\u0001");
+    }
+
+    #[test]
+    fn error_reason_from_discord_payload() {
+        let p = r#"{"cmd":"DISPATCH","evt":"ERROR","data":{"code":4000,"message":"Invalid command"}}"#;
+        assert_eq!(error_reason(p), "Invalid command");
+        assert_eq!(error_reason("garbage"), "discord error");
     }
 }
