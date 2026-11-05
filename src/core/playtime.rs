@@ -161,8 +161,10 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
 fn player_running() -> bool {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         std::process::Command::new("tasklist")
             .args(["/FI", "IMAGENAME eq RobloxPlayerBeta.exe", "/NH"])
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW — без всплывающих консолей
             .output()
             .map(|o| {
                 String::from_utf8_lossy(&o.stdout)

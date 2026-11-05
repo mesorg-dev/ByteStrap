@@ -141,6 +141,8 @@ pub struct App {
     pub session_secs: u64,
     /// Текущее место сессии (id из лога).
     pub session_place: Option<String>,
+    /// Что показывать в Discord RP (имя места, fallback — id).
+    session_display: Option<String>,
     /// Идёт ли сейчас отсчёт сессии.
     pub session_active: bool,
     /// Фоновый воркер Discord Rich Presence.
@@ -225,6 +227,7 @@ impl App {
             cleanup_msg: None,
             session_secs: 0,
             session_place: None,
+            session_display: None,
             session_active: false,
             discord: discord::spawn(),
             playtime,
@@ -577,6 +580,7 @@ impl App {
         self.session_active = true;
         self.session_secs = 0;
         self.session_place = None;
+        self.session_display = None;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let (stx, srx) = std::sync::mpsc::channel::<SessionEvent>();
@@ -593,6 +597,26 @@ impl App {
             playtime::watch_session(stx);
             let _ = relay.join();
         });
+    }
+
+    /// Синхронизировать Discord RP с конфигом: выключили — Idle,
+    /// включили — текущая сессия (если идёт).
+    pub fn sync_discord(&self) {
+        if !self.config.discord_rp {
+            let _ = self.discord.send(discord::Update::Idle);
+            return;
+        }
+        if self.session_active {
+            if let Some(display) = self.session_display.clone() {
+                let start = playtime::now_unix().saturating_sub(self.session_secs);
+                let _ = self.discord.send(discord::Update::Session {
+                    place: display,
+                    start,
+                });
+            }
+        } else {
+            let _ = self.discord.send(discord::Update::Idle);
+        }
     }
 
     fn drain_events(&mut self) {
@@ -686,12 +710,15 @@ impl App {
                     } => {
                         self.session_secs = secs;
                         // Discord RP: state = имя места (fallback — id).
-                        if let Some(display) = place_name.as_ref().or(place.as_ref()) {
-                            let start = playtime::now_unix().saturating_sub(secs);
-                            let _ = self.discord.send(discord::Update::Session {
-                                place: display.clone(),
-                                start,
-                            });
+                        self.session_display = place_name.or_else(|| place.clone());
+                        if self.config.discord_rp {
+                            if let Some(display) = self.session_display.clone() {
+                                let start = playtime::now_unix().saturating_sub(secs);
+                                let _ = self.discord.send(discord::Update::Session {
+                                    place: display,
+                                    start,
+                                });
+                            }
                         }
                         self.session_place = place;
                     }
@@ -699,6 +726,7 @@ impl App {
                         self.session_active = false;
                         self.session_secs = 0;
                         self.session_place = None;
+                        self.session_display = None;
                         let _ = self.discord.send(discord::Update::Idle);
                         self.playtime.merge(total, &places);
                         self.playtime.save(&self.config.base());

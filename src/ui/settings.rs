@@ -241,6 +241,30 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 }
             });
         });
+
+        ui.add_space(8.0);
+        let mut rp = app.config.discord_rp;
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(tr(lang, "Settings_DiscordRP"))
+                        .strong()
+                        .color(theme::FG),
+                );
+                ui.label(
+                    RichText::new(tr(lang, "Settings_DiscordRPDesc"))
+                        .size(11.0)
+                        .color(theme::FG_DIMMER),
+                );
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.checkbox(&mut rp, "").changed() {
+                    app.config.discord_rp = rp;
+                    app.config.save();
+                    app.sync_discord();
+                }
+            });
+        });
     });
 
     ui.add_space(12.0);
