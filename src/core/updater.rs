@@ -72,6 +72,10 @@ pub async fn get_latest() -> Result<Option<AppRelease>> {
             if au.is_empty() || !an.to_lowercase().ends_with(".exe") {
                 continue;
             }
+            // Ассеты шелла (ByteStrap-Shell-*.exe) — не обновление лаунчера.
+            if an.to_lowercase().contains("shell") {
+                continue;
+            }
             if fallback.is_empty() {
                 fallback = au.clone();
             }
