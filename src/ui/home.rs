@@ -163,6 +163,68 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 }
             }
 
+            // Запуск по ссылке — компактная строка (вместо отдельной карточки).
+            ui.add_space(10.0);
+            let can_run = !app.install.active && !app.link_input.trim().is_empty();
+            let mut submit = false;
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let go = Button::new(
+                    RichText::new(tr(lang, "Home_LinkGo"))
+                        .color(crate::theme::BG)
+                        .strong(),
+                )
+                .fill(crate::theme::FG)
+                .corner_radius(crate::theme::R_SOFT)
+                .min_size(egui::vec2(100.0, 32.0));
+                if ui.add_enabled(can_run, go).clicked() {
+                    submit = true;
+                }
+
+                #[cfg(windows)]
+                {
+                    let paste = Button::new(RichText::new(tr(lang, "Home_LinkPaste")).size(12.0))
+                        .stroke(Stroke::new(1.0, crate::theme::LINE))
+                        .corner_radius(crate::theme::R_SOFT)
+                        .min_size(egui::vec2(90.0, 32.0));
+                    if ui.add(paste).clicked() {
+                        if let Some(t) = clipboard_text() {
+                            app.link_input = t;
+                            app.link_msg = None;
+                        }
+                    }
+                    ui.add_space(8.0);
+                }
+
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut app.link_input)
+                        .hint_text(tr(lang, "Home_LinkHint"))
+                        .desired_width(ui.available_width().max(140.0))
+                        .margin(egui::vec2(8.0, 4.0)),
+                );
+                if resp.changed() {
+                    app.link_msg = None;
+                }
+                if resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    submit = true;
+                }
+            });
+            if submit {
+                let input = app.link_input.clone();
+                app.play_link(&input);
+            }
+            if let Some((text, err)) = &app.link_msg {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(text)
+                        .size(11.0)
+                        .color(if *err {
+                            crate::theme::BAD
+                        } else {
+                            crate::theme::GOOD
+                        }),
+                );
+            }
+
             ui.add_space(14.0);
             ui.separator();
             ui.add_space(10.0);
@@ -178,85 +240,6 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                     .size(12.0)
                     .color(crate::theme::FG_DIMMER),
             );
-        });
-
-    ui.add_space(12.0);
-
-    // Запуск по ссылке: страница плейса / приватка / roblox://.
-    Frame::NONE
-        .fill(crate::theme::PANEL)
-        .stroke(Stroke::new(1.0, crate::theme::LINE))
-        .corner_radius(crate::theme::R_CARD)
-        .inner_margin(egui::Margin::same(20))
-        .show(ui, |ui| {
-            ui.label(
-                RichText::new(tr(lang, "Home_LinkTitle"))
-                    .size(11.0)
-                    .family(egui::FontFamily::Monospace)
-                    .color(crate::theme::FG_DIMMER),
-            );
-            ui.add_space(8.0);
-
-            let can_run = !app.install.active && !app.link_input.trim().is_empty();
-            let mut submit = false;
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let go = Button::new(
-                    RichText::new(tr(lang, "Home_LinkGo"))
-                        .color(crate::theme::BG)
-                        .strong(),
-                )
-                .fill(crate::theme::FG)
-                .corner_radius(crate::theme::R_SOFT)
-                .min_size(egui::vec2(110.0, 36.0));
-                if ui.add_enabled(can_run, go).clicked() {
-                    submit = true;
-                }
-
-                #[cfg(windows)]
-                {
-                    let paste = Button::new(RichText::new(tr(lang, "Home_LinkPaste")).size(12.0))
-                        .stroke(Stroke::new(1.0, crate::theme::LINE))
-                        .corner_radius(crate::theme::R_SOFT)
-                        .min_size(egui::vec2(96.0, 36.0));
-                    if ui.add(paste).clicked() {
-                        if let Some(t) = clipboard_text() {
-                            app.link_input = t;
-                            app.link_msg = None;
-                        }
-                    }
-                    ui.add_space(8.0);
-                }
-
-                let resp = ui.add(
-                    egui::TextEdit::singleline(&mut app.link_input)
-                        .hint_text(tr(lang, "Home_LinkHint"))
-                        .desired_width(ui.available_width().max(160.0))
-                        .margin(egui::vec2(8.0, 5.0)),
-                );
-                if resp.changed() {
-                    app.link_msg = None;
-                }
-                if resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    submit = true;
-                }
-            });
-
-            if submit {
-                let input = app.link_input.clone();
-                app.play_link(&input);
-            }
-            if let Some((text, err)) = &app.link_msg {
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new(text)
-                        .size(11.0)
-                        .color(if *err {
-                            crate::theme::BAD
-                        } else {
-                            crate::theme::GOOD
-                        }),
-                );
-            }
         });
 
     ui.add_space(12.0);
