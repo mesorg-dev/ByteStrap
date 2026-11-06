@@ -1,11 +1,6 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-mod app;
-mod core;
-mod i18n;
-mod theme;
-mod ui;
-
+use bytestrap::app;
 use eframe::egui;
 
 fn main() -> eframe::Result {
