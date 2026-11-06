@@ -9,6 +9,9 @@ mod ui;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // Клик по roblox:// в системе (друзья, приватки, плейсы): открываем окно
+    // и сразу запускаем игру с этой ссылкой (счётчик сессии и RP работают).
+    let deep_link = std::env::args().skip(1).find(|a| a.starts_with("roblox://"));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1120.0, 700.0])
@@ -20,6 +23,12 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "ByteStrap",
         options,
-        Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
+        Box::new(move |cc| {
+            let mut app = app::App::new(cc);
+            if let Some(url) = deep_link {
+                app.play_arg(Some(&url));
+            }
+            Ok(Box::new(app))
+        }),
     )
 }

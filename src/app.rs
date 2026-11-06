@@ -10,7 +10,7 @@ use eframe::egui::{
 
 use crate::core::config::Config;
 use crate::core::playtime::{self, Playtime, SessionEvent};
-use crate::core::{deploy, discord, launcher, mods, updater, versions};
+use crate::core::{deep_link, deploy, discord, launcher, mods, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::theme;
 use crate::ui;
@@ -151,6 +151,10 @@ pub struct App {
     discord_rx: discord::StatusRx,
     /// Последний известный статус подключения Discord RP.
     pub discord_status: discord::Status,
+    /// Deep link, ожидающий установки (запустится после Finished).
+    pending_launch: Option<String>,
+    /// Регистрация roblox:// в реестре для UI (None — не Windows).
+    pub deeplink_ok: Option<bool>,
     /// Накопленное время по местам и суммарно.
     pub playtime: Playtime,
     pub(crate) tx: Sender<AsyncEvent>,
@@ -237,11 +241,18 @@ impl App {
             discord,
             discord_rx,
             discord_status: discord::Status::Idle,
+            pending_launch: None,
+            deeplink_ok: None,
             playtime,
             tx,
             rx,
             cancel: None,
         };
+        // roblox:// в реестре: самовосстановление + статус для Settings.
+        if app.config.deeplink {
+            deep_link::ensure();
+        }
+        app.deeplink_ok = deep_link::status();
         if app.config.auto_update {
             app.check_updates();
         }
@@ -556,16 +567,23 @@ impl App {
     }
 
     pub fn play(&mut self) {
+        self.play_arg(None);
+    }
+
+    /// Запуск игры. `arg` — roblox:// deep link (друзья, приватки, плейсы).
+    pub fn play_arg(&mut self, arg: Option<&str>) {
         let guid = self
             .installed
             .clone()
             .or_else(|| versions::find_installed(&self.config.base()));
         let Some(guid) = guid else {
+            // Версии нет — ставим и запустим с ссылкой после Finished.
+            self.pending_launch = arg.map(str::to_owned);
             self.start_install(false);
             return;
         };
         match launcher::exe_path(&self.config.base(), &guid) {
-            Some(exe) => match launcher::launch(&exe, None) {
+            Some(exe) => match launcher::launch(&exe, arg) {
                 Ok(()) => {
                     self.install.error = None;
                     self.start_session_watch();
@@ -575,7 +593,10 @@ impl App {
                 }
                 Err(e) => self.install.error = Some(e.to_string()),
             },
-            None => self.start_install(false),
+            None => {
+                self.pending_launch = arg.map(str::to_owned);
+                self.start_install(false);
+            }
         }
     }
 
@@ -789,17 +810,23 @@ impl App {
                                 self.start_mods_apply();
                             }
                         }
+                        // Deep link ждал установку — запускаем игру с ним.
+                        if let Some(url) = self.pending_launch.take() {
+                            self.play_arg(Some(&url));
+                        }
                     }
                     deploy::Event::Failed(e) => {
                         if self.install.active {
                             self.install.active = false;
-                            self.install.error = Some(e);
+                            self.install.error = Some(e.to_string());
                         }
                         self.cancel = None;
+                        self.pending_launch = None;
                     }
                     deploy::Event::Cancelled => {
                         self.install = InstallUi::default();
                         self.cancel = None;
+                        self.pending_launch = None;
                     }
                 },
             }

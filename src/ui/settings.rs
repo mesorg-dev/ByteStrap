@@ -337,6 +337,50 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 ui.label(RichText::new(text).size(11.0).color(color));
             });
         }
+
+        // ===== Ссылки Roblox (друзья / приватки / плейсы) =====
+        ui.add_space(8.0);
+        let mut dl = app.config.deeplink;
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(tr(lang, "Settings_Deeplink"))
+                        .strong()
+                        .color(theme::FG),
+                );
+                ui.label(
+                    RichText::new(tr(lang, "Settings_DeeplinkDesc"))
+                        .size(11.0)
+                        .color(theme::FG_DIMMER),
+                );
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.checkbox(&mut dl, "").changed() {
+                    app.config.deeplink = dl;
+                    app.config.save();
+                    if dl {
+                        let _ = crate::core::deep_link::register();
+                    } else {
+                        let _ = crate::core::deep_link::unregister();
+                    }
+                    app.deeplink_ok = crate::core::deep_link::status();
+                }
+            });
+        });
+        if app.config.deeplink {
+            if let Some(ok) = app.deeplink_ok {
+                ui.add_space(4.0);
+                let (color, text) = if ok {
+                    (theme::GOOD, tr(lang, "Settings_Deeplink_On"))
+                } else {
+                    (theme::BAD, tr(lang, "Settings_Deeplink_Fail"))
+                };
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("●").size(10.0).color(color));
+                    ui.label(RichText::new(text).size(11.0).color(color));
+                });
+            }
+        }
     });
 
     ui.add_space(12.0);

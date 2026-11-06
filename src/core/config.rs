@@ -27,6 +27,8 @@ pub struct Config {
     pub discord_rp_time: bool,
     /// Discord RP: показывать надпись «ByteStrap».
     pub discord_rp_brand: bool,
+    /// Открывать ссылки roblox:// (друзья, приватки, плейсы) через ByteStrap.
+    pub deeplink: bool,
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
@@ -49,6 +51,7 @@ impl Default for Config {
             discord_rp_place: true,
             discord_rp_time: true,
             discord_rp_brand: true,
+            deeplink: true,
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,
