@@ -129,6 +129,10 @@ pub struct App {
     pub mods_msg: Option<(String, bool)>,
     /// Файлы включённых модов (относительные пути) для таблицы Mods.
     pub mods_files: Vec<crate::core::mods::ModFile>,
+    /// Поле «Запуск по ссылке» на Home.
+    pub link_input: String,
+    /// (текст, ошибка) — фидбек строки «Запуск по ссылке».
+    pub link_msg: Option<(String, bool)>,
     /// Моды на диске (папки + состояние) для страницы Mods.
     pub mods_list: Vec<crate::core::mods::ModInfo>,
     /// Первый scan модов уже выполнен.
@@ -230,6 +234,8 @@ impl App {
             channel_checking: false,
             mods_msg: None,
             mods_files: Vec::new(),
+            link_input: String::new(),
+            link_msg: None,
             mods_list: Vec::new(),
             mods_scanned: false,
             cleanup_busy: false,
@@ -568,6 +574,19 @@ impl App {
 
     pub fn play(&mut self) {
         self.play_arg(None);
+    }
+
+    /// Запуск по ссылке из поля на Home (https://roblox.com/games/… или roblox://…).
+    pub fn play_link(&mut self, input: &str) {
+        match crate::core::roblox_link::parse_arg(input) {
+            Some(url) => {
+                self.link_msg = Some((tr(self.lang, "Home_LinkOk").to_string(), false));
+                self.play_arg(Some(&url));
+            }
+            None => {
+                self.link_msg = Some((tr(self.lang, "Home_LinkBad").to_string(), true));
+            }
+        }
     }
 
     /// Запуск игры. `arg` — roblox:// deep link (друзья, приватки, плейсы).

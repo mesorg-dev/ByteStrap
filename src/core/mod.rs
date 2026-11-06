@@ -8,6 +8,7 @@ pub mod launcher;
 pub mod mods;
 pub mod playtime;
 pub mod presets;
+pub mod roblox_link;
 pub mod share;
 pub mod updater;
 pub mod versions;
