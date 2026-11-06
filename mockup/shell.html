@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280, initial-scale=1">
+<title>ByteStrap Shell — UI mockup</title>
+<style>
+  :root {
+    --bg: #0A0A0B;
+    --sidebar: #0D0D0F;
+    --panel: #121214;
+    --panel-2: #17171A;
+    --line: #2A2A2E;
+    --line-soft: #1C1C1F;
+    --fg: #F2F2EF;
+    --fg-dim: #98989E;
+    --fg-dimmer: #5C5C62;
+    --accent: #78DC82;
+    --accent-rgb: 120, 220, 130;
+    --bad: #FF8087;
+    --warn: #FFC857;
+    --card-op: 1;
+    --bg-blur: 0px;
+    --bg-dim: .55;
+    --r: 8px;
+    --r-sm: 6px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== Фон (настраивается в Settings → Внешний вид) ===== */
+  .bg-layer {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(900px 500px at 85% -10%, rgba(var(--accent-rgb), .10), transparent 60%),
+      radial-gradient(700px 500px at -10% 110%, rgba(90, 110, 255, .07), transparent 60%),
+      linear-gradient(160deg, #0C0C10 0%, #0A0A0B 55%, #0D0E12 100%);
+    filter: blur(var(--bg-blur));
+    transform: scale(1.03);
+    z-index: 0;
+  }
+  .bg-dim {
+    position: fixed; inset: 0;
+    background: rgba(6, 6, 8, var(--bg-dim));
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .window {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ===== Header ===== */
+  header {
+    height: 54px;
+    flex: 0 0 54px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 18px;
+    background: rgba(13, 13, 15, .82);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 190px;
+  }
+  .logo .mark {
+    width: 24px; height: 24px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), rgba(var(--accent-rgb), .55));
+    color: #0A0A0B;
+    font-weight: 800;
+    font-size: 13px;
+    display: grid;
+    place-items: center;
+  }
+  .logo .name { font-weight: 700; font-size: 14px; letter-spacing: .2px; }
+  .logo .name span { color: var(--fg-dimmer); font-weight: 500; margin-left: 5px; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; }
+
+  .search { position: relative; width: 380px; }
+  .search input {
+    width: 100%;
+    height: 34px;
+    border-radius: var(--r);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    padding: 0 12px 0 36px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search input:focus {
+    border-color: rgba(var(--accent-rgb), .55);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .12);
+  }
+  .search input::placeholder { color: var(--fg-dimmer); }
+  .search svg {
+    position: absolute; left: 11px; top: 9px;
+    width: 16px; height: 16px;
+    stroke: var(--fg-dimmer); fill: none; stroke-width: 2;
+  }
+
+  .spacer { flex: 1; }
+
+  .net {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    padding: 6px 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+  }
+  .net .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 7px rgba(var(--accent-rgb), .8);
+    animation: pulse 2.2s infinite;
+  }
+  .net.offline .dot { background: var(--bad); box-shadow: none; animation: none; }
+  @keyframes pulse { 50% { opacity: .4; } }
+
+  .user {
+    display: flex; align-items: center; gap: 9px;
+    padding: 4px 14px 4px 4px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .user:hover { border-color: var(--fg-dimmer); }
+  .avatar {
+    width: 27px; height: 27px; border-radius: 50%;
+    background: linear-gradient(135deg, #3D5A80, #293241);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 12px; color: #E0FBFC;
+  }
+  .user .nick { font-size: 13px; font-weight: 500; }
+
+  .icon-btn {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--panel);
+    color: var(--fg-dim);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .icon-btn:hover { color: var(--fg); border-color: var(--fg-dimmer); }
+  .icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  /* ===== Content ===== */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 26px 32px 48px;
+  }
+  main::-webkit-scrollbar { width: 8px; }
+  main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+  .section { margin-bottom: 38px; }
+  .section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--fg);
+  }
+  .section-title small {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: .3px;
+    text-transform: none;
+    color: var(--fg-dimmer);
+    margin-top: 4px;
+  }
+  .see-all {
+    font-size: 12px;
+    color: var(--fg-dim);
+    cursor: pointer;
+    padding: 5px 12px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    background: transparent;
+    transition: all .15s;
+    letter-spacing: .3px;
+  }
+  .see-all:hover { color: var(--fg); background: var(--panel); }
+
+  .row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+    gap: 16px;
+  }
+
+  /* ===== Card ===== */
+  .card {
+    background: rgba(18, 18, 20, var(--card-op));
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform .14s ease, border-color .15s, box-shadow .2s;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(var(--accent-rgb), .45);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+  }
+  .media {
+    height: 118px;
+    position: relative;
+    display: grid;
+    place-items: center;
+    border-bottom: 1px solid var(--line-soft);
+    overflow: hidden;
+  }
+  .media .cover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+    transition: transform .3s ease;
+  }
+  .card:hover .media .cover { transform: scale(1.06); }
+  .media .mono {
+    position: relative;
+    z-index: 0;
+    font-size: 44px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    color: rgba(255, 255, 255, .13);
+    text-transform: uppercase;
+  }
+  .media .players-tag { z-index: 2; }
+  .media .players-tag {
+    position: absolute;
+    top: 9px; right: 9px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    color: var(--fg);
+    background: rgba(8, 8, 10, .78);
+    border: 1px solid rgba(255, 255, 255, .08);
+    padding: 4px 9px;
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .players-tag .live {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .card-body { padding: 13px 14px 14px; }
+  .card-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: .1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-meta {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .players { font-size: 11.5px; color: var(--fg-dim); letter-spacing: .2px; }
+  .play-btn {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), .10);
+    border: 1px solid rgba(var(--accent-rgb), .35);
+    padding: 6px 15px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .play-btn:hover { background: var(--accent); color: #0A0A0B; }
+
+  .empty {
+    padding: 44px;
+    text-align: center;
+    color: var(--fg-dimmer);
+    font-size: 13px;
+    letter-spacing: .3px;
+    display: none;
+    border: 1px dashed var(--line);
+    border-radius: var(--r);
+  }
+
+  /* ===== Settings overlay ===== */
+  .overlay {
+    position: fixed; inset: 0;
+    z-index: 60;
+    background: rgba(5, 5, 6, .72);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+  .overlay.open { display: flex; }
+  .settings {
+    width: min(980px, 96vw);
+    height: min(680px, 90vh);
+    background: var(--sidebar);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: flex;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+    animation: pop .18s ease;
+  }
+  @keyframes pop { from { transform: scale(.97); opacity: 0; } }
+
+  .set-nav {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    padding: 18px 12px;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .set-nav .nav-cap {
+    font-size: 10px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--fg-dimmer);
+    padding: 8px 12px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    color: var(--fg-dim);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .12s;
+  }
+  .nav-item:hover { color: var(--fg); background: var(--panel-2); }
+  .nav-item.active {
+    color: var(--fg);
+    background: rgba(var(--accent-rgb), .10);
+    border-color: rgba(var(--accent-rgb), .30);
+  }
+  .nav-item svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  .set-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .set-head {
+    height: 54px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .set-head h2 { font-size: 14px; font-weight: 700; letter-spacing: .4px; }
+  .set-body { flex: 1; overflow-y: auto; padding: 22px; }
+  .set-body::-webkit-scrollbar { width: 8px; }
+  .set-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .group { margin-bottom: 28px; }
+  .group > h4 {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--fg-dimmer);
+    margin-bottom: 10px;
+  }
+  .group > h4:not(:first-child) { margin-top: 22px; }
+
+  .row-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 13px 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    margin-bottom: 8px;
+  }
+  .row-item .label { font-size: 13.5px; font-weight: 500; }
+  .row-item .sub { font-size: 11.5px; color: var(--fg-dimmer); margin-top: 3px; line-height: 1.45; }
+  .row-item .value { font-size: 13px; color: var(--fg-dim); font-family: ui-monospace, "Cascadia Code", monospace; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(var(--accent-rgb), .4);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), .10);
+    margin-left: 8px;
+  }
+  .badge.muted { border-color: var(--line); color: var(--fg-dim); background: var(--panel-2); }
+
+  .btn {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    color: var(--fg);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 6px 14px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: all .13s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--fg-dimmer); background: #1E1E22; }
+  .btn.accent { color: var(--accent); border-color: rgba(var(--accent-rgb), .4); background: rgba(var(--accent-rgb), .08); }
+  .btn.accent:hover { background: var(--accent); color: #0A0A0B; }
+  .btn.danger { color: var(--bad); border-color: rgba(255, 128, 135, .35); background: transparent; }
+  .btn.danger:hover { background: rgba(255, 128, 135, .12); }
+
+  .toggle {
+    width: 38px; height: 21px;
+    border-radius: 999px;
+    background: var(--line);
+    position: relative;
+    cursor: pointer;
+    transition: background .16s;
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2.5px; left: 2.5px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--fg-dim);
+    transition: transform .16s, background .16s;
+  }
+  .toggle.on { background: rgba(var(--accent-rgb), .35); }
+  .toggle.on::after { transform: translateX(17px); background: var(--accent); }
+
+  select.set-select, input.set-input {
+    height: 32px;
+    border-radius: var(--r-sm);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    padding: 0 10px;
+    font-size: 12.5px;
+    outline: none;
+    font-family: inherit;
+    min-width: 180px;
+  }
+  input.set-input { min-width: 240px; user-select: text; }
+  select.set-select:focus, input.set-input:focus { border-color: rgba(var(--accent-rgb), .5); }
+
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    background: var(--panel-2);
+  }
+  .seg button {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--fg-dim);
+    background: transparent;
+    border: none;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: all .12s;
+    border-right: 1px solid var(--line);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button.active {
+    background: rgba(var(--accent-rgb), .14);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .seg button:hover:not(.active) { color: var(--fg); }
+
+  .list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    margin-bottom: 6px;
+  }
+  .list-item .who { display: flex; flex-direction: column; gap: 2px; }
+  .list-item .dn { font-size: 13px; font-weight: 500; }
+  .list-item .un { font-size: 11.5px; color: var(--fg-dimmer); font-family: ui-monospace, monospace; }
+  .list-empty {
+    padding: 14px 16px;
+    border: 1px dashed var(--line);
+    border-radius: var(--r);
+    color: var(--fg-dimmer);
+    font-size: 12.5px;
+    margin-bottom: 6px;
+  }
+
+  .slider-row { margin-bottom: 16px; }
+  .slider-row label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12.5px;
+    color: var(--fg-dim);
+    margin-bottom: 8px;
+  }
+  .slider-row label b { color: var(--fg); font-weight: 600; font-family: ui-monospace, monospace; font-size: 12px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .swatches { display: flex; gap: 10px; }
+  .sw {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform .12s, border-color .12s;
+    position: relative;
+  }
+  .sw:hover { transform: scale(1.1); }
+  .sw.active { border-color: var(--fg); box-shadow: 0 0 0 2px var(--bg); }
+
+  .drop {
+    border: 1px dashed var(--line);
+    border-radius: var(--r);
+    padding: 26px;
+    text-align: center;
+    color: var(--fg-dimmer);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: all .15s;
+    background: var(--panel);
+  }
+  .drop:hover { border-color: rgba(var(--accent-rgb), .5); color: var(--fg-dim); }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(90px);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all .25s;
+    z-index: 99;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .55);
+    letter-spacing: .2px;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast b { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="bg-dim"></div>
+
+<div class="window">
+  <!-- ===== HEADER ===== -->
+  <header>
+    <div class="logo">
+      <div class="mark">B</div>
+      <div class="name">ByteStrap <span>Shell</span></div>
+    </div>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      <input id="search" type="text" placeholder="Поиск плейса…" autocomplete="off">
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="net" id="net">
+      <span class="dot"></span>
+      <span id="net-text">Онлайн</span>
+    </div>
+
+    <div class="user" onclick="toast('Профиль аккаунта — раздел Settings → Аккаунт')">
+      <div class="avatar">M</div>
+      <span class="nick">mesorg</span>
+    </div>
+
+    <div class="icon-btn" onclick="openSettings()" title="Настройки">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </div>
+  </header>
+
+  <!-- ===== CONTENT ===== -->
+  <main>
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Недавние
+          <small>Continue / Recent — куда вы играли в последнее время</small>
+        </div>
+        <button class="see-all" onclick="toast('Экран «Все места» — позже')">Смотреть все</button>
+      </div>
+      <div class="row" id="recent"></div>
+      <div class="empty" id="recent-empty">Ничего не найдено</div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Рекомендации
+          <small>Recommended — подборка на основе интересов</small>
+        </div>
+        <button class="see-all" onclick="toast('Экран «Все места» — позже')">Смотреть все</button>
+      </div>
+      <div class="row" id="recommended"></div>
+      <div class="empty" id="recommended-empty">Ничего не найдено</div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== SETTINGS ===== -->
+<div class="overlay" id="overlay">
+  <div class="settings">
+    <nav class="set-nav">
+      <div class="nav-cap">Настройки</div>
+      <div class="nav-item active" data-page="appearance">
+        <svg viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 6-5-2.8L7 19.5l1-6-4-4 5.5-1z"/></svg>
+        Внешний вид
+      </div>
+      <div class="nav-item" data-page="account">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        Аккаунт
+      </div>
+      <div class="nav-item" data-page="privacy">
+        <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6z"/></svg>
+        Конфиденциальность
+      </div>
+      <div class="nav-item" data-page="launch">
+        <svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg>
+        Запуск
+      </div>
+      <div class="nav-item" data-page="about">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        О приложении
+      </div>
+    </nav>
+
+    <div class="set-main">
+      <div class="set-head">
+        <h2 id="set-title">Внешний вид</h2>
+        <div class="icon-btn" onclick="closeSettings()">
+          <svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </div>
+      </div>
+
+      <div class="set-body">
+
+        <!-- ============ ВНЕШНИЙ ВИД ============ -->
+        <div class="page active" id="page-appearance">
+          <div class="group">
+            <h4>Фон</h4>
+            <div class="drop" onclick="toast('Выбор файла — rfd-диалог в настоящем приложении')">Перетащите картинку или GIF сюда, либо нажмите для выбора файла</div>
+          </div>
+          <div class="group">
+            <h4>Обработка фона</h4>
+            <div class="slider-row">
+              <label><span>Размытие</span><b id="v-blur">0 px</b></label>
+              <input type="range" min="0" max="30" value="0" oninput="setVar('--bg-blur', this.value + 'px'); document.getElementById('v-blur').textContent = this.value + ' px'">
+            </div>
+            <div class="slider-row">
+              <label><span>Затемнение</span><b id="v-dim">55%</b></label>
+              <input type="range" min="0" max="90" value="55" oninput="setVar('--bg-dim', (this.value / 100)); document.getElementById('v-dim').textContent = this.value + '%'">
+            </div>
+            <div class="slider-row">
+              <label><span>Прозрачность карточек</span><b id="v-op">100%</b></label>
+              <input type="range" min="40" max="100" value="100" oninput="setVar('--card-op', (this.value / 100)); document.getElementById('v-op').textContent = this.value + '%'">
+            </div>
+          </div>
+          <div class="group">
+            <h4>Акцентный цвет</h4>
+            <div class="swatches" id="swatches">
+              <div class="sw active" style="background:#78DC82" data-c="120,220,130" data-h="#78DC82"></div>
+              <div class="sw" style="background:#6EA8FE" data-c="110,168,254" data-h="#6EA8FE"></div>
+              <div class="sw" style="background:#B48CFF" data-c="180,140,255" data-h="#B48CFF"></div>
+              <div class="sw" style="background:#FFC857" data-c="255,200,87" data-h="#FFC857"></div>
+              <div class="sw" style="background:#FF8087" data-c="255,128,135" data-h="#FF8087"></div>
+              <div class="sw" style="background:#EDEDED" data-c="237,237,237" data-h="#EDEDED"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ АККАУНТ ============ -->
+        <div class="page" id="page-account">
+          <div class="group">
+            <h4>Account Info</h4>
+
+            <div class="row-item">
+              <div><div class="label">Display Name</div><div class="sub">Отображаемое имя в игре</div></div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="value">mesorg</span>
+                <button class="btn" onclick="toast('Edit — откроется форма аккаунта')">Edit</button>
+              </div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Username</div><div class="sub">Уникальный логин</div></div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="value">@mesorg</span>
+                <button class="btn" onclick="toast('Edit — откроется форма аккаунта')">Edit</button>
+              </div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Phone Number</div><div class="sub">Не привязан</div></div>
+              <button class="btn" onclick="toast('Add — привязка номера')">Add</button>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Email</div><div class="sub">Подтверждён</div></div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="value">m•••@gmail.com</span>
+                <span class="badge">Verified</span>
+                <button class="btn" onclick="toast('Edit — смена email')">Edit</button>
+              </div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Password</div><div class="sub">Последняя смена: 3 мес. назад</div></div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="value">••••••••••</span>
+                <button class="btn" onclick="toast('Edit — смена пароля')">Edit</button>
+              </div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Age Group</div><div class="sub">Проверено Roblox</div></div>
+              <span class="badge">13–15 Checked</span>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Birthday</div><div class="sub">День рождения</div></div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="value">12.03.2008</span>
+                <span class="badge">Verified</span>
+              </div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Gender</div><div class="sub">Пол</div></div>
+              <div class="seg" data-seg>
+                <button>Male</button>
+                <button class="active">Female</button>
+              </div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Language</div><div class="sub">Язык интерфейса</div></div>
+              <select class="set-select">
+                <option>Русский</option>
+                <option>English</option>
+                <option>Deutsch</option>
+                <option>Español</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ КОНФИДЕНЦИАЛЬНОСТЬ ============ -->
+        <div class="page" id="page-privacy">
+          <div class="group">
+            <h4>Content Restrictions</h4>
+
+            <div class="row-item">
+              <div><div class="label">Content maturity</div><div class="sub">Допустимый уровень зрелости контента</div></div>
+              <div class="seg" data-seg>
+                <button>Minimal</button>
+                <button>Mild</button>
+                <button class="active">Moderate</button>
+              </div>
+            </div>
+
+            <div class="row-item" style="flex-direction:column;align-items:stretch;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div class="label">Blocked games</div>
+                <button class="btn" onclick="toast('Добавить плейс в чёрный список')">Add</button>
+              </div>
+              <div class="list-item">
+                <div class="who"><span class="dn">Brookhaven RP</span><span class="un">placeId 4924922222</span></div>
+                <button class="btn danger" onclick="toast('Unblocked')">Unblock</button>
+              </div>
+              <div class="list-item">
+                <div class="who"><span class="dn">Grow a Garden</span><span class="un">placeId 126884695634066</span></div>
+                <button class="btn danger" onclick="toast('Unblocked')">Unblock</button>
+              </div>
+            </div>
+
+            <div class="row-item" style="flex-direction:column;align-items:stretch;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div class="label">Allowed games</div>
+                <button class="btn" onclick="toast('Добавить плейс в белый список')">Add</button>
+              </div>
+              <div class="list-empty">Пусто — разрешены все плейсы</div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Preview games</div><div class="sub">Показывать плейсы для предпросмотра</div></div>
+              <select class="set-select">
+                <option>All games</option>
+                <option>Friends only</option>
+                <option>None</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="group">
+            <h4>Communication</h4>
+
+            <div class="row-item">
+              <div><div class="label">Chat and party with friends</div><div class="sub">Чат и голосовые партии</div></div>
+              <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Camera Input</div><div class="sub">Камера в чате</div></div>
+              <div class="toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Live collaboration in Studio</div><div class="sub">Совместное редактирование</div></div>
+              <div class="toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <h4>Visibility &amp; Private Servers</h4>
+
+            <div class="row-item">
+              <div><div class="label">Online status</div><div class="sub">Кто видит, что вы в сети</div></div>
+              <select class="set-select">
+                <option>Everyone</option>
+                <option>Friends &amp; followers</option>
+                <option>Friends</option>
+                <option>Trusted friends</option>
+                <option>No one</option>
+              </select>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Show current game</div><div class="sub">Кто видит, во что вы играете</div></div>
+              <select class="set-select">
+                <option>Everyone</option>
+                <option selected>Friends</option>
+                <option>Friends &amp; followers</option>
+                <option>Trusted friends</option>
+                <option>No one</option>
+              </select>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Share activity updates</div><div class="sub">Публиковать активность в ленте</div></div>
+              <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+            </div>
+
+            <div class="row-item">
+              <div><div class="label">Private servers</div><div class="sub">Кто может приглашать в приватки</div></div>
+              <select class="set-select">
+                <option>Friends</option>
+                <option>Everyone</option>
+                <option>No one</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="group">
+            <h4>Friends &amp; Contacts</h4>
+
+            <div class="row-item">
+              <div><div class="label">Search &amp; sync contacts</div><div class="sub">Поиск друзей по контактам устройства</div></div>
+              <div class="toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+          </div>
+
+          <div class="group">
+            <h4>Trading &amp; Inventory</h4>
+
+            <div class="row-item">
+              <div><div class="label">Trading &amp; inventory</div><div class="sub">Кто видит и может торговать</div></div>
+              <select class="set-select">
+                <option>All</option>
+                <option>Friends</option>
+                <option>No one</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="group">
+            <h4>Blocked Users</h4>
+
+            <div class="list-item">
+              <div class="who"><span class="dn">Someone</span><span class="un">@someone_2011</span></div>
+              <button class="btn" onclick="toast('Разблокирован')">Unblock</button>
+            </div>
+            <div class="list-item">
+              <div class="who"><span class="dn">Toxic Player</span><span class="un">@tp_roblox</span></div>
+              <button class="btn" onclick="toast('Разблокирован')">Unblock</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ ЗАПУСК ============ -->
+        <div class="page" id="page-launch">
+          <div class="group">
+            <h4>Протокол и окно</h4>
+            <div class="row-item">
+              <div><div class="label">Запускать шелл при клике roblox://</div><div class="sub">Ссылки из Discord и браузера открываются здесь</div></div>
+              <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+            </div>
+            <div class="row-item">
+              <div><div class="label">Свернуть в трей после запуска игры</div><div class="sub">Шелл не мешается на экране</div></div>
+              <div class="toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+            <div class="row-item">
+              <div><div class="label">Закрывать шелл при выходе из игры</div><div class="sub">Автоматически, без подтверждения</div></div>
+              <div class="toggle" onclick="this.classList.toggle('on')"></div>
+            </div>
+          </div>
+          <div class="group">
+            <h4>Клиент</h4>
+            <div class="row-item">
+              <div><div class="label">Канал обновлений клиента</div><div class="sub">Откуда ставить Roblox</div></div>
+              <select class="set-select">
+                <option>LIVE</option>
+                <option>BETA</option>
+                <option>ZNext</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ О ПРИЛОЖЕНИИ ============ -->
+        <div class="page" id="page-about">
+          <div class="group">
+            <h4>Информация</h4>
+            <div class="row-item">
+              <div class="label">Версия</div>
+              <span class="value">0.1.0-shell (mockup)</span>
+            </div>
+            <div class="row-item">
+              <div class="label">Репозиторий</div>
+              <span class="value">mesorg-dev/ByteStrap</span>
+            </div>
+            <div class="row-item">
+              <div class="label">Лицензия</div>
+              <span class="value">GPL-3.0</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ===== Данные (мокап): реальные плейсы, обложки 768x432 с CDN Roblox =====
+  const recent = [
+    { name: "Brookhaven",        place: "4924922222",     players: 420461, c: [75, 139, 245],  img: "https://tr.rbxcdn.com/180DAY-8592a6601564e24a00e7c3432cd75c0b/768/432/Image/Png/noFilter" },
+    { name: "Grow a Garden",     place: "126884695634066", players: 13523, c: [92, 214, 92],   img: "https://tr.rbxcdn.com/180DAY-e4d893c5432510c9ee42962089a0c86e/768/432/Image/Png/noFilter" },
+    { name: "Adopt Me!",         place: "920587237",      players: 183505, c: [255, 135, 195], img: "https://tr.rbxcdn.com/180DAY-65db55c944d0826a0b113a4c83a3c7bb/768/432/Image/Png/noFilter" },
+    { name: "Blox Fruits",       place: "2753915549",     players: 400041, c: [255, 112, 67],  img: "https://tr.rbxcdn.com/180DAY-77b3430ced16006f6da18d6a77b95ea0/768/432/Image/Png/noFilter" },
+    { name: "Jailbreak",         place: "606849621",      players: 5725,   c: [255, 179, 0],   img: "https://tr.rbxcdn.com/180DAY-3c80b2fc1f8d1a1ef72048e98bc1ebae/768/432/Image/Png/noFilter" },
+    { name: "Tower of Hell",     place: "1962086868",     players: 41954,  c: [126, 87, 194],  img: "https://tr.rbxcdn.com/180DAY-30df204e4a0188e05ea2dcd225dab32d/768/432/Image/Png/noFilter" },
+  ];
+  const recommended = [
+    { name: "Murder Mystery 2",  place: "142823291",      players: 283541, c: [229, 57, 53],   img: "https://tr.rbxcdn.com/180DAY-f483597f5ce44b2617413c11c7425802/768/432/Image/Png/noFilter" },
+    { name: "DOORS",             place: "6516141723",     players: 33293,  c: [92, 107, 192],  img: "https://tr.rbxcdn.com/180DAY-e822a794752ce011565eca23a280f4dc/768/432/Image/Png/noFilter" },
+    { name: "BedWars",           place: "6872265039",     players: 17692,  c: [38, 198, 218],  img: "https://tr.rbxcdn.com/180DAY-defcfcd5450fac1482733aca78e1b88e/768/432/Image/Png/noFilter" },
+    { name: "Arsenal",           place: "286090429",      players: 2698,   c: [102, 187, 106], img: "https://tr.rbxcdn.com/180DAY-409cfd2e6dcb5afa3fe41b545752733a/768/432/Image/Png/noFilter" },
+    { name: "Natural Disaster",  place: "189707",         players: 7295,   c: [41, 182, 246],  img: "https://tr.rbxcdn.com/180DAY-7ea7065a02f8cff80f8b0270a9ad2d3b/768/432/Image/Png/noFilter" },
+    { name: "PLS DONATE",        place: "8737602449",     players: 2693,   c: [236, 64, 122],  img: "https://tr.rbxcdn.com/180DAY-3b749df76d352f98ef704c75c538be57/768/432/Image/Png/noFilter" },
+  ];
+
+  function fmtPlayers(n) {
+    return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "K" : String(n);
+  }
+
+  function cardHTML(p) {
+    const [r, g, b] = p.c;
+    const mono = p.name[0];
+    return `
+      <div class="card" data-name="${p.name.toLowerCase()}" onclick="launch('${p.name.replace(/'/g, "\\'")}', '${p.place}')">
+        <div class="media" style="background:
+            linear-gradient(135deg, rgba(${r},${g},${b},.32), rgba(${r},${g},${b},.06) 60%, rgba(10,10,12,.9)),
+            #101013">
+          <img class="cover" src="${p.img}" alt="" loading="lazy" onerror="this.remove()">
+          <span class="mono">${mono}</span>
+          <div class="players-tag"><span class="live"></span>${fmtPlayers(p.players)}</div>
+        </div>
+        <div class="card-body">
+          <div class="card-title">${p.name}</div>
+          <div class="card-meta">
+            <span class="players">${fmtPlayers(p.players)} играют сейчас</span>
+            <button class="play-btn">Играть</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function render() {
+    document.getElementById("recent").innerHTML = recent.map(cardHTML).join("");
+    document.getElementById("recommended").innerHTML = recommended.map(cardHTML).join("");
+    applyFilter();
+  }
+
+  function launch(name, place) {
+    toast(`Запуск: <b>${name}</b> — <code>roblox://placeId=${place}</code>`);
+  }
+
+  function applyFilter() {
+    const q = document.getElementById("search").value.trim().toLowerCase();
+    ["recent", "recommended"].forEach(id => {
+      let visible = 0;
+      document.querySelectorAll("#" + id + " .card").forEach(c => {
+        const hit = !q || c.dataset.name.includes(q);
+        c.style.display = hit ? "" : "none";
+        if (hit) visible++;
+      });
+      document.getElementById(id + "-empty").style.display = visible ? "none" : "block";
+    });
+  }
+  document.getElementById("search").addEventListener("input", applyFilter);
+
+  // ===== Settings =====
+  const titles = {
+    appearance: "Внешний вид",
+    account: "Аккаунт",
+    privacy: "Конфиденциальность",
+    launch: "Запуск",
+    about: "О приложении",
+  };
+  function openSettings() {
+    document.getElementById("overlay").classList.add("open");
+  }
+  function closeSettings() {
+    document.getElementById("overlay").classList.remove("open");
+  }
+  document.querySelectorAll(".nav-item").forEach(item => {
+    item.addEventListener("click", () => {
+      document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      item.classList.add("active");
+      const page = item.dataset.page;
+      document.getElementById("page-" + page).classList.add("active");
+      document.getElementById("set-title").textContent = titles[page];
+    });
+  });
+  document.getElementById("overlay").addEventListener("click", e => {
+    if (e.target.id === "overlay") closeSettings();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeSettings();
+  });
+
+  // Segmented controls
+  document.querySelectorAll("[data-seg]").forEach(seg => {
+    seg.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        seg.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+  });
+
+  // Accent swatches
+  document.querySelectorAll(".sw").forEach(sw => {
+    sw.addEventListener("click", () => {
+      document.querySelectorAll(".sw").forEach(s => s.classList.remove("active"));
+      sw.classList.add("active");
+      document.documentElement.style.setProperty("--accent-rgb", sw.dataset.c);
+      document.documentElement.style.setProperty("--accent", sw.dataset.h);
+    });
+  });
+
+  function setVar(name, value) {
+    document.documentElement.style.setProperty(name, value);
+  }
+
+  // ===== Toast =====
+  let toastTimer;
+  function toast(html) {
+    const t = document.getElementById("toast");
+    t.innerHTML = html;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  // ===== Network status =====
+  function updateNet() {
+    const el = document.getElementById("net");
+    if (navigator.onLine) {
+      el.classList.remove("offline");
+      document.getElementById("net-text").textContent = "Онлайн";
+    } else {
+      el.classList.add("offline");
+      document.getElementById("net-text").textContent = "Оффлайн";
+    }
+  }
+  window.addEventListener("online", updateNet);
+  window.addEventListener("offline", updateNet);
+
+  render();
+  updateNet();
+</script>
+</body>
+</html>

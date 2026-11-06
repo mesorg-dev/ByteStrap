@@ -1,0 +1,32 @@
+SETTINGS
+
+1. Account Info
+- Display Name: display name + edit button
+- Username: @username + edit button
+- Phone Number: status + add button
+- Email: masked email + verified badge + edit button
+- Password: hidden field + edit button
+- Age Group: badge (13-15 Checked)
+- Birthday: date + verified badge
+- Gender: Male / Female selector
+- Language: dropdown
+
+2. Privacy & Content Restrictions
+- Content restrictions:
+  * Content maturity: Minimal, Mild, Moderate
+  * Blocked games: list
+  * Allowed games: list
+  * Preview games: selector
+- Communication:
+  * Chat and party with friends: On / Off
+  * Camera Input: On / Off
+  * Live collaboration in Studio: On / Off
+- Visibility & private servers:
+  * Visibility:
+    + Online status: Everyone, Friends & followers, Friends, Trusted friends, No one
+    + Show current game: Everyone, Friends & followers, Friends, Trusted friends, No one
+    + Share activity updates: On / Off
+  * Private servers: Friends, Everyone, No one
+- Friends & contacts: search & sync
+- Trading & inventory: All, Friends, No one
+- Blocked users: list (Display Name, @Username, Unblock button)
