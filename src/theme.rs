@@ -17,11 +17,6 @@ pub const WARN: Color32 = Color32::from_rgb(0xFF, 0xC8, 0x57);
 pub const R_CARD: f32 = 6.0;
 pub const R_SOFT: f32 = 2.0;
 
-/// Жирный шрифт нужного размера (семейство `strong` из [`apply`]).
-pub fn bold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("strong".into()))
-}
-
 pub fn card_frame() -> Frame {
     Frame::NONE
         .fill(PANEL)
@@ -60,15 +55,6 @@ pub fn apply(ctx: &egui::Context) {
     let mono = fonts.families.get_mut(&FontFamily::Monospace).unwrap();
     mono.insert(0, "jbmono".into());
     mono.push("jbmono_bold".into());
-
-    // Жирный Inter для заголовков/кнопок: в egui 0.37 FontId без weight,
-    // поэтому поднимаем отдельное именованное семейство.
-    let strong = fonts
-        .families
-        .entry(FontFamily::Name("strong".into()))
-        .or_default();
-    strong.push("inter_bold".into());
-    strong.push("inter".into());
 
     fonts.font_data.insert(
         "unbounded".into(),

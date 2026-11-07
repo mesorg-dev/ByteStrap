@@ -40,8 +40,6 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target/release/bytestrap.exe `
             "dist/ByteStrap-${{ github.ref_name }}-win-x64.exe"
-          Copy-Item target/release/bytestrap-shell.exe `
-            "dist/ByteStrap-Shell-${{ github.ref_name }}-win-x64.exe"
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
