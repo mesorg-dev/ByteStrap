@@ -397,7 +397,7 @@ impl eframe::App for Shell {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        ui::paint_background(self, &ctx);
+        ui::paint_background(self, ui);
         ui::header(self, ui);
 
         egui::CentralPanel::default()

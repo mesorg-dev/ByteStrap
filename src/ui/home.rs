@@ -163,43 +163,44 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 }
             }
 
-            // Запуск по ссылке — компактная строка (вместо отдельной карточки).
-            ui.add_space(10.0);
+            // Запуск по ссылке — тонкая строка в одну линию.
+            ui.add_space(7.0);
             let can_run = !app.install.active && !app.link_input.trim().is_empty();
             let mut submit = false;
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let go = Button::new(
                     RichText::new(tr(lang, "Home_LinkGo"))
+                        .size(12.0)
                         .color(crate::theme::BG)
                         .strong(),
                 )
                 .fill(crate::theme::FG)
                 .corner_radius(crate::theme::R_SOFT)
-                .min_size(egui::vec2(100.0, 32.0));
+                .min_size(egui::vec2(74.0, 26.0));
                 if ui.add_enabled(can_run, go).clicked() {
                     submit = true;
                 }
 
                 #[cfg(windows)]
                 {
-                    let paste = Button::new(RichText::new(tr(lang, "Home_LinkPaste")).size(12.0))
+                    let paste = Button::new(RichText::new(tr(lang, "Home_LinkPaste")).size(11.0))
                         .stroke(Stroke::new(1.0, crate::theme::LINE))
                         .corner_radius(crate::theme::R_SOFT)
-                        .min_size(egui::vec2(90.0, 32.0));
+                        .min_size(egui::vec2(64.0, 26.0));
                     if ui.add(paste).clicked() {
                         if let Some(t) = clipboard_text() {
                             app.link_input = t;
                             app.link_msg = None;
                         }
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                 }
 
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut app.link_input)
                         .hint_text(tr(lang, "Home_LinkHint"))
                         .desired_width(ui.available_width().max(140.0))
-                        .margin(egui::vec2(8.0, 4.0)),
+                        .margin(egui::vec2(7.0, 3.0)),
                 );
                 if resp.changed() {
                     app.link_msg = None;
@@ -213,7 +214,7 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 app.play_link(&input);
             }
             if let Some((text, err)) = &app.link_msg {
-                ui.add_space(4.0);
+                ui.add_space(3.0);
                 ui.label(
                     RichText::new(text)
                         .size(11.0)
@@ -225,9 +226,9 @@ pub fn show(ui: &mut Ui, app: &mut App) {
                 );
             }
 
-            ui.add_space(14.0);
-            ui.separator();
             ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(8.0);
 
             let version_text = match (&app.latest, &app.installed) {
                 (Some(lat), _) => fmt(lang, "Home_Version", &[&lat.version]),

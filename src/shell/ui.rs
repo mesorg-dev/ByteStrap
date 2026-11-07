@@ -20,9 +20,13 @@ const MIN_CARD_W: f32 = 218.0;
 // ---------------------------------------------------------------- фон
 
 /// Фон окна: картинка (или дефолтный градиент с подсветками) + затемнение.
-pub fn paint_background(shell: &Shell, ctx: &egui::Context) {
-    let screen = ctx.content_rect();
-    let p = ctx.layer_painter(LayerId::new(Order::Background, Id::unique("shell_bg")));
+///
+/// Рисуется ПЕРВЫМ в корневом слое — панели и карточки рисуются после и
+/// оказываются поверх. Отдельный слой тут нельзя: egui не гарантирует
+/// порядок между корневым слоем и посторонним слоем того же `Order`.
+pub fn paint_background(shell: &Shell, ui: &egui::Ui) {
+    let screen = ui.max_rect();
+    let p = ui.painter();
 
     match &shell.bg_tex {
         Some(tex) => {
@@ -32,6 +36,9 @@ pub fn paint_background(shell: &Shell, ctx: &egui::Context) {
                 Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                 Color32::WHITE,
             );
+            // Затемнение — только поверх картинки-фона.
+            let dim = (shell.cfg.bg_dim.clamp(0, 90) * 255 / 100) as u8;
+            p.rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(6, 6, 8, dim));
         }
         None => {
             p.rect_filled(screen, 0.0, theme::BG);
@@ -52,9 +59,6 @@ pub fn paint_background(shell: &Shell, ctx: &egui::Context) {
             );
         }
     }
-
-    let dim = (shell.cfg.bg_dim.clamp(0, 90) * 255 / 100) as u8;
-    p.rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(6, 6, 8, dim));
 }
 
 /// Мягкая радиальная подсветка: 16 концентрических кругов с низкой альфой.
