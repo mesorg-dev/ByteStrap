@@ -12,10 +12,12 @@ import { Theme } from "theme.slint";
 import { T } from "i18n.slint";
 export { T } from "i18n.slint";
 import { TitleBar } from "titlebar.slint";
+import { Btn } from "widgets.slint";
 import { SideBar } from "sidebar.slint";
 import { HomePage } from "pages/home.slint";
 import { LogsPage } from "pages/logs.slint";
 import { VersionsPage } from "pages/versions.slint";
+import { SettingsPage } from "pages/settings.slint";
 import { AboutPage } from "pages/about.slint";
 import { PlaceholderPage } from "pages/placeholder.slint";
 import { PlaceRow, LogLine, VersionRow } from "models.slint";
@@ -67,6 +69,33 @@ export component AppWindow inherits Window {
     in-out property <int> ver-integrity-kind: 0;
     in-out property <string> ver-checked-text: "";
 
+    // Settings (page 5)
+    in-out property <int> set-ch-sel: -1;
+    in-out property <bool> set-ch-checking: false;
+    in-out property <int> set-ch-preview-kind: 0;
+    in-out property <string> set-ch-preview-text: "";
+    in-out property <bool> set-ch-changed: false;
+    in-out property <int> set-lang-code: 0;
+    in-out property <int> set-threads: 4;
+    in-out property <bool> set-auto-update: true;
+    in-out property <bool> set-close-launch: false;
+    in-out property <bool> set-discord-rp: true;
+    in-out property <bool> set-rp-place: true;
+    in-out property <bool> set-rp-time: true;
+    in-out property <bool> set-rp-brand: true;
+    in-out property <int> set-discord-status: 0;
+    in-out property <string> set-discord-text: "";
+    in-out property <bool> set-deeplink: true;
+    in-out property <int> set-deeplink-ok: 0;
+    in-out property <string> set-path: "";
+    in-out property <string> set-path-hint: "";
+    in-out property <int> set-path-token: 0;
+    in-out property <bool> set-cleanup-busy: false;
+    in-out property <string> set-cleanup-text: "";
+    in-out property <bool> set-cleanup-err: false;
+    /// Тело модального подтверждения ("" — закрыто).
+    in-out property <string> confirm-body: "";
+
     // About (page 6)
     in-out property <string> about-version: "";
     in-out property <int> update-kind: 0;
@@ -99,6 +128,20 @@ export component AppWindow inherits Window {
     callback about-check();
     callback about-download();
     callback about-open-repo();
+    callback ch-pick(string);
+    callback ch-apply();
+    callback lang-pick(int);
+    callback threads-set(int);
+    callback auto-update-set(bool);
+    callback close-launch-set(bool);
+    callback discord-rp-set(bool);
+    callback rp-opt-set(int, bool);
+    callback deeplink-set(bool);
+    callback path-edited(string);
+    callback path-reset();
+    callback cleanup-run();
+    callback confirm-yes();
+    callback confirm-no();
 
     Rectangle {
         x: 0;
@@ -214,11 +257,45 @@ export component AppWindow inherits Window {
                     icon: 3;
                     name: T.nav_mods;
                 }
-                if root.page == 5 : PlaceholderPage {
+                if root.page == 5 : SettingsPage {
                     width: 100%;
                     height: 100%;
-                    icon: 5;
-                    name: T.nav_settings;
+                    busy: root.busy;
+                    channel-sel: root.set-ch-sel;
+                    channel-checking: root.set-ch-checking;
+                    channel-preview-kind: root.set-ch-preview-kind;
+                    channel-preview-text: root.set-ch-preview-text;
+                    channel-changed: root.set-ch-changed;
+                    lang-code: root.set-lang-code;
+                    threads: root.set-threads;
+                    auto-update: root.set-auto-update;
+                    close-launch: root.set-close-launch;
+                    discord-rp: root.set-discord-rp;
+                    rp-place: root.set-rp-place;
+                    rp-time: root.set-rp-time;
+                    rp-brand: root.set-rp-brand;
+                    discord-status: root.set-discord-status;
+                    discord-text: root.set-discord-text;
+                    deeplink: root.set-deeplink;
+                    deeplink-ok: root.set-deeplink-ok;
+                    path: root.set-path;
+                    path-hint: root.set-path-hint;
+                    path-token: root.set-path-token;
+                    cleanup-busy: root.set-cleanup-busy;
+                    cleanup-text: root.set-cleanup-text;
+                    cleanup-err: root.set-cleanup-err;
+                    channel-pick(c) => { root.ch-pick(c); }
+                    channel-apply => { root.ch-apply(); }
+                    lang-pick(i) => { root.lang-pick(i); }
+                    threads-set(t) => { root.threads-set(t); }
+                    auto-update-set(v) => { root.auto-update-set(v); }
+                    close-launch-set(v) => { root.close-launch-set(v); }
+                    discord-rp-set(v) => { root.discord-rp-set(v); }
+                    rp-opt-set(k, v) => { root.rp-opt-set(k, v); }
+                    deeplink-set(v) => { root.deeplink-set(v); }
+                    path-edited(t) => { root.path-edited(t); }
+                    path-reset => { root.path-reset(); }
+                    cleanup-run => { root.cleanup-run(); }
                 }
                 if root.page == 6 : AboutPage {
                     width: 100%;
@@ -231,6 +308,63 @@ export component AppWindow inherits Window {
                     check-updates => { root.about-check(); }
                     download => { root.about-download(); }
                     open-repo => { root.about-open-repo(); }
+                }
+            }
+        }
+
+        // ===== Модальное подтверждение =====
+        if root.confirm-body != "" : Rectangle {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000aa;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => { root.confirm-no(); }
+            }
+
+            Rectangle {
+                width: 400px;
+                height: 140px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 14px;
+
+                    Text {
+                        text: root.confirm-body;
+                        font-size: 13px;
+                        color: Theme.fg;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        Rectangle { horizontal-stretch: 1; }
+                        Btn {
+                            label: T.btn_yes;
+                            kind: 0;
+                            width: 90px;
+                            height: 34px;
+                            clicked => { root.confirm-yes(); }
+                        }
+                        Rectangle { width: 8px; horizontal-stretch: 0; }
+                        Btn {
+                            label: T.btn_no;
+                            kind: 2;
+                            width: 90px;
+                            height: 34px;
+                            clicked => { root.confirm-no(); }
+                        }
+                    }
                 }
             }
         }

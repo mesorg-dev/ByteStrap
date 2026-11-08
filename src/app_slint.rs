@@ -23,7 +23,7 @@ use crate::app::{effective_installed, AsyncEvent, InstallUi, UpdateUi};
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime};
-use crate::core::{deploy, flags, launcher, logger, mods, roblox_link, updater, versions};
+use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, roblox_link, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 
 // ===== Состояние =====
@@ -41,6 +41,21 @@ struct Ctx {
     /// Результат последней проверки целостности.
     integrity: Option<versions::IntegrityReport>,
     quit: bool,
+
+    // — Настройки —
+    channel_draft: String,
+    channel_preview: Option<Result<deploy::ClientVersion, String>>,
+    channel_checking: bool,
+    /// Тело открытого модального подтверждения (None — закрыто).
+    confirm: Option<String>,
+    /// Канал, который подтвердит модалка.
+    pending_channel: Option<String>,
+    cleanup_busy: bool,
+    cleanup_msg: Option<(String, bool)>,
+    discord: discord::Handle,
+    discord_rx: discord::StatusRx,
+    discord_status: discord::Status,
+    deeplink_ok: Option<bool>,
     pending_launch: Option<String>,
     mods_count: usize,
     flags_count: usize,
@@ -222,6 +237,9 @@ impl Ctx {
     // ---- События ----
 
     fn drain(&mut self) {
+        while let Ok(st) = self.discord_rx.try_recv() {
+            self.discord_status = st;
+        }
         while let Ok(ev) = self.rx.try_recv() {
             match ev {
                 AsyncEvent::Latest(Ok(v)) => {
@@ -256,6 +274,24 @@ impl Ctx {
                     }
                     Err(e) => self.update = UpdateUi::Error(e),
                 },
+                AsyncEvent::ChannelPreview(res) => {
+                    self.channel_checking = false;
+                    self.channel_preview = Some(res);
+                }
+                AsyncEvent::CleanupDone(freed, files) => {
+                    self.cleanup_busy = false;
+                    let text = if files == 0 {
+                        tr(self.lang, "Settings_CleanupNone").to_string()
+                    } else {
+                        fmt(
+                            self.lang,
+                            "Settings_CleanupDoneFmt",
+                            &[&versions::format_size(freed), &files.to_string()],
+                        )
+                    };
+                    logger::info(format!("Очистка: {text}"));
+                    self.cleanup_msg = Some((text, false));
+                }
                 _ => {}
             }
         }
@@ -474,6 +510,95 @@ impl Ctx {
         });
     }
 
+    // ---- Настройки (порт src/app.rs) ----
+
+    fn set_lang(&mut self, lang: Lang) {
+        self.lang = lang;
+        self.config.language = lang.code().to_string();
+        self.config.save();
+        logger::info(format!("Язык переключён: {}", lang.code()));
+    }
+
+    fn sync_discord(&self) {
+        if !self.config.discord_rp {
+            let _ = self.discord.send(discord::Update::Idle);
+        }
+        // TODO(Фаза 2): сессия — отправка Session-обновлений (push_discord из app.rs).
+    }
+
+    fn start_cleanup(&mut self) {
+        if self.cleanup_busy || self.install.active {
+            return;
+        }
+        let base = self.config.base();
+        self.cleanup_busy = true;
+        self.cleanup_msg = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let r = crate::core::cleanup::clean(&base);
+            let _ = tx.send(AsyncEvent::CleanupDone(r.freed, r.files));
+        });
+    }
+
+    /// Выбор канала: превью версии в фоне (как в egui).
+    fn channel_pick(&mut self, ch: &str) {
+        if self.channel_draft.eq_ignore_ascii_case(ch) {
+            return;
+        }
+        self.channel_draft = ch.to_string();
+        self.channel_preview = None;
+        self.channel_checking = true;
+        let ch = ch.to_string();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime");
+            let res = rt
+                .block_on(deploy::latest_version(&ch))
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ChannelPreview(res));
+        });
+    }
+
+    /// Запрос подтверждения смены канала (открывает модалку).
+    fn channel_apply_request(&mut self) {
+        self.confirm = Some(fmt(
+            self.lang,
+            "Settings_ChannelConfirm",
+            &[&self.channel_draft],
+        ));
+        self.pending_channel = Some(self.channel_draft.clone());
+    }
+
+    fn confirm_yes(&mut self) {
+        self.confirm = None;
+        if let Some(ch) = self.pending_channel.take() {
+            self.config.channel = ch;
+            self.config.save();
+            self.latest = None;
+            let tx = self.tx.clone();
+            let channel = self.config.channel.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .expect("tokio runtime");
+                let res = rt
+                    .block_on(deploy::latest_version(&channel))
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(AsyncEvent::Latest(res));
+            });
+            self.start_install(true);
+        }
+    }
+
+    fn confirm_no(&mut self) {
+        self.confirm = None;
+        self.pending_channel = None;
+    }
+
     // ---- Публикация в UI ----
 
     fn push_home(&self, ui: &AppWindow) {
@@ -643,6 +768,88 @@ impl Ctx {
         ui.set_update_text(text.as_str().into());
         ui.set_update_notes(notes.as_str().into());
         ui.set_update_pct(pct);
+    }
+
+    /// Всё, кроме пути (путь пушится только при входе на страницу,
+    /// чтобы не сбивать курсор в поле ввода).
+    fn push_settings(&self, ui: &AppWindow) {
+        let lang = self.lang;
+
+        let draft = &self.channel_draft;
+        let sel = if draft.eq_ignore_ascii_case("LIVE") {
+            0
+        } else if draft.eq_ignore_ascii_case("BETA") {
+            1
+        } else if draft.eq_ignore_ascii_case("ZNext") {
+            2
+        } else {
+            -1
+        };
+        ui.set_set_ch_sel(sel);
+        ui.set_set_ch_checking(self.channel_checking);
+        let (pk, pt) = match &self.channel_preview {
+            None if self.channel_checking => {
+                (1, tr(lang, "Settings_ChannelCheck").to_string())
+            }
+            Some(Ok(v)) => (2, fmt(lang, "Settings_ChannelVer", &[&v.version])),
+            Some(Err(e)) => (3, fmt(lang, "Settings_ChannelErr", &[e])),
+            _ => (0, String::new()),
+        };
+        ui.set_set_ch_preview_kind(pk);
+        ui.set_set_ch_preview_text(pt.as_str().into());
+        ui.set_set_ch_changed(!draft.eq_ignore_ascii_case(&self.config.channel));
+
+        ui.set_set_lang_code(if lang.code() == "en" { 1 } else { 0 });
+
+        ui.set_set_threads(self.config.download_threads as i32);
+        ui.set_set_auto_update(self.config.auto_update);
+        ui.set_set_close_launch(self.config.close_on_launch);
+        ui.set_set_discord_rp(self.config.discord_rp);
+        ui.set_set_rp_place(self.config.discord_rp_place);
+        ui.set_set_rp_time(self.config.discord_rp_time);
+        ui.set_set_rp_brand(self.config.discord_rp_brand);
+
+        let (dsk, dst) = match &self.discord_status {
+            discord::Status::Connected => {
+                (1, tr(lang, "Settings_DiscordRP_Connected").to_string())
+            }
+            discord::Status::Disconnected(reason) => (
+                2,
+                format!("{}: {}", tr(lang, "Settings_DiscordRP_NoDiscord"), reason),
+            ),
+            discord::Status::Idle => (0, tr(lang, "Settings_DiscordRP_Wait").to_string()),
+        };
+        ui.set_set_discord_status(dsk);
+        ui.set_set_discord_text(dst.as_str().into());
+
+        ui.set_set_deeplink(self.config.deeplink);
+        ui.set_set_deeplink_ok(match self.deeplink_ok {
+            None => 0,
+            Some(true) => 1,
+            Some(false) => 2,
+        });
+
+        ui.set_set_cleanup_busy(self.cleanup_busy);
+        match &self.cleanup_msg {
+            Some((text, err)) => {
+                ui.set_set_cleanup_text(text.as_str().into());
+                ui.set_set_cleanup_err(*err);
+            }
+            None => {
+                ui.set_set_cleanup_text("".into());
+                ui.set_set_cleanup_err(false);
+            }
+        }
+
+        ui.set_confirm_body(self.confirm.clone().unwrap_or_default().as_str().into());
+    }
+
+    fn push_path(&self, ui: &AppWindow) {
+        ui.set_set_path(self.config.bytestrap_path.as_str().into());
+        let hint = Config::base_dir().to_string_lossy().to_string();
+        ui.set_set_path_hint(hint.as_str().into());
+        // Токен: поле ввода перечитывает значение (сброс/вход на страницу).
+        ui.set_set_path_token(ui.get_set_path_token() + 1);
     }
 
     // ---- Логи ----
@@ -942,6 +1149,43 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_about_download(tr(lang, "About_Download").into());
     t.set_about_downloading(tr(lang, "About_Downloading").into());
     t.set_about_update_err(tr(lang, "About_UpdateErr").into());
+    t.set_settings_h1(tr(lang, "Settings_H1").into());
+    t.set_settings_sub(tr(lang, "Settings_Sub").into());
+    t.set_settings_channel(tr(lang, "Settings_Channel").into());
+    t.set_settings_channel_desc(tr(lang, "Settings_ChannelDesc").into());
+    t.set_settings_channel_check(tr(lang, "Settings_ChannelCheck").into());
+    t.set_settings_channel_ver(tr(lang, "Settings_ChannelVer").into());
+    t.set_settings_channel_err(tr(lang, "Settings_ChannelErr").into());
+    t.set_settings_channel_apply(tr(lang, "Settings_ChannelApply").into());
+    t.set_settings_channel_confirm(tr(lang, "Settings_ChannelConfirm").into());
+    t.set_settings_lang(tr(lang, "Settings_Lang").into());
+    t.set_settings_threads(tr(lang, "Settings_Threads").into());
+    t.set_settings_threads_desc(tr(lang, "Settings_ThreadsDesc").into());
+    t.set_settings_auto_update(tr(lang, "Settings_AutoUpdate").into());
+    t.set_settings_auto_update_desc(tr(lang, "Settings_AutoUpdateDesc").into());
+    t.set_settings_close_on_launch(tr(lang, "Settings_CloseOnLaunch").into());
+    t.set_settings_close_on_launch_desc(tr(lang, "Settings_CloseOnLaunchDesc").into());
+    t.set_settings_discord_rp(tr(lang, "Settings_DiscordRP").into());
+    t.set_settings_discord_rp_desc(tr(lang, "Settings_DiscordRPDesc").into());
+    t.set_settings_rp_place(tr(lang, "Settings_DiscordRP_Place").into());
+    t.set_settings_rp_time(tr(lang, "Settings_DiscordRP_Time").into());
+    t.set_settings_rp_brand(tr(lang, "Settings_DiscordRP_Brand").into());
+    t.set_settings_discord_wait(tr(lang, "Settings_DiscordRP_Wait").into());
+    t.set_settings_discord_connected(tr(lang, "Settings_DiscordRP_Connected").into());
+    t.set_settings_discord_no_discord(tr(lang, "Settings_DiscordRP_NoDiscord").into());
+    t.set_settings_deeplink(tr(lang, "Settings_Deeplink").into());
+    t.set_settings_deeplink_desc(tr(lang, "Settings_DeeplinkDesc").into());
+    t.set_settings_deeplink_on(tr(lang, "Settings_Deeplink_On").into());
+    t.set_settings_deeplink_fail(tr(lang, "Settings_Deeplink_Fail").into());
+    t.set_settings_path(tr(lang, "Settings_Path").into());
+    t.set_settings_path_desc(tr(lang, "Settings_PathDesc").into());
+    t.set_settings_path_reset(tr(lang, "Settings_PathReset").into());
+    t.set_settings_cleanup(tr(lang, "Settings_Cleanup").into());
+    t.set_settings_cleanup_desc(tr(lang, "Settings_CleanupDesc").into());
+    t.set_settings_cleanup_btn(tr(lang, "Settings_CleanupBtn").into());
+    t.set_settings_cleanup_busy(tr(lang, "Settings_CleanupBusy").into());
+    t.set_btn_yes(tr(lang, "Btn_Yes").into());
+    t.set_btn_no(tr(lang, "Btn_No").into());
     t.set_common_soon(tr(lang, "Common_ComingSoon").into());
 }
 
@@ -1202,6 +1446,187 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     ui.on_about_open_repo(move || {
         open_url("https://github.com/mesorg-dev/ByteStrap");
     });
+
+    // — Настройки —
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_ch_pick(move |ch: SharedString| {
+            {
+                ctx.borrow_mut().channel_pick(ch.as_str());
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_ch_apply(move || {
+            {
+                ctx.borrow_mut().channel_apply_request();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_lang_pick(move |i: i32| {
+            let lang = {
+                let mut c = ctx.borrow_mut();
+                c.set_lang(Lang::resolve(if i == 1 { "en" } else { "ru" }));
+                c.lang
+            };
+            let ui = weak.unwrap();
+            apply_i18n(&ui, lang);
+            ctx.borrow().push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_threads_set(move |t: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.download_threads = t.clamp(1, 8) as u32;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_auto_update_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.auto_update = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_close_launch_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.close_on_launch = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_discord_rp_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.discord_rp = v;
+                c.config.save();
+                c.sync_discord();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_rp_opt_set(move |k: i32, v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                match k {
+                    0 => c.config.discord_rp_place = v,
+                    1 => c.config.discord_rp_time = v,
+                    _ => c.config.discord_rp_brand = v,
+                }
+                c.config.save();
+                c.sync_discord();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_deeplink_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.deeplink = v;
+                c.config.save();
+                if v {
+                    let _ = deep_link::register();
+                } else {
+                    let _ = deep_link::unregister();
+                }
+                c.deeplink_ok = deep_link::status();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_path_edited(move |t: SharedString| {
+            let mut c = ctx.borrow_mut();
+            c.config.bytestrap_path = t.to_string();
+            c.config.save();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_path_reset(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.bytestrap_path.clear();
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_path(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_cleanup_run(move || {
+            {
+                ctx.borrow_mut().start_cleanup();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_confirm_yes(move || {
+            {
+                ctx.borrow_mut().confirm_yes();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+            c.push_home(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_confirm_no(move || {
+            ctx.borrow_mut().confirm_no();
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
 }
 
 // ===== Точка входа =====
@@ -1222,6 +1647,14 @@ pub fn run() -> Result<(), slint::PlatformError> {
         None => 0,
     };
     let playtime = Playtime::load(&config.base());
+
+    // roblox:// в реестре: самовосстановление + статус для Settings.
+    if config.deeplink {
+        deep_link::ensure();
+    }
+    let deeplink_ok = deep_link::status();
+    let channel_draft = config.channel.clone();
+    let (discord, discord_rx) = discord::spawn();
 
     let (tx, rx) = mpsc::channel();
     {
@@ -1251,6 +1684,17 @@ pub fn run() -> Result<(), slint::PlatformError> {
         selected_version: None,
         integrity: None,
         quit: false,
+        channel_draft,
+        channel_preview: None,
+        channel_checking: false,
+        confirm: None,
+        pending_channel: None,
+        cleanup_busy: false,
+        cleanup_msg: None,
+        discord,
+        discord_rx,
+        discord_status: discord::Status::Idle,
+        deeplink_ok,
         pending_launch: None,
         mods_count,
         flags_count,
@@ -1297,9 +1741,16 @@ pub fn run() -> Result<(), slint::PlatformError> {
                 if page == 2 {
                     c.push_versions(&ui);
                 }
+                if page == 5 {
+                    c.push_settings(&ui);
+                    c.push_path(&ui);
+                }
                 if page == 4 {
                     c.logs_tick(&ui);
                 }
+            }
+            if page == 5 {
+                c.push_settings(&ui);
             }
             if page == 6 {
                 c.push_about(&ui);
