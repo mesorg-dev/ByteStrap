@@ -19,3 +19,19 @@ export struct VersionRow {
     no_player: bool,
     alt: bool,
 }
+
+export struct ModRow {
+    id: string,
+    /// «файлов: N · размер» — уже отформатировано контроллером.
+    meta: string,
+    enabled: bool,
+    can-up: bool,
+    can-down: bool,
+}
+
+export struct ModFileRow {
+    rel: string,
+    size: string,
+    /// 0 — применён, 1 — не применён, 2 — файл клиента.
+    status-kind: int,
+}

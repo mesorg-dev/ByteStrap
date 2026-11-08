@@ -28,6 +28,21 @@ use crate::i18n::{fmt, tr, Lang};
 
 // ===== Состояние =====
 
+/// Что подтверждает общая модалка (тело собирает push_confirm).
+#[derive(Clone)]
+enum Confirm {
+    ApplyChannel,
+    RevertMods,
+    LoadModProfile(String),
+    DeleteModProfile(String),
+}
+
+/// Какой вводной диалог открыт («Сохранить как…»).
+#[derive(Clone, Copy)]
+enum Dlg {
+    ModsProfile,
+}
+
 struct Ctx {
     weak: Weak<AppWindow>,
     lang: Lang,
@@ -46,10 +61,7 @@ struct Ctx {
     channel_draft: String,
     channel_preview: Option<Result<deploy::ClientVersion, String>>,
     channel_checking: bool,
-    /// Тело открытого модального подтверждения (None — закрыто).
-    confirm: Option<String>,
-    /// Канал, который подтвердит модалка.
-    pending_channel: Option<String>,
+    confirm: Option<Confirm>,
     cleanup_busy: bool,
     cleanup_msg: Option<(String, bool)>,
     discord: discord::Handle,
@@ -81,6 +93,17 @@ struct Ctx {
     /// Подсказка в строке состояния (например «Скопировано»).
     info_override: Option<(String, Instant)>,
     last_page: i32,
+
+    // — Моды —
+    mods_list: Vec<mods::ModInfo>,
+    mods_files: Vec<mods::ModFile>,
+    mods_scanned: bool,
+    mods_msg: Option<(String, bool)>,
+    /// Выбранный профиль (общий для страниц Mods/Flags).
+    profile_sel: String,
+    /// Открытый вводной диалог (None — закрыт).
+    save_dlg: Option<Dlg>,
+    dlg_input: String,
 }
 
 impl Ctx {
@@ -277,6 +300,34 @@ impl Ctx {
                 AsyncEvent::ChannelPreview(res) => {
                     self.channel_checking = false;
                     self.channel_preview = Some(res);
+                }
+                AsyncEvent::ModsDone(res) => match res {
+                    Ok(stats) => {
+                        let text = fmt(
+                            self.lang,
+                            "Mods_AppliedFmt",
+                            &[&stats.applied.to_string(), &stats.skipped.to_string()],
+                        );
+                        self.mods_msg = Some((text, false));
+                        self.refresh_mods();
+                    }
+                    Err(e) => self.mods_msg = Some((e, true)),
+                },
+                AsyncEvent::ProfileLoaded(res) => {
+                    // Дерево меняется в любом случае — пересканировать.
+                    self.refresh_mods();
+                    match res {
+                        Ok((name, _stats)) => {
+                            if self.config.active_mod_profile != name {
+                                self.config.active_mod_profile = name.clone();
+                                self.config.save();
+                            }
+                            self.profile_sel = name.clone();
+                            let text = fmt(self.lang, "Mods_ProfileLoadedFmt", &[&name]);
+                            self.mods_msg = Some((text, false));
+                        }
+                        Err(e) => self.mods_msg = Some((e, true)),
+                    }
                 }
                 AsyncEvent::CleanupDone(freed, files) => {
                     self.cleanup_busy = false;
@@ -510,6 +561,199 @@ impl Ctx {
         });
     }
 
+    // ---- Моды (порт src/app.rs) ----
+
+    fn refresh_mods(&mut self) {
+        let base = self.config.base();
+        self.mods_list = mods::scan_mods(&base);
+        self.mods_files = mods::scan_enabled(&base);
+        self.mods_scanned = true;
+    }
+
+    fn start_mods_apply(&mut self) {
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let base = self.config.base();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = mods::apply(&base, &guid).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
+    }
+
+    fn start_mods_revert(&mut self) {
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let base = self.config.base();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = mods::revert(&base, &guid).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
+    }
+
+    fn start_mods_reapply(&mut self) {
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let base = self.config.base();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let _ = mods::revert(&base, &guid); // бэкапов может не быть — ок
+            let res = mods::apply(&base, &guid).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ModsDone(res));
+        });
+    }
+
+    fn start_mod_profile_load(&mut self, name: String) {
+        let base = self.config.base();
+        let guid = self.installed.clone();
+        self.mods_msg = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let res = mods::load_profile(&base, guid.as_deref(), &name)
+                .map(|stats| (name, stats))
+                .map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::ProfileLoaded(res));
+        });
+    }
+
+    /// После вкл/выкл или перестановки мода: пере-применить или пересканировать.
+    fn mods_after_change(&mut self) {
+        if self.installed.is_some() {
+            self.start_mods_reapply();
+        } else {
+            self.refresh_mods();
+        }
+    }
+
+    fn mods_toggle(&mut self, id: &str, on: bool) {
+        let base = self.config.base();
+        let _ = mods::set_enabled(&base, id, on);
+        self.mods_after_change();
+    }
+
+    fn mods_move(&mut self, id: &str, delta: i32) {
+        let base = self.config.base();
+        let _ = mods::move_mod(&base, id, delta);
+        self.mods_after_change();
+    }
+
+    fn mods_open_folder(&self) {
+        let p = self.config.base().join("Mods");
+        let _ = std::fs::create_dir_all(&p);
+        open_folder(&p);
+    }
+
+    fn mods_open_mod_folder(&self, id: &str) {
+        open_folder(&self.config.base().join("Mods").join(id));
+    }
+
+    fn profile_sel_valid(&self) -> bool {
+        mods::list_profiles(&self.config.base())
+            .iter()
+            .any(|n| n == &self.profile_sel)
+    }
+
+    fn profile_load_click(&mut self) {
+        if !self.profile_sel_valid() {
+            return;
+        }
+        let name = self.profile_sel.clone();
+        if self.mods_list.is_empty() {
+            self.start_mod_profile_load(name);
+        } else {
+            self.confirm = Some(Confirm::LoadModProfile(name));
+        }
+    }
+
+    fn open_save_dlg(&mut self) {
+        self.dlg_input = if self.profile_sel_valid() {
+            self.profile_sel.clone()
+        } else {
+            self.config.active_mod_profile.clone()
+        };
+        self.save_dlg = Some(Dlg::ModsProfile);
+    }
+
+    fn save_dlg_ok(&mut self, name: &str) {
+        let lang = self.lang;
+        let name = name.trim().to_string();
+        if !matches!(self.save_dlg, Some(Dlg::ModsProfile)) {
+            return;
+        }
+        if name.is_empty() {
+            self.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
+            return;
+        }
+        self.save_dlg = None;
+        match mods::save_profile(&self.config.base(), &name) {
+            Ok(()) => {
+                self.dlg_input.clear();
+                self.profile_sel = name.clone();
+                self.mods_msg = Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
+            }
+            Err(e) => self.mods_msg = Some((e.to_string(), true)),
+        }
+    }
+
+    fn save_dlg_cancel(&mut self) {
+        self.save_dlg = None;
+        self.dlg_input.clear();
+    }
+
+    #[cfg(windows)]
+    fn profile_export(&mut self) {
+        let lang = self.lang;
+        let base = self.config.base();
+        let name = self.profile_sel.clone();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_ProfExport"))
+            .add_filter("ZIP", &["zip"])
+            .set_file_name(format!("{name}.zip"))
+            .save_file()
+        {
+            match crate::core::share::export_mod_profile(&base, &name, &path) {
+                Ok(()) => {
+                    self.mods_msg = Some((fmt(lang, "Prof_ExportedFmt", &[&name]), false));
+                }
+                Err(e) => {
+                    self.mods_msg = Some((fmt(lang, "Prof_ShareErr", &[&e.to_string()]), true));
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn profile_export(&mut self) {}
+
+    #[cfg(windows)]
+    fn profile_import(&mut self) {
+        let lang = self.lang;
+        let base = self.config.base();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_ProfImport"))
+            .add_filter("ZIP", &["zip"])
+            .add_filter(tr(lang, "Dlg_AllFiles"), &["*"])
+            .pick_file()
+        {
+            match crate::core::share::import_mod_profile(&base, &path) {
+                Ok(name) => {
+                    self.profile_sel = name.clone();
+                    self.mods_msg = Some((fmt(lang, "Prof_ImportedFmt", &[&name]), false));
+                }
+                Err(e) => {
+                    self.mods_msg = Some((fmt(lang, "Prof_ShareErr", &[&e.to_string()]), true));
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn profile_import(&mut self) {}
+
     // ---- Настройки (порт src/app.rs) ----
 
     fn set_lang(&mut self, lang: Lang) {
@@ -564,39 +808,57 @@ impl Ctx {
 
     /// Запрос подтверждения смены канала (открывает модалку).
     fn channel_apply_request(&mut self) {
-        self.confirm = Some(fmt(
-            self.lang,
-            "Settings_ChannelConfirm",
-            &[&self.channel_draft],
-        ));
-        self.pending_channel = Some(self.channel_draft.clone());
+        self.confirm = Some(Confirm::ApplyChannel);
     }
 
     fn confirm_yes(&mut self) {
-        self.confirm = None;
-        if let Some(ch) = self.pending_channel.take() {
-            self.config.channel = ch;
-            self.config.save();
-            self.latest = None;
-            let tx = self.tx.clone();
-            let channel = self.config.channel.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()
-                    .expect("tokio runtime");
-                let res = rt
-                    .block_on(deploy::latest_version(&channel))
-                    .map_err(|e| e.to_string());
-                let _ = tx.send(AsyncEvent::Latest(res));
-            });
-            self.start_install(true);
+        let lang = self.lang;
+        match self.confirm.take() {
+            Some(Confirm::ApplyChannel) => {
+                self.config.channel = self.channel_draft.clone();
+                self.config.save();
+                self.latest = None;
+                let tx = self.tx.clone();
+                let channel = self.config.channel.clone();
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_multi_thread()
+                        .enable_all()
+                        .build()
+                        .expect("tokio runtime");
+                    let res = rt
+                        .block_on(deploy::latest_version(&channel))
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(AsyncEvent::Latest(res));
+                });
+                self.start_install(true);
+            }
+            Some(Confirm::RevertMods) => self.start_mods_revert(),
+            Some(Confirm::LoadModProfile(name)) => self.start_mod_profile_load(name),
+            Some(Confirm::DeleteModProfile(name)) => {
+                let base = self.config.base();
+                match mods::delete_profile(&base, &name) {
+                    Ok(()) => {
+                        if self.dlg_input.trim().eq_ignore_ascii_case(&name) {
+                            self.dlg_input.clear();
+                        }
+                        if self.profile_sel.eq_ignore_ascii_case(&name) {
+                            self.profile_sel.clear();
+                        }
+                        if self.config.active_mod_profile.eq_ignore_ascii_case(&name) {
+                            self.config.active_mod_profile.clear();
+                            self.config.save();
+                        }
+                        self.mods_msg = Some((fmt(lang, "Prof_DeletedFmt", &[&name]), false));
+                    }
+                    Err(e) => self.mods_msg = Some((e.to_string(), true)),
+                }
+            }
+            None => {}
         }
     }
 
     fn confirm_no(&mut self) {
         self.confirm = None;
-        self.pending_channel = None;
     }
 
     // ---- Публикация в UI ----
@@ -841,7 +1103,20 @@ impl Ctx {
             }
         }
 
-        ui.set_confirm_body(self.confirm.clone().unwrap_or_default().as_str().into());
+    }
+
+    fn push_confirm(&self, ui: &AppWindow) {
+        let lang = self.lang;
+        let body = match &self.confirm {
+            Some(Confirm::ApplyChannel) => {
+                Some(fmt(lang, "Settings_ChannelConfirm", &[&self.channel_draft]))
+            }
+            Some(Confirm::RevertMods) => Some(tr(lang, "Mods_RevertConfirm").to_string()),
+            Some(Confirm::LoadModProfile(n)) => Some(fmt(lang, "Mods_LoadConfirm", &[n.as_str()])),
+            Some(Confirm::DeleteModProfile(n)) => Some(fmt(lang, "Prof_DelConfirm", &[n.as_str()])),
+            None => None,
+        };
+        ui.set_confirm_body(body.unwrap_or_default().as_str().into());
     }
 
     fn push_path(&self, ui: &AppWindow) {
@@ -850,6 +1125,125 @@ impl Ctx {
         ui.set_set_path_hint(hint.as_str().into());
         // Токен: поле ввода перечитывает значение (сброс/вход на страницу).
         ui.set_set_path_token(ui.get_set_path_token() + 1);
+    }
+
+    fn push_mods(&self, ui: &AppWindow) {
+        let lang = self.lang;
+        let base = self.config.base();
+
+        let mods_dir = base.join("Mods").to_string_lossy().to_string();
+        ui.set_mods_path(mods_dir.as_str().into());
+
+        let rows: Vec<ModRow> = self
+            .mods_list
+            .iter()
+            .enumerate()
+            .map(|(i, m)| ModRow {
+                id: m.id.as_str().into(),
+                meta: format!(
+                    "{} · {}",
+                    fmt(lang, "Mods_CountFmt", &[&m.files.to_string()]),
+                    versions::format_size(m.size)
+                )
+                .into(),
+                enabled: m.enabled,
+                can_up: i > 0,
+                can_down: i + 1 < self.mods_list.len(),
+            })
+            .collect();
+        ui.set_mods_list(ModelRc::new(VecModel::from(rows)));
+
+        match &self.mods_msg {
+            Some((text, err)) => {
+                ui.set_mods_msg(text.as_str().into());
+                ui.set_mods_msg_err(*err);
+            }
+            None => {
+                ui.set_mods_msg("".into());
+                ui.set_mods_msg_err(false);
+            }
+        }
+
+        let any_enabled = self.mods_list.iter().any(|m| m.enabled);
+        ui.set_mods_apply_enabled(self.installed.is_some() && any_enabled);
+        ui.set_mods_revert_enabled(
+            self.installed.is_some() && base.join("Mods/.backup").exists(),
+        );
+
+        let guid = self.installed.clone().unwrap_or_default();
+        let files: Vec<ModFileRow> = self
+            .mods_files
+            .iter()
+            .map(|f| ModFileRow {
+                rel: f.rel.as_str().into(),
+                size: format!("{} B", f.size).into(),
+                status_kind: if guid.is_empty() {
+                    1
+                } else {
+                    match mods::file_status(&base, &guid, &f.rel) {
+                        mods::FileStatus::Applied => 0,
+                        mods::FileStatus::Missing => 1,
+                        mods::FileStatus::Clean => 2,
+                    }
+                },
+            })
+            .collect();
+        ui.set_mods_files(ModelRc::new(VecModel::from(files)));
+        let count = fmt(lang, "Mods_CountFmt", &[&self.mods_files.len().to_string()]);
+        ui.set_mods_files_count(count.as_str().into());
+
+        let profiles = mods::list_profiles(&base);
+        let sel_index = profiles
+            .iter()
+            .position(|n| n == &self.profile_sel)
+            .map(|i| i as i32)
+            .unwrap_or(-1);
+        let sel_valid = sel_index >= 0;
+        let sel_text = if sel_valid {
+            self.profile_sel.clone()
+        } else if !self.config.active_mod_profile.is_empty()
+            && profiles
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(&self.config.active_mod_profile))
+        {
+            self.config.active_mod_profile.clone()
+        } else {
+            tr(lang, "Prof_Select").to_string()
+        };
+        let items: Vec<SharedString> = profiles.iter().cloned().map(Into::into).collect();
+        ui.set_mods_profiles(ModelRc::new(VecModel::from(items)));
+        ui.set_mods_profile_sel_text(sel_text.as_str().into());
+        ui.set_mods_profile_sel_index(sel_index);
+        ui.set_mods_profile_sel_valid(sel_valid);
+        ui.set_mods_profiles_empty(profiles.is_empty());
+    }
+
+    fn push_dlg(&self, ui: &AppWindow) {
+        let lang = self.lang;
+        match &self.save_dlg {
+            None => ui.set_dlg_open(false),
+            Some(Dlg::ModsProfile) => {
+                let base = self.config.base();
+                let n = self.dlg_input.trim();
+                let exists =
+                    !n.is_empty() && mods::list_profiles(&base).iter().any(|p| p == n);
+                ui.set_dlg_open(true);
+                ui.set_dlg_desc(tr(lang, "Prof_SaveAsDesc").into());
+                ui.set_dlg_hint(tr(lang, "Flags_ProfileName").into());
+                ui.set_dlg_ok_label(
+                    (if exists {
+                        tr(lang, "Prof_Overwrite")
+                    } else {
+                        tr(lang, "Prof_Save")
+                    })
+                    .into(),
+                );
+            }
+        }
+    }
+
+    fn push_dlg_input(&self, ui: &AppWindow) {
+        ui.set_dlg_input(self.dlg_input.as_str().into());
     }
 
     // ---- Логи ----
@@ -1186,6 +1580,29 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_cleanup_busy(tr(lang, "Settings_CleanupBusy").into());
     t.set_btn_yes(tr(lang, "Btn_Yes").into());
     t.set_btn_no(tr(lang, "Btn_No").into());
+    t.set_mods_h1(tr(lang, "Mods_H1").into());
+    t.set_mods_sub(tr(lang, "Mods_Sub").into());
+    t.set_mods_where(tr(lang, "Mods_Where").into());
+    t.set_mods_open_folder(tr(lang, "Mods_OpenFolder").into());
+    t.set_mods_refresh(tr(lang, "Mods_Refresh").into());
+    t.set_mods_apply(tr(lang, "Mods_Apply").into());
+    t.set_mods_revert(tr(lang, "Mods_Revert").into());
+    t.set_mods_empty_managed(tr(lang, "Mods_EmptyManaged").into());
+    t.set_mods_no_enabled(tr(lang, "Mods_NoEnabled").into());
+    t.set_mods_up(tr(lang, "Mods_Up").into());
+    t.set_mods_down(tr(lang, "Mods_Down").into());
+    t.set_mods_st_applied(tr(lang, "Mods_StApplied").into());
+    t.set_mods_st_missing(tr(lang, "Mods_StMissing").into());
+    t.set_mods_st_clean(tr(lang, "Mods_StClean").into());
+    t.set_mods_profiles(tr(lang, "Mods_Profiles").into());
+    t.set_mods_profiles_empty(tr(lang, "Mods_ProfilesEmpty").into());
+    t.set_prof_select(tr(lang, "Prof_Select").into());
+    t.set_prof_load(tr(lang, "Prof_Load").into());
+    t.set_prof_save_as(tr(lang, "Prof_SaveAs").into());
+    t.set_prof_delete(tr(lang, "Prof_Delete").into());
+    t.set_prof_export(tr(lang, "Prof_Export").into());
+    t.set_prof_import(tr(lang, "Prof_Import").into());
+    t.set_profile_name_hint(tr(lang, "Flags_ProfileName").into());
     t.set_common_soon(tr(lang, "Common_ComingSoon").into());
 }
 
@@ -1468,6 +1885,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             }
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
+            c.push_confirm(&weak.unwrap());
         });
     }
     {
@@ -1616,6 +2034,9 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
             c.push_home(&weak.unwrap());
+            c.push_confirm(&weak.unwrap());
+            c.push_mods(&weak.unwrap());
+            c.push_dlg(&weak.unwrap());
         });
     }
     {
@@ -1625,6 +2046,192 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             ctx.borrow_mut().confirm_no();
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+
+    // — Моды —
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_mods_open_folder(move || {
+            ctx.borrow().mods_open_folder();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_refresh(move || {
+            {
+                ctx.borrow_mut().refresh_mods();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_apply(move || {
+            {
+                ctx.borrow_mut().start_mods_apply();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_revert(move || {
+            ctx.borrow_mut().confirm = Some(Confirm::RevertMods);
+            let c = ctx.borrow();
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_toggle_mod(move |id: SharedString, on: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.mods_toggle(id.as_str(), on);
+                c.refresh_mods();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_move_mod(move |id: SharedString, d: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.mods_move(id.as_str(), d);
+                c.refresh_mods();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_mods_open_mod_folder(move |id: SharedString| {
+            ctx.borrow().mods_open_mod_folder(id.as_str());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_profile_pick(move |i: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                if i >= 0 {
+                    let names = mods::list_profiles(&c.config.base());
+                    if let Some(n) = names.get(i as usize) {
+                        c.profile_sel = n.clone();
+                    }
+                }
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_profile_load(move || {
+            {
+                ctx.borrow_mut().profile_load_click();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_profile_save_as(move || {
+            {
+                ctx.borrow_mut().open_save_dlg();
+            }
+            let c = ctx.borrow();
+            c.push_dlg(&weak.unwrap());
+            c.push_dlg_input(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_profile_delete(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                if c.profile_sel_valid() {
+                    let name = c.profile_sel.clone();
+                    c.confirm = Some(Confirm::DeleteModProfile(name));
+                }
+            }
+            let c = ctx.borrow();
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_profile_export(move || {
+            {
+                ctx.borrow_mut().profile_export();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_profile_import(move || {
+            {
+                ctx.borrow_mut().profile_import();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+
+    // — Вводной диалог —
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_dlg_edited(move |t: SharedString| {
+            // try_borrow: edited может прийти во время публикации свойств.
+            if let Ok(mut c) = ctx.try_borrow_mut() {
+                c.dlg_input = t.to_string();
+            }
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_dlg_ok(move |t: SharedString| {
+            {
+                ctx.borrow_mut().save_dlg_ok(t.as_str());
+            }
+            let c = ctx.borrow();
+            c.push_dlg(&weak.unwrap());
+            c.push_dlg_input(&weak.unwrap());
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_dlg_cancel(move || {
+            {
+                ctx.borrow_mut().save_dlg_cancel();
+            }
+            let c = ctx.borrow();
+            c.push_dlg(&weak.unwrap());
+            c.push_dlg_input(&weak.unwrap());
         });
     }
 }
@@ -1688,7 +2295,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
         channel_preview: None,
         channel_checking: false,
         confirm: None,
-        pending_channel: None,
         cleanup_busy: false,
         cleanup_msg: None,
         discord,
@@ -1714,6 +2320,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
         ring_seen: 0,
         info_override: None,
         last_page: -1,
+        mods_list: Vec::new(),
+        mods_files: Vec::new(),
+        mods_scanned: false,
+        mods_msg: None,
+        profile_sel: String::new(),
+        save_dlg: None,
+        dlg_input: String::new(),
     }));
 
     wire(&ui, &ctx);
@@ -1749,12 +2362,20 @@ pub fn run() -> Result<(), slint::PlatformError> {
                     c.logs_tick(&ui);
                 }
             }
+            if page == 3 {
+                if !c.mods_scanned {
+                    c.refresh_mods();
+                }
+                c.push_mods(&ui);
+                c.push_dlg(&ui);
+            }
             if page == 5 {
                 c.push_settings(&ui);
             }
             if page == 6 {
                 c.push_about(&ui);
             }
+            c.push_confirm(&ui);
             c.last_page = page;
         });
     }
