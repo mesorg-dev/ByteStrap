@@ -289,6 +289,22 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Pr_DpiDesc" => "Отключить масштабирование интерфейса Windows",
     "Pr_PostFx" => "Без пост-эффектов",
     "Pr_PostFxDesc" => "Отключить bloom и прочие эффекты",
+    // Логи (Slint UI)
+    "Nav_Logs" => "Логи",
+    "Logs_H1" => "Логи",
+    "Logs_Sub" => "Журнал лаунчера и клиента Roblox",
+    "Logs_Launcher" => "Лаунчер",
+    "Logs_Follow" => "Вниз",
+    "Logs_Copied" => "Скопировано в буфер",
+    "Logs_CopyFail" => "Не удалось скопировать",
+    "Logs_Folder" => "Открыть папку",
+    "Logs_Refresh" => "Обновить",
+    "Logs_Search" => "поиск…",
+    "Logs_Empty" => "Пусто — запустите игру, строки появятся здесь",
+    "Logs_Missing" => "Файл лога не найден",
+    "Logs_NoFiles" => "Логов Roblox пока нет — запустите игру",
+    "Logs_LinesFmt" => "{0} строк",
+    "Common_ComingSoon" => "Раздел в разработке",
 });
 
 static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict! {
@@ -517,6 +533,22 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Pr_DpiDesc" => "Disable Windows interface scaling",
     "Pr_PostFx" => "No post FX",
     "Pr_PostFxDesc" => "Disable bloom and other effects",
+    // Logs (Slint UI)
+    "Nav_Logs" => "Logs",
+    "Logs_H1" => "Logs",
+    "Logs_Sub" => "Launcher and Roblox client journal",
+    "Logs_Launcher" => "Launcher",
+    "Logs_Follow" => "Follow",
+    "Logs_Copied" => "Copied to clipboard",
+    "Logs_CopyFail" => "Copy failed",
+    "Logs_Folder" => "Open folder",
+    "Logs_Refresh" => "Refresh",
+    "Logs_Search" => "search…",
+    "Logs_Empty" => "Empty — start the game and lines will appear here",
+    "Logs_Missing" => "Log file not found",
+    "Logs_NoFiles" => "No Roblox logs yet — start the game",
+    "Logs_LinesFmt" => "{0} lines",
+    "Common_ComingSoon" => "Section in development",
 });
 
 pub fn tr(lang: Lang, key: &'static str) -> &'static str {

@@ -1,0 +1,197 @@
+// Корневое окно ByteStrap (Slint): frameless, кастомный titlebar + сайдбар,
+// переключение страниц, состояние и колбэки — из контроллера src/app_slint.rs.
+
+import "../assets/fonts/Inter-Regular.ttf";
+import "../assets/fonts/Inter-Bold.ttf";
+import "../assets/fonts/JetBrainsMono-Regular.ttf";
+import "../assets/fonts/JetBrainsMono-Bold.ttf";
+import "../assets/fonts/Unbounded-Regular.ttf";
+import "../assets/fonts/Unbounded-Bold.ttf";
+
+import { Theme } from "theme.slint";
+import { T } from "i18n.slint";
+export { T } from "i18n.slint";
+import { TitleBar } from "titlebar.slint";
+import { SideBar } from "sidebar.slint";
+import { HomePage } from "pages/home.slint";
+import { LogsPage } from "pages/logs.slint";
+import { PlaceholderPage } from "pages/placeholder.slint";
+import { PlaceRow, LogLine } from "models.slint";
+
+export component AppWindow inherits Window {
+    title: "ByteStrap";
+    no-frame: true;
+    resize-border-width: 6px;
+    min-width: 940px;
+    min-height: 580px;
+    preferred-width: 1120px;
+    preferred-height: 700px;
+    background: Theme.bg;
+    default-font-family: Theme.font;
+
+    // ===== Состояние (заполняет контроллер) =====
+    in-out property <int> page: 0;
+
+    in-out property <string> status-text: "";
+    in-out property <int> status-dot: 0;
+    in-out property <bool> busy: false;
+    in-out property <bool> show-update: false;
+    in-out property <string> primary-label;
+    in-out property <float> progress: 0;
+    in-out property <string> progress-text: "";
+    in-out property <string> link-msg: "";
+    in-out property <bool> link-msg-bad: false;
+    in-out property <string> link-paste-text: "";
+    in-out property <int> link-paste-token: 0;
+    in-out property <string> version-text: "";
+    in-out property <string> mods-count: "0";
+    in-out property <string> flags-count: "0";
+    in-out property <string> hours-count: "0";
+    in-out property <[PlaceRow]> top-places: [];
+
+    in-out property <[LogLine]> log-lines: [];
+    in-out property <[string]> log-files: [];
+    in-out property <int> log-selected: 0;
+    in-out property <bool> log-follow: true;
+    in-out property <string> log-info: "";
+    in-out property <bool> log-missing: false;
+    in-out property <int> log-jump-token: 0;
+
+    // ===== Колбэки контроллеру =====
+    callback close-request();
+    callback link-changed();
+    callback win-min();
+    callback win-max();
+    callback titlebar-drag();
+    callback primary();
+    callback update-client();
+    callback cancel-install();
+    callback link-go(string);
+    callback link-paste();
+    callback log-select(int);
+    callback log-refresh();
+    callback log-copy();
+    callback log-folder();
+    callback log-follow-toggle();
+    callback log-search(string);
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: Theme.bg;
+
+        TitleBar {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: Theme.titlebar-h;
+            status: root.status-text;
+            win-min => { root.win-min(); }
+            win-max => { root.win-max(); }
+            drag => { root.titlebar-drag(); }
+            close-request => { root.close-request(); }
+        }
+
+        SideBar {
+            x: 0;
+            y: Theme.titlebar-h;
+            width: Theme.sidebar-w;
+            height: parent.height - Theme.titlebar-h;
+            page: root.page;
+            navigate(p) => { root.page = p; }
+        }
+
+        Rectangle {
+            x: Theme.sidebar-w;
+            y: Theme.titlebar-h;
+            width: parent.width - Theme.sidebar-w;
+            height: parent.height - Theme.titlebar-h;
+            background: Theme.bg;
+
+            Rectangle {
+                x: 32px;
+                y: 26px;
+                width: parent.width - 64px;
+                height: parent.height - 52px;
+
+                if root.page == 0 : HomePage {
+                    width: 100%;
+                    height: 100%;
+                    status-text: root.status-text;
+                    status-dot: root.status-dot;
+                    busy: root.busy;
+                    show-update: root.show-update;
+                    primary-label: root.primary-label;
+                    progress: root.progress;
+                    progress-text: root.progress-text;
+                    link-msg: root.link-msg;
+                    link-msg-bad: root.link-msg-bad;
+                    paste-text: root.link-paste-text;
+                    paste-token: root.link-paste-token;
+                    version-text: root.version-text;
+                    mods-count: root.mods-count;
+                    flags-count: root.flags-count;
+                    hours-count: root.hours-count;
+                    top-places: root.top-places;
+                    primary => { root.primary(); }
+                    update-client => { root.update-client(); }
+                    cancel => { root.cancel-install(); }
+                    link-go(url) => { root.link-go(url); }
+                    link-changed => { root.link-changed(); }
+                    link-paste => { root.link-paste(); }
+                }
+
+                if root.page == 4 : LogsPage {
+                    width: 100%;
+                    height: 100%;
+                    lines: root.log-lines;
+                    files: root.log-files;
+                    selected: root.log-selected;
+                    follow: root.log-follow;
+                    info-text: root.log-info;
+                    missing: root.log-missing;
+                    jump-token: root.log-jump-token;
+                    select-file(i) => { root.log-select(i); }
+                    refresh => { root.log-refresh(); }
+                    copy => { root.log-copy(); }
+                    open-folder => { root.log-folder(); }
+                    follow-toggle => { root.log-follow-toggle(); }
+                    search-edited(q) => { root.log-search(q); }
+                }
+
+                if root.page == 1 : PlaceholderPage {
+                    width: 100%;
+                    height: 100%;
+                    icon: 1;
+                    name: T.nav_flags;
+                }
+                if root.page == 2 : PlaceholderPage {
+                    width: 100%;
+                    height: 100%;
+                    icon: 2;
+                    name: T.nav_versions;
+                }
+                if root.page == 3 : PlaceholderPage {
+                    width: 100%;
+                    height: 100%;
+                    icon: 3;
+                    name: T.nav_mods;
+                }
+                if root.page == 5 : PlaceholderPage {
+                    width: 100%;
+                    height: 100%;
+                    icon: 5;
+                    name: T.nav_settings;
+                }
+                if root.page == 6 : PlaceholderPage {
+                    width: 100%;
+                    height: 100%;
+                    icon: 6;
+                    name: T.nav_about;
+                }
+            }
+        }
+    }
+}

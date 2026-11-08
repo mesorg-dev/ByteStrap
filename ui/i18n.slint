@@ -1,0 +1,53 @@
+// Строки интерфейса (RU по умолчанию; контроллер перезаписывает при старте
+// из src/i18n.rs по выбранному языку). Динамические строки (статус, версия)
+// приходят в корневые свойства AppWindow — сюда они не входят.
+
+export global T {
+    // Навигация
+    in-out property <string> nav_home: "Главная";
+    in-out property <string> nav_flags: "FastFlags";
+    in-out property <string> nav_versions: "Версии";
+    in-out property <string> nav_mods: "Моды";
+    in-out property <string> nav_logs: "Логи";
+    in-out property <string> nav_settings: "Настройки";
+    in-out property <string> nav_about: "О программе";
+
+    // Titlebar
+    in-out property <string> app_sub: "R O B L O X";
+    in-out property <string> win_min: "Свернуть";
+    in-out property <string> win_max: "Развернуть";
+    in-out property <string> win_close: "Закрыть";
+    in-out property <string> footer_ready: "готов";
+
+    // Кнопки
+    in-out property <string> btn_cancel: "Отмена";
+    in-out property <string> btn_copy: "Копировать";
+
+    // Home
+    in-out property <string> home_h1: "Главная";
+    in-out property <string> home_sub: "Установка и запуск клиента";
+    in-out property <string> home_play: "Играть";
+    in-out property <string> home_install: "Установить";
+    in-out property <string> home_update: "Обновить";
+    in-out property <string> home_link_hint: "ссылка на место / приватку / сервер…";
+    in-out property <string> home_link_go: "Запустить";
+    in-out property <string> home_link_paste: "Вставить";
+    in-out property <string> home_places: "ВРЕМЯ ПО МЕСТАМ";
+
+    // Логи
+    in-out property <string> logs_h1: "Логи";
+    in-out property <string> logs_sub: "Журнал лаунчера и клиента Roblox";
+    in-out property <string> logs_launcher: "Лаунчер";
+    in-out property <string> logs_follow: "Вниз";
+    in-out property <string> logs_copied: "Скопировано в буфер";
+    in-out property <string> logs_copy_fail: "Не удалось скопировать";
+    in-out property <string> logs_folder: "Открыть папку";
+    in-out property <string> logs_refresh: "Обновить";
+    in-out property <string> logs_search: "поиск…";
+    in-out property <string> logs_empty: "Пусто — запустите игру, строки появятся здесь";
+    in-out property <string> logs_missing: "Файл лога не найден";
+    in-out property <string> logs_no_files: "Логов Roblox пока нет — запустите игру";
+
+    // Прочее
+    in-out property <string> common_soon: "Раздел в разработке";
+}

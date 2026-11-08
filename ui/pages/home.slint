@@ -1,0 +1,316 @@
+// Главная: статус-карточка (играть/установить/обновить, прогресс, ссылка),
+// счётчики и топ мест по времени. Данные приходят свойствами из контроллера.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Btn, TextField, ProgressBar, StatusDot } from "../widgets.slint";
+import { PlaceRow } from "../models.slint";
+
+export component HomePage inherits Rectangle {
+    in-out property <string> status-text;
+    in-out property <int> status-dot: 0;
+    in-out property <bool> busy: false;
+    in-out property <bool> show-update: false;
+    in-out property <string> primary-label;
+    in-out property <float> progress: 0;
+    in-out property <string> progress-text;
+    in-out property <string> link-msg;
+    in-out property <bool> link-msg-bad: false;
+    /// Текст из буфера обмена (пушит контроллер) + токен вставки.
+    in-out property <string> paste-text;
+    in-out property <int> paste-token: 0;
+
+    changed paste-token => {
+        link-input.text = root.paste-text;
+    }
+    in-out property <string> version-text;
+    in-out property <string> mods-count;
+    in-out property <string> flags-count;
+    in-out property <string> hours-count;
+    in-out property <[PlaceRow]> top-places;
+
+    callback primary();
+    callback update-client();
+    callback cancel();
+    callback link-go(string);
+    callback link-paste();
+    callback link-changed();
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Text {
+            text: T.home_h1;
+            font-family: Theme.font-display;
+            font-weight: 700;
+            font-size: 23px;
+            color: Theme.fg;
+        }
+        Rectangle { height: 4px; }
+        Text {
+            text: T.home_sub;
+            font-size: 13px;
+            color: Theme.fg-dim;
+        }
+        Rectangle { height: 14px; }
+
+        // ===== Карточка статуса =====
+        Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r-card;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+
+                // Строка: точка + статус + кнопки справа.
+                Rectangle {
+                    height: 44px;
+
+                    HorizontalLayout {
+                        spacing: 10px;
+
+                        StatusDot {
+                            kind: root.status-dot;
+                            horizontal-stretch: 0;
+                        }
+
+                        Text {
+                            text: root.status-text;
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            color: Theme.fg-dim;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+
+                        if root.busy : Btn {
+                            label: T.btn_cancel;
+                            kind: 2;
+                            width: 110px;
+                            horizontal-stretch: 0;
+                            clicked => { root.cancel(); }
+                        }
+
+                        if !root.busy && root.show-update : Btn {
+                            label: T.home_update;
+                            kind: 1;
+                            width: 150px;
+                            horizontal-stretch: 0;
+                            clicked => { root.update-client(); }
+                        }
+
+                        if !root.busy && root.show-update : Btn {
+                            label: T.home_play;
+                            kind: 2;
+                            width: 150px;
+                            horizontal-stretch: 0;
+                            clicked => { root.primary(); }
+                        }
+
+                        if !root.busy && !root.show-update : Btn {
+                            label: root.primary-label;
+                            kind: 0;
+                            width: 190px;
+                            horizontal-stretch: 0;
+                            clicked => { root.primary(); }
+                        }
+                    }
+                }
+
+                // Прогресс установки.
+                if root.busy : Rectangle {
+                    height: root.progress-text == "" ? 6px : 24px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        ProgressBar {
+                            value: root.progress;
+                        }
+                        if root.progress-text != "" : Text {
+                            text: root.progress-text;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dim;
+                        }
+                    }
+                }
+
+                // Строка «запуск по ссылке».
+                Rectangle {
+                    height: 26px;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+
+                        link-input := TextField {
+                            height: 26px;
+                            placeholder: T.home_link_hint;
+                            horizontal-stretch: 1;
+                            accepted => { root.link-go(self.text); }
+                            edited => { root.link-changed(); }
+                        }
+
+                        Btn {
+                            label: T.home_link_paste;
+                            kind: 2;
+                            width: 74px;
+                            height: 26px;
+                            horizontal-stretch: 0;
+                            clicked => { root.link-paste(); }
+                        }
+
+                        Btn {
+                            label: T.home_link_go;
+                            kind: 1;
+                            width: 84px;
+                            height: 26px;
+                            horizontal-stretch: 0;
+                            clicked => { root.link-go(link-input.text); }
+                        }
+                    }
+                }
+
+                if root.link-msg != "" : Text {
+                    text: root.link-msg;
+                    font-size: 11px;
+                    color: root.link-msg-bad ? Theme.bad : Theme.good;
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+
+                Text {
+                    text: root.version-text;
+                    font-family: Theme.font-mono;
+                    font-size: 12px;
+                    color: Theme.fg-dimmer;
+                }
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        // ===== Счётчики =====
+        Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r-card;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 0px;
+
+                HorizontalLayout {
+                    spacing: 48px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        horizontal-stretch: 0;
+                        spacing: 0px;
+                        Text {
+                            text: root.mods-count;
+                            font-family: Theme.font-display;
+                            font-weight: 700;
+                            font-size: 26px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: "MODS";
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
+                    }
+
+                    VerticalLayout {
+                        horizontal-stretch: 0;
+                        spacing: 0px;
+                        Text {
+                            text: root.flags-count;
+                            font-family: Theme.font-display;
+                            font-weight: 700;
+                            font-size: 26px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: "FLAGS";
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
+                    }
+
+                    VerticalLayout {
+                        horizontal-stretch: 0;
+                        spacing: 0px;
+                        Text {
+                            text: root.hours-count;
+                            font-family: Theme.font-display;
+                            font-weight: 700;
+                            font-size: 26px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: "HOURS";
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ===== Топ мест =====
+        if root.top-places.length > 0 : Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r-card;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 8px;
+
+                Text {
+                    text: T.home_places;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    color: Theme.fg-dimmer;
+                }
+
+                for place in root.top-places : Rectangle {
+                    height: 20px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: place.name;
+                            font-size: 13px;
+                            color: Theme.fg;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: place.duration;
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            color: Theme.fg-dim;
+                            horizontal-stretch: 0;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -37,6 +37,9 @@ serde_json = "1"
 zip = "9"
 dirs = "7"
 anyhow = "1"
+# Slint: новый UI-слой (ветка feat/slint-ui). Без фич — иначе
+# unstable-winit-030 не собирается под Android (см. секцию Windows ниже).
+slint = "1.18"
 
 # eframe/accesskit на Android требует game-activity (C++, не линкуется
 # в Termux) — поэтому accesskit только для Windows, а Android-бэкенд
@@ -46,6 +49,11 @@ eframe = { version = "0.37", default-features = false, features = ["accesskit"] 
 rfd = "0.17"
 arboard = { version = "3", default-features = false }
 winreg = "0.55"
+# Локальное время для launcher.log (GetLocalTime); версия уже есть в дереве.
+windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+# Winit-доступ для frameless-окна (drag/min/max); только Windows —
+# unstable-winit-030 в slint не собирается под android.
+slint = { version = "1.18", features = ["unstable-winit-030"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 eframe = { version = "0.37", default-features = false, features = [
@@ -54,6 +62,7 @@ eframe = { version = "0.37", default-features = false, features = [
 
 [build-dependencies]
 winresource = "0.1"
+slint-build = "1.18"
 
 [dev-dependencies]
 tempfile = "3"

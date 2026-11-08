@@ -1,0 +1,259 @@
+// Страница «Логи»: журнал лаунчера и клиент Roblox.
+// Тулбар (файл, поиск, автопрокрутка, копирование, папка, обновление),
+// монострочный список с цветными уровнями, зеброй и автопрокруткой вниз.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Btn, IconBtn, TextField } from "../widgets.slint";
+import { LogLine } from "../models.slint";
+
+export global LogStyle {
+    pure public function color-of(level: int) -> color {
+        level == 3 ? Theme.bad
+            : level == 2 ? Theme.warn
+            : level == 0 ? Theme.fg-dimmer
+            : #c6c6ce
+    }
+
+    pure public function label-of(level: int) -> string {
+        level == 3 ? "ERR" : level == 2 ? "WARN" : level == 0 ? "DBG" : "INFO"
+    }
+}
+
+component FileSeg inherits Rectangle {
+    in-out property <string> label;
+    in-out property <bool> selected: false;
+    callback clicked;
+
+    height: 30px;
+    border-radius: Theme.r-soft;
+    background: root.selected
+        ? Theme.line-soft
+        : (touch.has-hover ? Theme.line-soft.transparentize(0.5) : transparent);
+    animate background { duration: 100ms; }
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.good;
+    animate border-color { duration: 100ms; }
+
+    Text {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: parent.height;
+        text: root.label;
+        font-size: 11.5px;
+        font-family: Theme.font-mono;
+        color: root.selected ? Theme.fg : Theme.fg-dim;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component LogsPage inherits Rectangle {
+    in-out property <[LogLine]> lines;
+    in-out property <[string]> files;
+    in-out property <int> selected: 0;
+    in-out property <bool> follow: true;
+    in-out property <string> info-text;
+    in-out property <bool> missing: false;
+    /// Токен автопрокрутки: контроллер инкрементирует — прыжок вниз.
+    in-out property <int> jump-token: 0;
+
+    callback select-file(int);
+    callback refresh();
+    callback copy();
+    callback open-folder();
+    callback follow-toggle();
+    callback search-edited(string);
+
+    // Автопрокрутка при обновлении хвоста.
+    changed jump-token => {
+        flick.content-y = -max(0px, flick.content-height - flick.height);
+    }
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Text {
+            text: T.logs_h1;
+            font-family: Theme.font-display;
+            font-weight: 700;
+            font-size: 23px;
+            color: Theme.fg;
+        }
+        Rectangle { height: 4px; }
+        Text {
+            text: T.logs_sub;
+            font-size: 13px;
+            color: Theme.fg-dim;
+        }
+        Rectangle { height: 14px; }
+
+        // ===== Тулбар =====
+        Rectangle {
+            height: 34px;
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                // Файлы (максимум 5, новые сверху).
+                for file-name[i] in root.files : FileSeg {
+                    width: 150px;
+                    horizontal-stretch: 0;
+                    label: file-name;
+                    selected: i == root.selected;
+                    clicked => { root.select-file(i); }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 1px;
+                }
+
+                TextField {
+                    width: 200px;
+                    horizontal-stretch: 0;
+                    placeholder: T.logs_search;
+                    accepted => { root.search-edited(self.text); }
+                    edited => { root.search-edited(self.text); }
+                }
+
+                Btn {
+                    width: 84px;
+                    height: 30px;
+                    horizontal-stretch: 0;
+                    kind: 2;
+                    active: root.follow;
+                    label: T.logs_follow;
+                    clicked => { root.follow-toggle(); }
+                }
+
+                IconBtn {
+                    icon: 2;
+                    horizontal-stretch: 0;
+                    tip: T.btn_copy;
+                    clicked => { root.copy(); }
+                }
+                IconBtn {
+                    icon: 1;
+                    horizontal-stretch: 0;
+                    tip: T.logs_folder;
+                    clicked => { root.open-folder(); }
+                }
+                IconBtn {
+                    icon: 0;
+                    horizontal-stretch: 0;
+                    tip: T.logs_refresh;
+                    clicked => { root.refresh(); }
+                }
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        // ===== Список строк =====
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.bg;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r-card;
+            clip: true;
+
+            flick := Flickable {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                content-width: self.width;
+                content-height: root.lines.length * 17px;
+
+                for line[i] in root.lines : Rectangle {
+                    x: 0;
+                    y: i * 17px;
+                    width: flick.width;
+                    height: 17px;
+                    background: line.zebra ? Theme.panel-alt : transparent;
+
+                    Text {
+                        x: 10px;
+                        y: 0;
+                        width: 60px;
+                        height: parent.height;
+                        text: line.time;
+                        font-family: Theme.font-mono;
+                        font-size: 10.5px;
+                        color: Theme.fg-dimmer;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        x: 74px;
+                        y: 0;
+                        width: 42px;
+                        height: parent.height;
+                        text: LogStyle.label-of(line.level);
+                        font-family: Theme.font-mono;
+                        font-weight: 700;
+                        font-size: 10.5px;
+                        color: LogStyle.color-of(line.level);
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        x: 122px;
+                        y: 0;
+                        width: parent.width - 132px;
+                        height: parent.height;
+                        text: line.text;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        color: LogStyle.color-of(line.level);
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // Пустое состояние.
+            if root.lines.length == 0 : Text {
+                x: 0;
+                width: parent.width;
+                y: (parent.height - 20px) / 2;
+                height: 20px;
+                text: root.missing ? T.logs_missing : T.logs_empty;
+                font-family: Theme.font-mono;
+                font-size: 12px;
+                color: Theme.fg-dimmer;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Rectangle { height: 8px; }
+
+        // ===== Строка состояния =====
+        Rectangle {
+            height: 16px;
+            Text {
+                x: 2px;
+                y: 0;
+                width: parent.width - 4px;
+                height: parent.height;
+                text: root.info-text;
+                font-family: Theme.font-mono;
+                font-size: 11px;
+                color: Theme.fg-dimmer;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

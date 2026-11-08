@@ -5,6 +5,8 @@ pub mod deploy;
 pub mod discord;
 pub mod flags;
 pub mod launcher;
+pub mod logview;
+pub mod logger;
 pub mod mods;
 pub mod playtime;
 pub mod presets;

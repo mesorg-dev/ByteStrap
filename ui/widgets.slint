@@ -1,0 +1,173 @@
+// Переиспользуемые виджеты: кнопки, поле ввода, прогресс, точка статуса.
+
+import { Theme } from "theme.slint";
+import { IconRefresh, IconFolder, IconCopy } from "icons.slint";
+
+/// Основная кнопка.
+/// kind: 0 — акцентная (зелёная), 1 — светлая, 2 — призрачная (с рамкой).
+export component Btn inherits Rectangle {
+    in-out property <string> label;
+    in-out property <int> kind: 0;
+    in-out property <bool> enabled: true;
+    /// Подсветка для toggle-состояния (kind 2).
+    in-out property <bool> active: false;
+    callback clicked;
+
+    height: 44px;
+    border-radius: Theme.r-soft;
+    background: root.kind == 0
+        ? (root.enabled && touch.has-hover ? Theme.good.brighter(0.08) : Theme.good)
+        : root.kind == 1
+            ? (root.enabled && touch.has-hover ? #ffffff : Theme.fg)
+            : (root.active && touch.has-hover ? Theme.line-soft.brighter(0.3)
+                : root.active ? Theme.line-soft
+                : (touch.has-hover ? Theme.line-soft.transparentize(0.5) : transparent));
+    animate background { duration: 100ms; }
+    border-width: root.kind == 2 ? 1px : (root.kind == 1 ? 1px : 0px);
+    border-color: root.kind == 2
+        ? (root.active ? Theme.good : Theme.line)
+        : (root.enabled && touch.has-hover ? Theme.fg : Theme.fg-dimmer);
+    animate border-color { duration: 100ms; }
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.label;
+        font-size: 13px;
+        font-weight: root.kind == 0 ? 700 : 600;
+        color: root.kind == 0 ? Theme.on-accent
+            : root.kind == 1 ? Theme.bg
+            : (root.active ? Theme.good : Theme.fg);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Иконочная кнопка 30×30 в тулбаре. icon: 0 — обновить, 1 — папка, 2 — копировать.
+export component IconBtn inherits Rectangle {
+    in-out property <int> icon: 0;
+    in-out property <string> tip;
+    callback clicked;
+
+    width: 30px;
+    height: 30px;
+    border-radius: Theme.r-soft;
+    background: touch.has-hover ? Theme.line-soft : transparent;
+    animate background { duration: 100ms; }
+
+    if root.icon == 0 : IconRefresh {
+        x: (parent.width - 16px) / 2;
+        y: (parent.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        c: Theme.fg-dim;
+    }
+    if root.icon == 1 : IconFolder {
+        x: (parent.width - 16px) / 2;
+        y: (parent.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        c: Theme.fg-dim;
+    }
+    if root.icon == 2 : IconCopy {
+        x: (parent.width - 16px) / 2;
+        y: (parent.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        c: Theme.fg-dim;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.clicked(); }
+        Tooltip {
+            text: @markdown("\{root.tip}");
+        }
+    }
+}
+
+/// Поле ввода с плейсхолдером.
+export component TextField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in-out property <string> placeholder;
+    callback accepted;
+    callback edited;
+
+    height: 30px;
+    border-radius: Theme.r-soft;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.good : Theme.line;
+    animate border-color { duration: 120ms; }
+
+    input := TextInput {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: parent.height;
+        single-line: true;
+        font-size: 12px;
+        font-family: Theme.font;
+        color: Theme.fg;
+        accepted => { root.accepted(); }
+        edited => { root.edited(); }
+    }
+
+    Text {
+        x: 10px;
+        y: 0;
+        width: parent.width - 20px;
+        height: parent.height;
+        visible: root.text == "";
+        text: root.placeholder;
+        font-size: 12px;
+        font-family: Theme.font;
+        color: Theme.fg-dimmer;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+/// Тонкий прогресс-бар (0..1).
+export component ProgressBar inherits Rectangle {
+    in-out property <float> value: 0;
+
+    height: 6px;
+    border-radius: 3px;
+    background: Theme.line;
+    clip: true;
+
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * min(max(root.value, 0.0), 1.0);
+        height: parent.height;
+        border-radius: 3px;
+        background: Theme.good;
+        animate width { duration: 200ms; easing: ease-in-out; }
+    }
+}
+
+/// Точка статуса: 0 — неактивно, 1 — готово, 2 — занято, 3 — ошибка.
+export component StatusDot inherits Rectangle {
+    in-out property <int> kind: 0;
+
+    width: 12px;
+    height: 12px;
+    background: root.kind == 1 ? Theme.good
+        : root.kind == 2 ? Theme.warn
+        : root.kind == 3 ? Theme.bad
+        : Theme.fg-dimmer;
+    border-radius: 6px;
+    animate background { duration: 200ms; }
+}
