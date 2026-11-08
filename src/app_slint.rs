@@ -1,9 +1,8 @@
-//! Контроллер Slint-интерфейса (Фаза 0 прототипа).
+//! Контроллер интерфейса (единственный UI-слой, Фаза 2 — egui удалён).
 //!
-//! Вся логика лаунчера живёт здесь: статус, установка, запуск, счётчики,
-//! страница «Логи» (tail/follow файлов Roblox + кольцевой буфер лаунчера).
-//! .slint-файлы — только отрисовка. egui-интерфейс (`src/app.rs`)
-//! остаётся основным до завершения миграции.
+//! Вся логика лаунчера живёт здесь: статус, установка, запуск, сессия игры,
+//! счётчики, страница «Логи» (tail/follow файлов Roblox + кольцевой буфер
+//! лаунчера). .slint-файлы — только отрисовка.
 
 slint::include_modules!();
 
@@ -20,13 +19,63 @@ use std::time::{Duration, Instant};
 use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
-use crate::app::{effective_installed, AsyncEvent, InstallUi, UpdateUi};
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::flags::FlagError;
 use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
+
+// ===== Общие типы (перенесены из src/app.rs в Фазе 2) =====
+
+pub enum AsyncEvent {
+    Latest(Result<deploy::ClientVersion, String>),
+    Install(deploy::Event),
+    UpdateCheck(Result<Option<updater::AppRelease>, String>),
+    UpdateProgress { done: u64, total: u64 },
+    UpdateDone(Result<(), String>),
+    ChannelPreview(Result<deploy::ClientVersion, String>),
+    ModsDone(Result<mods::ApplyStats, String>),
+    /// Загрузка профиля модов завершена: (имя, статистика применения).
+    ProfileLoaded(Result<(String, Option<mods::ApplyStats>), String>),
+    /// Очистка мусора завершена: (байт, файлов).
+    CleanupDone(u64, usize),
+    Session(SessionEvent),
+}
+
+/// Состояние карточки «обновление лаунчера» на странице About.
+#[derive(Default)]
+pub enum UpdateUi {
+    #[default]
+    Idle,
+    Checking,
+    Found(updater::AppRelease),
+    UpToDate,
+    Downloading { done: u64, total: u64 },
+    Error(String),
+}
+
+#[derive(Default)]
+pub struct InstallUi {
+    pub active: bool,
+    pub phase: deploy::Phase,
+    pub done: u64,
+    pub total: u64,
+    pub error: Option<String>,
+}
+
+/// Активная версия клиента с проверкой целостности установки.
+pub fn effective_installed(config: &Config) -> Option<String> {
+    let base = config.base();
+    let iv = &config.installed_version;
+    if !iv.is_empty() && versions::is_version_guid(iv) {
+        let dir = base.join("Versions").join(iv);
+        if dir.join(deploy::PLAYER_EXE).exists() && dir.join("AppSettings.xml").exists() {
+            return Some(iv.clone());
+        }
+    }
+    versions::find_installed(&base)
+}
 
 // ===== Состояние =====
 
@@ -3390,7 +3439,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
 
 // ===== Точка входа =====
 
-/// Точка входа нового интерфейса (бинарник `bytestrap-slint`).
+/// Точка входа: основной (и единственный) бинарник `bytestrap`.
 pub fn run() -> Result<(), slint::PlatformError> {
     logger::info("Интерфейс Slint запущен");
 
