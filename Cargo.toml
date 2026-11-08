@@ -50,7 +50,10 @@ rfd = "0.17"
 arboard = { version = "3", default-features = false }
 winreg = "0.55"
 # Локальное время для launcher.log (GetLocalTime); версия уже есть в дереве.
-windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_System_SystemInformation",
+    "Win32_Foundation",
+] }
 # Winit-доступ для frameless-окна (drag/min/max); только Windows —
 # unstable-winit-030 в slint не собирается под android.
 slint = { version = "1.18", features = ["unstable-winit-030"] }

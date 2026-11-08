@@ -8,6 +8,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
+#[cfg(not(windows))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const LEVEL_DEBUG: u8 = 0;
@@ -50,7 +51,8 @@ pub fn tag(level: u8) -> &'static str {
 fn now_hms() -> String {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::System::SystemInformation::{GetLocalTime, SYSTEMTIME};
+        use windows_sys::Win32::Foundation::SYSTEMTIME;
+        use windows_sys::Win32::System::SystemInformation::GetLocalTime;
         unsafe {
             let mut st: SYSTEMTIME = std::mem::zeroed();
             GetLocalTime(&mut st);
