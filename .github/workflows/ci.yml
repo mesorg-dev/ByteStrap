@@ -1,10 +1,11 @@
 name: ci
 
 # Сборка + тесты на каждый push/PR в main: ловим сломанный код
-# (в том числе windows-only ветки) до релиза.
+# (в том числе windows-only ветки) до релиза. feat/slint-ui — чтобы
+# гнать Windows-сборку и до мержа UI-ветки.
 on:
   push:
-    branches: [main]
+    branches: [main, feat/slint-ui]
   pull_request:
     branches: [main]
 
