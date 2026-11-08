@@ -19,11 +19,11 @@ use std::time::{Duration, Instant};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
-use crate::app::{effective_installed, AsyncEvent, InstallUi};
+use crate::app::{effective_installed, AsyncEvent, InstallUi, UpdateUi};
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime};
-use crate::core::{deploy, flags, launcher, logger, mods, roblox_link, versions};
+use crate::core::{deploy, flags, launcher, logger, mods, roblox_link, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 
 // ===== Состояние =====
@@ -35,6 +35,11 @@ struct Ctx {
     installed: Option<String>,
     latest: Option<deploy::ClientVersion>,
     install: InstallUi,
+    update: UpdateUi,
+    /// Выбранная в таблице версия (страница «Версии»).
+    selected_version: Option<String>,
+    /// Результат последней проверки целостности.
+    integrity: Option<versions::IntegrityReport>,
     quit: bool,
     pending_launch: Option<String>,
     mods_count: usize,
@@ -226,6 +231,31 @@ impl Ctx {
                     "Не удалось получить актуальную версию клиента: {e}"
                 )),
                 AsyncEvent::Install(ev) => self.on_install(ev),
+                AsyncEvent::UpdateCheck(res) => {
+                    self.update = match res {
+                        Ok(Some(rel)) => {
+                            if updater::is_newer(updater::current_version(), &rel.tag) {
+                                UpdateUi::Found(rel)
+                            } else {
+                                UpdateUi::UpToDate
+                            }
+                        }
+                        Ok(None) => UpdateUi::UpToDate,
+                        Err(e) => UpdateUi::Error(e),
+                    };
+                }
+                AsyncEvent::UpdateProgress { done, total } => {
+                    if matches!(self.update, UpdateUi::Downloading { .. }) {
+                        self.update = UpdateUi::Downloading { done, total };
+                    }
+                }
+                AsyncEvent::UpdateDone(res) => match res {
+                    Ok(()) => {
+                        self.update = UpdateUi::Idle;
+                        self.quit = true;
+                    }
+                    Err(e) => self.update = UpdateUi::Error(e),
+                },
                 _ => {}
             }
         }
@@ -287,6 +317,161 @@ impl Ctx {
                 self.pending_launch = None;
             }
         }
+    }
+
+    // ---- Обновления лаунчера (порт src/app.rs) ----
+
+    fn check_updates(&mut self) {
+        if matches!(
+            self.update,
+            UpdateUi::Checking | UpdateUi::Downloading { .. }
+        ) {
+            return;
+        }
+        self.update = UpdateUi::Checking;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime");
+            let res = rt.block_on(updater::get_latest()).map_err(|e| e.to_string());
+            let _ = tx.send(AsyncEvent::UpdateCheck(res));
+        });
+    }
+
+    /// Скачать релиз и перезапуститься (bat подменит exe после выхода).
+    fn start_update(&mut self, rel: updater::AppRelease) {
+        if matches!(self.update, UpdateUi::Downloading { .. }) {
+            return;
+        }
+        self.update = UpdateUi::Downloading {
+            done: 0,
+            total: 0,
+        };
+        let tx = self.tx.clone();
+        let dest = std::env::temp_dir().join("bytestrap-update.exe");
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime");
+            let ptx = tx.clone();
+            let res = rt
+                .block_on(updater::download(&rel.download_url, &dest, move |done, total| {
+                    let _ = ptx.send(AsyncEvent::UpdateProgress { done, total });
+                }))
+                .map_err(|e| e.to_string());
+            let done = match res {
+                Ok(()) => updater::install_and_restart(&dest).map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            };
+            let _ = tx.send(AsyncEvent::UpdateDone(done));
+        });
+    }
+
+    // ---- Версии (порт src/app.rs) ----
+
+    fn activate_version(&mut self, guid: &str) {
+        if !versions::is_version_guid(guid) {
+            return;
+        }
+        let old = std::mem::take(&mut self.config.installed_version);
+        if !old.is_empty() && old != guid {
+            self.config.previous_version = old;
+        }
+        self.config.installed_version = guid.to_string();
+        self.config.save();
+        self.installed = effective_installed(&self.config);
+        self.integrity = None;
+        self.refresh_counters();
+        logger::info(format!("Активирована версия {guid}"));
+    }
+
+    fn delete_version(&mut self, guid: &str) {
+        if self.install.active || Some(guid) == self.installed.as_deref() {
+            return;
+        }
+        if versions::delete(&self.config.base(), guid).is_ok() {
+            logger::info(format!("Версия {guid} удалена"));
+            if self.config.installed_version == guid {
+                self.config.installed_version.clear();
+                self.config.save();
+            }
+            if self.selected_version.as_deref() == Some(guid) {
+                self.selected_version = None;
+            }
+            self.integrity = None;
+            self.installed = effective_installed(&self.config);
+            self.refresh_counters();
+        }
+    }
+
+    fn check_integrity(&mut self) {
+        let Some(guid) = self
+            .selected_version
+            .clone()
+            .or_else(|| effective_installed(&self.config))
+        else {
+            return;
+        };
+        let dir = self.config.base().join("Versions").join(guid);
+        self.integrity = versions::check(&dir).ok();
+        logger::info("Проверка целостности завершена");
+    }
+
+    fn start_repair(&mut self, guid: String) {
+        if self.install.active {
+            return;
+        }
+        logger::info(format!("Запущен ремонт версии {guid}"));
+        self.install = InstallUi {
+            active: true,
+            phase: deploy::Phase::Check,
+            done: 0,
+            total: 0,
+            error: None,
+        };
+
+        let cfg = self.config.clone();
+        let repair_for = effective_installed(&self.config);
+        let tx = self.tx.clone();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel = Some(Arc::clone(&cancel));
+
+        std::thread::spawn(move || {
+            let (etx, erx) = std::sync::mpsc::channel::<deploy::Event>();
+            let relay = {
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    while let Ok(e) = erx.recv() {
+                        if tx.send(AsyncEvent::Install(e)).is_err() {
+                            break;
+                        }
+                    }
+                })
+            };
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime");
+            let res = rt.block_on(deploy::ensure_guid(
+                &cfg,
+                &guid,
+                true,
+                false,
+                &etx,
+                &cancel,
+                repair_for.as_deref(),
+            ));
+            drop(etx);
+            let _ = relay.join();
+            if let Err(e) = res {
+                if !cancel.load(Ordering::Relaxed) {
+                    let _ = tx.send(AsyncEvent::Install(deploy::Event::Failed(e.to_string())));
+                }
+            }
+        });
     }
 
     // ---- Публикация в UI ----
@@ -382,6 +567,82 @@ impl Ctx {
             })
             .collect();
         ui.set_top_places(ModelRc::new(VecModel::from(rows)));
+    }
+
+    fn push_versions(&self, ui: &AppWindow) {
+        let lang = self.lang;
+        let list = versions::list(&self.config.base());
+        let rows: Vec<VersionRow> = list
+            .iter()
+            .enumerate()
+            .map(|(i, v)| VersionRow {
+                guid: v.guid.as_str().into(),
+                size: versions::format_size(v.size).into(),
+                active: self.installed.as_deref() == Some(v.guid.as_str()),
+                no_player: !v.has_player,
+                alt: i % 2 == 1,
+            })
+            .collect();
+        ui.set_ver_versions(ModelRc::new(VecModel::from(rows)));
+        ui.set_ver_selected_guid(
+            self.selected_version.as_deref().unwrap_or("").into(),
+        );
+        ui.set_ver_installed_guid(self.installed.as_deref().unwrap_or("").into());
+
+        let (text, kind) = match &self.integrity {
+            None => (tr(lang, "Ver_Check").to_string(), 0),
+            Some(r) if r.ok() => (fmt(lang, "Ver_IntegrityOk", &[]), 1),
+            Some(r) => (
+                fmt(lang, "Ver_IntegrityIssues", &[&r.issues().to_string()]),
+                2,
+            ),
+        };
+        ui.set_ver_integrity_text(text.as_str().into());
+        ui.set_ver_integrity_kind(kind);
+        let checked = self
+            .integrity
+            .as_ref()
+            .map(|r| format!("checked: {}", r.checked))
+            .unwrap_or_default();
+        ui.set_ver_checked_text(checked.as_str().into());
+    }
+
+    fn push_about(&self, ui: &AppWindow) {
+        let lang = self.lang;
+        ui.set_about_version(updater::current_version().into());
+        let (kind, text, notes, pct) = match &self.update {
+            UpdateUi::Idle => (0, String::new(), String::new(), 0.0),
+            UpdateUi::Checking => {
+                (1, tr(lang, "About_Checking").to_string(), String::new(), 0.0)
+            }
+            UpdateUi::UpToDate => {
+                (2, tr(lang, "About_UpToDate").to_string(), String::new(), 0.0)
+            }
+            UpdateUi::Found(rel) => (
+                3,
+                fmt(lang, "About_UpdateAvail", &[&rel.tag]),
+                rel.notes.trim().to_string(),
+                0.0,
+            ),
+            UpdateUi::Downloading { done, total } => {
+                let pct = if *total > 0 {
+                    *done * 100 / *total
+                } else {
+                    0
+                };
+                (
+                    4,
+                    fmt(lang, "About_Downloading", &[&pct.to_string()]),
+                    String::new(),
+                    pct as f32 / 100.0,
+                )
+            }
+            UpdateUi::Error(e) => (5, fmt(lang, "About_UpdateErr", &[e]), String::new(), 0.0),
+        };
+        ui.set_update_kind(kind);
+        ui.set_update_text(text.as_str().into());
+        ui.set_update_notes(notes.as_str().into());
+        ui.set_update_pct(pct);
     }
 
     // ---- Логи ----
@@ -574,6 +835,18 @@ fn open_folder(path: &Path) {
 #[cfg(not(windows))]
 fn open_folder(_path: &Path) {}
 
+#[cfg(windows)]
+fn open_url(url: &str) {
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", url])
+        .spawn();
+}
+
+#[cfg(not(windows))]
+fn open_url(url: &str) {
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+}
+
 // ===== Операции с окном (winit доступен только на Windows) =====
 
 #[cfg(windows)]
@@ -644,6 +917,31 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_logs_empty(tr(lang, "Logs_Empty").into());
     t.set_logs_missing(tr(lang, "Logs_Missing").into());
     t.set_logs_no_files(tr(lang, "Logs_NoFiles").into());
+    t.set_ver_h1(tr(lang, "Ver_H1").into());
+    t.set_ver_sub(tr(lang, "Ver_Sub").into());
+    t.set_ver_activate(tr(lang, "Ver_Activate").into());
+    t.set_ver_delete(tr(lang, "Ver_Delete").into());
+    t.set_ver_empty(tr(lang, "Ver_Empty").into());
+    t.set_ver_col_guid(tr(lang, "Ver_ColGuid").into());
+    t.set_ver_col_size(tr(lang, "Ver_ColSize").into());
+    t.set_ver_col_status(tr(lang, "Ver_ColStatus").into());
+    t.set_ver_active(tr(lang, "Ver_Active").into());
+    t.set_ver_check(tr(lang, "Ver_Check").into());
+    t.set_ver_integrity_ok(tr(lang, "Ver_IntegrityOk").into());
+    t.set_ver_integrity_issues(tr(lang, "Ver_IntegrityIssues").into());
+    t.set_ver_repair(tr(lang, "Ver_Repair").into());
+    t.set_about_h1(tr(lang, "About_H1").into());
+    t.set_about_sub(tr(lang, "About_Sub").into());
+    t.set_about_version(tr(lang, "About_Version").into());
+    t.set_about_repo(tr(lang, "About_Repo").into());
+    t.set_about_license(tr(lang, "About_License").into());
+    t.set_about_check_updates(tr(lang, "About_CheckUpdates").into());
+    t.set_about_checking(tr(lang, "About_Checking").into());
+    t.set_about_up_to_date(tr(lang, "About_UpToDate").into());
+    t.set_about_update_avail(tr(lang, "About_UpdateAvail").into());
+    t.set_about_download(tr(lang, "About_Download").into());
+    t.set_about_downloading(tr(lang, "About_Downloading").into());
+    t.set_about_update_err(tr(lang, "About_UpdateErr").into());
     t.set_common_soon(tr(lang, "Common_ComingSoon").into());
 }
 
@@ -727,6 +1025,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     }
     {
         let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
         ui.on_link_paste(move || {
             if let Some(text) = clipboard_text() {
                 let ui = weak.unwrap();
@@ -810,6 +1109,99 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.logs_tick(&ui);
         });
     }
+
+    // — Версии —
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_ver_select(move |g: SharedString| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.selected_version = Some(g.to_string()).filter(|s| !s.is_empty());
+                c.integrity = None;
+            }
+            let c = ctx.borrow();
+            c.push_versions(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_ver_activate(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                if let Some(g) = c.selected_version.clone() {
+                    c.activate_version(&g);
+                }
+            }
+            let c = ctx.borrow();
+            c.push_versions(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_ver_delete(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                if let Some(g) = c.selected_version.clone() {
+                    c.delete_version(&g);
+                }
+            }
+            let c = ctx.borrow();
+            c.push_versions(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_ver_check(move || {
+            ctx.borrow_mut().check_integrity();
+            let c = ctx.borrow();
+            c.push_versions(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_ver_repair(move || {
+            let mut c = ctx.borrow_mut();
+            let g = c.selected_version.clone().or_else(|| c.installed.clone());
+            if let Some(g) = g {
+                c.start_repair(g);
+            }
+        });
+    }
+
+    // — Обновления лаунчера —
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_about_check(move || {
+            {
+                ctx.borrow_mut().check_updates();
+            }
+            let c = ctx.borrow();
+            c.push_about(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_about_download(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                if let UpdateUi::Found(rel) = &c.update {
+                    let rel = rel.clone();
+                    c.start_update(rel);
+                }
+            }
+            let c = ctx.borrow();
+            c.push_about(&weak.unwrap());
+        });
+    }
+    ui.on_about_open_repo(move || {
+        open_url("https://github.com/mesorg-dev/ByteStrap");
+    });
 }
 
 // ===== Точка входа =====
@@ -855,6 +1247,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         installed,
         latest: None,
         install: InstallUi::default(),
+        update: UpdateUi::Idle,
+        selected_version: None,
+        integrity: None,
         quit: false,
         pending_launch: None,
         mods_count,
@@ -878,6 +1273,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
     }));
 
     wire(&ui, &ctx);
+    ui.set_about_version(updater::current_version().into());
+    if ctx.borrow().config.auto_update {
+        ctx.borrow_mut().check_updates();
+    }
     ctx.borrow().push_home(&ui);
 
     // Общий тик (100 мс): события + публикация состояния Home.
@@ -894,10 +1293,16 @@ pub fn run() -> Result<(), slint::PlatformError> {
             let ui = c.weak.clone().unwrap();
             c.push_home(&ui);
             let page = ui.get_page();
-            if page == 4 {
-                if c.last_page != 4 {
+            if page != c.last_page {
+                if page == 2 {
+                    c.push_versions(&ui);
+                }
+                if page == 4 {
                     c.logs_tick(&ui);
                 }
+            }
+            if page == 6 {
+                c.push_about(&ui);
             }
             c.last_page = page;
         });

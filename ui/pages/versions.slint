@@ -1,0 +1,236 @@
+// Версии: список установленных сборок (таблица), активация/удаление,
+// проверка целостности и ремонт. Данные пушит контроллер.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Btn } from "../widgets.slint";
+import { VersionRow } from "../models.slint";
+
+export component VersionsPage inherits Rectangle {
+    in-out property <bool> busy: false;
+    in-out property <string> installed-guid: "";
+    in-out property <string> selected-guid: "";
+    in-out property <[VersionRow]> versions: [];
+    in-out property <string> integrity-text;
+    /// 0 — не проверено, 1 — ок, 2 — найдены проблемы.
+    in-out property <int> integrity-kind: 0;
+    in-out property <string> checked-text: "";
+
+    callback activate();
+    callback delete-version();
+    callback check-integrity();
+    callback repair();
+    callback select(string);
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Text {
+            text: T.ver_h1;
+            font-family: Theme.font-display;
+            font-weight: 700;
+            font-size: 23px;
+            color: Theme.fg;
+        }
+        Rectangle { height: 4px; }
+        Text {
+            text: T.ver_sub;
+            font-size: 13px;
+            color: Theme.fg-dim;
+        }
+        Rectangle { height: 14px; }
+
+        // ===== Тулбар =====
+        HorizontalLayout {
+            spacing: 8px;
+            Btn {
+                label: T.ver_activate;
+                kind: 0;
+                width: 130px;
+                height: 34px;
+                enabled: !root.busy && root.selected-guid != ""
+                    && root.selected-guid != root.installed-guid;
+                clicked => { root.activate(); }
+            }
+            Btn {
+                label: T.ver_delete;
+                kind: 2;
+                width: 110px;
+                height: 34px;
+                enabled: !root.busy && root.selected-guid != ""
+                    && root.selected-guid != root.installed-guid;
+                clicked => { root.delete-version(); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        Rectangle { height: 10px; }
+
+        // ===== Таблица версий =====
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r-card;
+            clip: true;
+
+            if root.versions.length == 0 : Text {
+                x: 16px;
+                y: 16px;
+                text: T.ver_empty;
+                font-size: 12px;
+                color: Theme.fg-dimmer;
+            }
+
+            if root.versions.length > 0 : Rectangle {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: 26px;
+                background: Theme.panel-alt;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    Text {
+                        text: T.ver_col_guid;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        color: Theme.fg-dimmer;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: T.ver_col_size;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        color: Theme.fg-dimmer;
+                        width: 110px;
+                        horizontal-stretch: 0;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: T.ver_col_status;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        color: Theme.fg-dimmer;
+                        width: 120px;
+                        horizontal-stretch: 0;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+            }
+
+            if root.versions.length > 0 : VerticalLayout {
+                x: 0;
+                y: 26px;
+                width: 100%;
+                height: parent.height - 26px;
+                spacing: 0px;
+
+                for v in root.versions : Rectangle {
+                    height: 30px;
+                    background: root.selected-guid == v.guid ? Theme.line-soft
+                        : v.alt ? Theme.panel-alt
+                        : transparent;
+                    animate background { duration: 80ms; }
+
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        Text {
+                            text: v.guid;
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            color: v.active ? Theme.fg : Theme.fg-dim;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: v.size;
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            color: Theme.fg-dim;
+                            width: 110px;
+                            horizontal-stretch: 0;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: v.active ? T.ver_active : v.no_player ? "no player" : "";
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            color: v.active ? Theme.good : Theme.warn;
+                            width: 120px;
+                            horizontal-stretch: 0;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    touch := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        clicked => { root.select(v.guid); }
+                    }
+                }
+            }
+        }
+        Rectangle { height: 12px; }
+
+        // ===== Целостность =====
+        Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r-card;
+
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.integrity-text;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        color: root.integrity-kind == 1 ? Theme.good
+                            : root.integrity-kind == 2 ? Theme.bad
+                            : Theme.fg-dim;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    Btn {
+                        label: T.ver_check;
+                        kind: 2;
+                        width: 160px;
+                        height: 34px;
+                        enabled: !root.busy;
+                        clicked => { root.check-integrity(); }
+                    }
+                    Btn {
+                        label: T.ver_repair;
+                        kind: 0;
+                        width: 140px;
+                        height: 34px;
+                        enabled: !root.busy && (root.selected-guid != ""
+                            || root.installed-guid != "");
+                        clicked => { root.repair(); }
+                    }
+                }
+
+                if root.checked-text != "" : Text {
+                    text: root.checked-text;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    color: Theme.fg-dimmer;
+                }
+            }
+        }
+    }
+}

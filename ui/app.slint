@@ -15,8 +15,10 @@ import { TitleBar } from "titlebar.slint";
 import { SideBar } from "sidebar.slint";
 import { HomePage } from "pages/home.slint";
 import { LogsPage } from "pages/logs.slint";
+import { VersionsPage } from "pages/versions.slint";
+import { AboutPage } from "pages/about.slint";
 import { PlaceholderPage } from "pages/placeholder.slint";
-import { PlaceRow, LogLine } from "models.slint";
+import { PlaceRow, LogLine, VersionRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -57,6 +59,21 @@ export component AppWindow inherits Window {
     in-out property <bool> log-missing: false;
     in-out property <int> log-jump-token: 0;
 
+    // Versions (page 2)
+    in-out property <string> ver-installed-guid: "";
+    in-out property <string> ver-selected-guid: "";
+    in-out property <[VersionRow]> ver-versions: [];
+    in-out property <string> ver-integrity-text: "";
+    in-out property <int> ver-integrity-kind: 0;
+    in-out property <string> ver-checked-text: "";
+
+    // About (page 6)
+    in-out property <string> about-version: "";
+    in-out property <int> update-kind: 0;
+    in-out property <string> update-text: "";
+    in-out property <string> update-notes: "";
+    in-out property <float> update-pct: 0;
+
     // ===== Колбэки контроллеру =====
     callback close-request();
     callback link-changed();
@@ -74,6 +91,14 @@ export component AppWindow inherits Window {
     callback log-folder();
     callback log-follow-toggle();
     callback log-search(string);
+    callback ver-select(string);
+    callback ver-activate();
+    callback ver-delete();
+    callback ver-check();
+    callback ver-repair();
+    callback about-check();
+    callback about-download();
+    callback about-open-repo();
 
     Rectangle {
         x: 0;
@@ -167,11 +192,21 @@ export component AppWindow inherits Window {
                     icon: 1;
                     name: T.nav_flags;
                 }
-                if root.page == 2 : PlaceholderPage {
+                if root.page == 2 : VersionsPage {
                     width: 100%;
                     height: 100%;
-                    icon: 2;
-                    name: T.nav_versions;
+                    busy: root.busy;
+                    installed-guid: root.ver-installed-guid;
+                    selected-guid: root.ver-selected-guid;
+                    versions: root.ver-versions;
+                    integrity-text: root.ver-integrity-text;
+                    integrity-kind: root.ver-integrity-kind;
+                    checked-text: root.ver-checked-text;
+                    select(g) => { root.ver-select(g); }
+                    activate => { root.ver-activate(); }
+                    delete-version => { root.ver-delete(); }
+                    check-integrity => { root.ver-check(); }
+                    repair => { root.ver-repair(); }
                 }
                 if root.page == 3 : PlaceholderPage {
                     width: 100%;
@@ -185,11 +220,17 @@ export component AppWindow inherits Window {
                     icon: 5;
                     name: T.nav_settings;
                 }
-                if root.page == 6 : PlaceholderPage {
+                if root.page == 6 : AboutPage {
                     width: 100%;
                     height: 100%;
-                    icon: 6;
-                    name: T.nav_about;
+                    app-version: root.about-version;
+                    update-kind: root.update-kind;
+                    update-text: root.update-text;
+                    update-notes: root.update-notes;
+                    update-pct: root.update-pct;
+                    check-updates => { root.about-check(); }
+                    download => { root.about-download(); }
+                    open-repo => { root.about-open-repo(); }
                 }
             }
         }
