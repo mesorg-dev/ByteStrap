@@ -17,13 +17,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(windows)]
-use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
 use crate::app::{effective_installed, AsyncEvent, InstallUi, UpdateUi};
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
-use crate::core::playtime::{self, Playtime};
+use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::flags::FlagError;
 use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
@@ -152,6 +152,13 @@ struct Ctx {
     playtime: Playtime,
     /// (текст, ошибка) — строка под полем ссылки на Home.
     link_msg: Option<(String, bool)>,
+
+    // — Сессия игры (Tick/End из playtime::watch_session) —
+    session_active: bool,
+    session_secs: u64,
+    session_place: Option<String>,
+    session_display: Option<String>,
+
     tx: Sender<AsyncEvent>,
     rx: Receiver<AsyncEvent>,
     cancel: Option<Arc<AtomicBool>>,
@@ -176,6 +183,9 @@ struct Ctx {
     mods_list: Vec<mods::ModInfo>,
     mods_files: Vec<mods::ModFile>,
     mods_scanned: bool,
+    /// Модели модов изменились — пересобрать при следующем тике
+    /// (иначе пересборка каждые 100 мс съедала бы фокус и клики).
+    mods_dirty: bool,
     mods_msg: Option<(String, bool)>,
     /// Выбранный профиль (общий для страниц Mods/Flags).
     profile_sel: String,
@@ -316,6 +326,7 @@ impl Ctx {
                 Ok(()) => {
                     self.install.error = None;
                     logger::info("Клиент Roblox запущен");
+                    self.start_session_watch();
                     if self.config.close_on_launch {
                         self.quit = true;
                     }
@@ -342,6 +353,60 @@ impl Ctx {
                 self.link_msg = Some((tr(self.lang, "Home_LinkBad").to_string(), true));
             }
         }
+    }
+
+    /// Фоновый watcher сессии: Tick/End из playtime::watch_session.
+    fn start_session_watch(&mut self) {
+        if self.session_active {
+            return;
+        }
+        self.session_active = true;
+        self.session_secs = 0;
+        self.session_place = None;
+        self.session_display = None;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let (stx, srx) = std::sync::mpsc::channel::<SessionEvent>();
+            let relay = {
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    while let Ok(e) = srx.recv() {
+                        if tx.send(AsyncEvent::Session(e)).is_err() {
+                            break;
+                        }
+                    }
+                })
+            };
+            playtime::watch_session(stx);
+            let _ = relay.join();
+        });
+    }
+
+    /// Отправить в Discord активность по настройкам RP (что показывать).
+    fn push_discord(&self, secs: u64) {
+        let details = self
+            .config
+            .discord_rp_brand
+            .then(|| "ByteStrap".to_string());
+        let state = if self.config.discord_rp_place {
+            self.session_display.clone()
+        } else {
+            None
+        };
+        let start = self
+            .config
+            .discord_rp_time
+            .then(|| playtime::now_unix().saturating_sub(secs));
+        let msg = if details.is_some() || state.is_some() || start.is_some() {
+            discord::Update::Session {
+                details,
+                state,
+                start,
+            }
+        } else {
+            discord::Update::Idle
+        };
+        let _ = self.discord.send(msg);
     }
 
     // ---- События ----
@@ -397,12 +462,16 @@ impl Ctx {
                         );
                         self.mods_msg = Some((text, false));
                         self.refresh_mods();
+                        self.refresh_counters();
+                        self.mods_dirty = true;
                     }
                     Err(e) => self.mods_msg = Some((e, true)),
                 },
                 AsyncEvent::ProfileLoaded(res) => {
                     // Дерево меняется в любом случае — пересканировать.
                     self.refresh_mods();
+                    self.refresh_counters();
+                    self.mods_dirty = true;
                     match res {
                         Ok((name, _stats)) => {
                             if self.config.active_mod_profile != name {
@@ -430,7 +499,30 @@ impl Ctx {
                     logger::info(format!("Очистка: {text}"));
                     self.cleanup_msg = Some((text, false));
                 }
-                _ => {}
+                AsyncEvent::Session(ev) => match ev {
+                    SessionEvent::Tick {
+                        secs,
+                        place,
+                        place_name,
+                    } => {
+                        self.session_secs = secs;
+                        // Discord RP: state = имя места (fallback — id).
+                        self.session_display = place_name.or_else(|| place.clone());
+                        if self.config.discord_rp {
+                            self.push_discord(secs);
+                        }
+                        self.session_place = place;
+                    }
+                    SessionEvent::End { total, places } => {
+                        self.session_active = false;
+                        self.session_secs = 0;
+                        self.session_place = None;
+                        self.session_display = None;
+                        let _ = self.discord.send(discord::Update::Idle);
+                        self.playtime.merge(total, &places);
+                        self.playtime.save(&self.config.base());
+                    }
+                },
             }
         }
     }
@@ -469,8 +561,15 @@ impl Ctx {
                 self.installed = effective_installed(&self.config);
                 self.install = InstallUi::default();
                 self.cancel = None;
+                self.integrity = None;
+                // Моды: после чистой установки накладываем заново.
                 if !already {
+                    self.refresh_mods();
+                    if self.mods_list.iter().any(|m| m.enabled) {
+                        self.start_mods_apply();
+                    }
                     self.refresh_counters();
+                    self.mods_dirty = true;
                 }
                 if let Some(url) = self.pending_launch.take() {
                     self.play(Some(&url));
@@ -906,6 +1005,7 @@ impl Ctx {
             self.flags_selected = None;
             self.flag_msg = None;
             self.import = None;
+            self.refresh_counters();
         }
     }
 
@@ -934,6 +1034,7 @@ impl Ctx {
                     self.config.save();
                 }
                 self.flag_msg = Some((fmt(lang, "Flags_Saved", &[]), false));
+                self.refresh_counters();
             }
             Err(e) => {
                 self.flag_msg =
@@ -947,6 +1048,7 @@ impl Ctx {
         self.flags_selected = Some(self.flags.len() - 1);
         self.flags_dirty = true;
         self.flag_msg = None;
+        self.refresh_counters();
     }
 
     fn flags_delete_sel(&mut self) {
@@ -954,6 +1056,7 @@ impl Ctx {
             if i < self.flags.len() {
                 self.flags.remove(i);
                 self.flags_dirty = true;
+                self.refresh_counters();
             }
         }
     }
@@ -1337,10 +1440,11 @@ impl Ctx {
     }
 
     fn sync_discord(&self) {
-        if !self.config.discord_rp {
+        if !self.config.discord_rp || !self.session_active {
             let _ = self.discord.send(discord::Update::Idle);
+        } else if self.session_display.is_some() {
+            self.push_discord(self.session_secs);
         }
-        // TODO(Фаза 2): сессия — отправка Session-обновлений (push_discord из app.rs).
     }
 
     fn start_cleanup(&mut self) {
@@ -1431,6 +1535,7 @@ impl Ctx {
                 self.flags_selected = None;
                 self.flags_dirty = true;
                 self.flag_msg = Some((fmt(lang, "Flags_Cleared", &[]), false));
+                self.refresh_counters();
             }
             Some(Confirm::ApplyProfile(name)) => self.apply_flag_profile(&name),
             Some(Confirm::DeleteProfile(name)) => {
@@ -1551,6 +1656,21 @@ impl Ctx {
         ui.set_mods_count(self.mods_count.to_string().as_str().into());
         ui.set_flags_count(self.flags_count.to_string().as_str().into());
         ui.set_hours_count((self.playtime.total_secs / 3600).to_string().as_str().into());
+
+        // Живая сессия: «в игре {0} · место {1}» (пусто — не играем).
+        let session_text = if self.session_active {
+            fmt(
+                lang,
+                "Home_Session",
+                &[
+                    &playtime::fmt_duration(self.session_secs),
+                    self.session_place.as_deref().unwrap_or("…"),
+                ],
+            )
+        } else {
+            String::new()
+        };
+        ui.set_session_text(session_text.as_str().into());
 
         let rows: Vec<PlaceRow> = self
             .playtime
@@ -3338,6 +3458,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
         flags_count,
         playtime,
         link_msg: None,
+        session_active: false,
+        session_secs: 0,
+        session_place: None,
+        session_display: None,
         tx,
         rx,
         cancel: None,
@@ -3355,6 +3479,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         mods_list: Vec::new(),
         mods_files: Vec::new(),
         mods_scanned: false,
+        mods_dirty: false,
         mods_msg: None,
         profile_sel: String::new(),
         save_dlg: None,
@@ -3370,11 +3495,46 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
     wire(&ui, &ctx);
     ui.set_about_version(updater::current_version().into());
-    ui.set_flags_share(cfg!(windows));
+    ui.set_win_share(cfg!(windows));
     if ctx.borrow().config.auto_update {
         ctx.borrow_mut().check_updates();
     }
     ctx.borrow().push_home(&ui);
+
+    // Клик по roblox:// в командной строке (друзья, приватки, плейсы):
+    // сразу запускаем игру с этой ссылкой (счётчик сессии и RP работают).
+    if let Some(url) = std::env::args().skip(1).find(|a| a.starts_with("roblox://")) {
+        ctx.borrow_mut().play(Some(&url));
+    }
+
+    // Перетащенные в окно файлы → папка модов (как в egui, только Windows).
+    #[cfg(windows)]
+    {
+        let drop_ctx = Rc::clone(&ctx);
+        let drop_weak = weak.clone();
+        ui.window().on_winit_window_event(move |_win, event| {
+            if let winit::event::WindowEvent::DroppedFile(path) = event {
+                let Some(page_ui) = drop_weak.upgrade() else {
+                    return EventResult::Propagate;
+                };
+                if page_ui.get_page() == 3 {
+                    let mut c = drop_ctx.borrow_mut();
+                    match mods::import_paths(&c.config.base(), std::slice::from_ref(path)) {
+                        Ok(n) => {
+                            c.refresh_mods();
+                            c.refresh_counters();
+                            c.mods_dirty = true;
+                            let text = fmt(c.lang, "Mods_ImportedFmt", &[&n.to_string()]);
+                            c.mods_msg = Some((text, false));
+                            logger::info(format!("Перетащено файлов модов: {n}"));
+                        }
+                        Err(e) => c.mods_msg = Some((e.to_string(), true)),
+                    }
+                }
+            }
+            EventResult::Propagate
+        });
+    }
 
     // Общий тик (100 мс): события + публикация состояния Home.
     let tick = Timer::default();
@@ -3391,24 +3551,31 @@ pub fn run() -> Result<(), slint::PlatformError> {
             c.push_home(&ui);
             let page = ui.get_page();
             if page != c.last_page {
+                if page == 1 {
+                    // Полный пуш только при входе: пересборка строк каждые
+                    // 100 мс съедала бы фокус редактируемых ячеек.
+                    c.push_flags(&ui);
+                }
                 if page == 2 {
                     c.push_versions(&ui);
+                }
+                if page == 3 {
+                    if !c.mods_scanned {
+                        c.refresh_mods();
+                    }
+                    c.push_mods(&ui);
+                    c.push_dlg(&ui);
+                }
+                if page == 4 {
+                    c.logs_tick(&ui);
                 }
                 if page == 5 {
                     c.push_settings(&ui);
                     c.push_path(&ui);
                 }
-                if page == 4 {
-                    c.logs_tick(&ui);
-                }
             }
-            if page == 1 {
-                c.push_flags(&ui);
-            }
-            if page == 3 {
-                if !c.mods_scanned {
-                    c.refresh_mods();
-                }
+            if page == 3 && c.mods_dirty {
+                c.mods_dirty = false;
                 c.push_mods(&ui);
                 c.push_dlg(&ui);
             }

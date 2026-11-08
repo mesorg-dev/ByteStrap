@@ -16,160 +16,169 @@ export component AboutPage inherits Rectangle {
     callback download();
     callback open-repo();
 
-    VerticalLayout {
-        spacing: 0px;
+    flick := Flickable {
+        width: 100%;
+        height: 100%;
+        content-width: flick.width;
+        content-height: col.preferred-height;
 
-        Text {
-            text: T.about_h1;
-            font-family: Theme.font-display;
-            font-weight: 700;
-            font-size: 23px;
-            color: Theme.fg;
-        }
-        Rectangle { height: 4px; }
-        Text {
-            text: T.about_sub;
-            font-size: 13px;
-            color: Theme.fg-dim;
-        }
-        Rectangle { height: 14px; }
+        col := VerticalLayout {
+            width: flick.width;
+            height: flick.content-height;
+            spacing: 0px;
 
-        // ===== О программе =====
-        Rectangle {
-            background: Theme.panel;
-            border-width: 1px;
-            border-color: Theme.line;
-            border-radius: Theme.r-card;
+            Text {
+                text: T.about_h1;
+                font-family: Theme.font-display;
+                font-weight: 700;
+                font-size: 23px;
+                color: Theme.fg;
+            }
+            Rectangle { height: 4px; }
+            Text {
+                text: T.about_sub;
+                font-size: 13px;
+                color: Theme.fg-dim;
+            }
+            Rectangle { height: 14px; }
 
-            VerticalLayout {
-                padding: 16px;
-                spacing: 8px;
+            // ===== О программе =====
+            Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
 
-                Text {
-                    text: T.about_version + ": " + root.app-version;
-                    font-family: Theme.font-mono;
-                    font-size: 12px;
-                    color: Theme.fg;
-                }
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
 
-                Rectangle {
-                    height: 22px;
+                    Text {
+                        text: T.about_version + ": " + root.app-version;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        color: Theme.fg;
+                    }
+
+                    Rectangle {
+                        height: 22px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: T.about_repo;
+                                font-size: 13px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "mesorg-dev/ByteStrap";
+                                font-family: Theme.font-mono;
+                                font-size: 12px;
+                                color: repo-touch.has-hover ? Theme.good.brighter(0.15) : Theme.good;
+                                vertical-alignment: center;
+                            }
+                        }
+                        repo-touch := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            clicked => { root.open-repo(); }
+                        }
+                    }
+
                     HorizontalLayout {
                         spacing: 8px;
                         Text {
-                            text: T.about_repo;
+                            text: T.about_license;
                             font-size: 13px;
                             color: Theme.fg-dim;
                             vertical-alignment: center;
                         }
                         Text {
-                            text: "mesorg-dev/ByteStrap";
+                            text: "GPL-3.0";
                             font-family: Theme.font-mono;
                             font-size: 12px;
-                            color: repo-touch.has-hover ? Theme.good.brighter(0.15) : Theme.good;
+                            color: Theme.fg;
                             vertical-alignment: center;
                         }
                     }
-                    repo-touch := TouchArea {
-                        width: 100%;
-                        height: 100%;
-                        clicked => { root.open-repo(); }
-                    }
-                }
-
-                HorizontalLayout {
-                    spacing: 8px;
-                    Text {
-                        text: T.about_license;
-                        font-size: 13px;
-                        color: Theme.fg-dim;
-                        vertical-alignment: center;
-                    }
-                    Text {
-                        text: "GPL-3.0";
-                        font-family: Theme.font-mono;
-                        font-size: 12px;
-                        color: Theme.fg;
-                        vertical-alignment: center;
-                    }
                 }
             }
-        }
-        Rectangle { height: 12px; }
+            Rectangle { height: 12px; }
 
-        // ===== Обновления =====
-        Rectangle {
-            vertical-stretch: 1;
-            background: Theme.panel;
-            border-width: 1px;
-            border-color: Theme.line;
-            border-radius: Theme.r-card;
+            // ===== Обновления =====
+            Rectangle {
+                vertical-stretch: 1;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
 
-            VerticalLayout {
-                padding: 16px;
-                spacing: 8px;
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
 
-                Text {
-                    text: T.about_check_updates;
-                    font-weight: 600;
-                    font-size: 14px;
-                    color: Theme.fg;
-                }
+                    Text {
+                        text: T.about_check_updates;
+                        font-weight: 600;
+                        font-size: 14px;
+                        color: Theme.fg;
+                    }
 
-                if root.update-kind == 0 || root.update-kind == 5 : Btn {
-                    label: T.about_check_updates;
-                    kind: 2;
-                    width: 180px;
-                    height: 32px;
-                    clicked => { root.check-updates(); }
-                }
+                    if root.update-kind == 0 || root.update-kind == 5 : Btn {
+                        label: T.about_check_updates;
+                        kind: 2;
+                        width: 180px;
+                        height: 32px;
+                        clicked => { root.check-updates(); }
+                    }
 
-                if root.update-kind == 5 : Text {
-                    text: root.update-text;
-                    font-family: Theme.font-mono;
-                    font-size: 12px;
-                    color: Theme.bad;
-                    wrap: word-wrap;
-                }
+                    if root.update-kind == 5 : Text {
+                        text: root.update-text;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        color: Theme.bad;
+                        wrap: word-wrap;
+                    }
 
-                if root.update-kind == 1 || root.update-kind == 2 : Text {
-                    text: root.update-text;
-                    font-family: Theme.font-mono;
-                    font-size: 12px;
-                    color: root.update-kind == 2 ? Theme.good : Theme.fg-dim;
-                }
+                    if root.update-kind == 1 || root.update-kind == 2 : Text {
+                        text: root.update-text;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        color: root.update-kind == 2 ? Theme.good : Theme.fg-dim;
+                    }
 
-                if root.update-kind == 3 : Text {
-                    text: root.update-text;
-                    font-size: 13px;
-                    color: Theme.fg;
-                    wrap: word-wrap;
-                }
+                    if root.update-kind == 3 : Text {
+                        text: root.update-text;
+                        font-size: 13px;
+                        color: Theme.fg;
+                        wrap: word-wrap;
+                    }
 
-                if root.update-kind == 3 && root.update-notes != "" : Text {
-                    text: root.update-notes;
-                    font-size: 11px;
-                    color: Theme.fg-dimmer;
-                    wrap: word-wrap;
-                }
+                    if root.update-kind == 3 && root.update-notes != "" : Text {
+                        text: root.update-notes;
+                        font-size: 11px;
+                        color: Theme.fg-dimmer;
+                        wrap: word-wrap;
+                    }
 
-                if root.update-kind == 3 : Btn {
-                    label: T.about_download;
-                    kind: 0;
-                    width: 180px;
-                    height: 32px;
-                    clicked => { root.download(); }
-                }
+                    if root.update-kind == 3 : Btn {
+                        label: T.about_download;
+                        kind: 0;
+                        width: 180px;
+                        height: 32px;
+                        clicked => { root.download(); }
+                    }
 
-                if root.update-kind == 4 : Text {
-                    text: root.update-text;
-                    font-family: Theme.font-mono;
-                    font-size: 12px;
-                    color: Theme.fg-dim;
-                }
+                    if root.update-kind == 4 : Text {
+                        text: root.update-text;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        color: Theme.fg-dim;
+                    }
 
-                if root.update-kind == 4 : ProgressBar {
-                    value: root.update-pct;
+                    if root.update-kind == 4 : ProgressBar {
+                        value: root.update-pct;
+                    }
                 }
             }
         }

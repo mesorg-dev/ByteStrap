@@ -52,6 +52,7 @@ export component AppWindow inherits Window {
     in-out property <string> mods-count: "0";
     in-out property <string> flags-count: "0";
     in-out property <string> hours-count: "0";
+    in-out property <string> session-text: "";
     in-out property <[PlaceRow]> top-places: [];
 
     in-out property <[LogLine]> log-lines: [];
@@ -87,7 +88,8 @@ export component AppWindow inherits Window {
 
     // Flags (page 1)
     in-out property <bool> flags-has-client: false;
-    in-out property <bool> flags-share: false;
+    /// Windows-only возможности (импорт/буфер/экспорт, «Вставить» на Home).
+    in-out property <bool> win-share: false;
     in-out property <[FlagRow]> flags-rows: [];
     in-out property <bool> flags-table-empty: false;
     in-out property <bool> flags-dirty: false;
@@ -282,7 +284,9 @@ export component AppWindow inherits Window {
                     mods-count: root.mods-count;
                     flags-count: root.flags-count;
                     hours-count: root.hours-count;
+                    session-text: root.session-text;
                     top-places: root.top-places;
+                    share: root.win-share;
                     primary => { root.primary(); }
                     update-client => { root.update-client(); }
                     cancel => { root.cancel-install(); }
@@ -313,7 +317,7 @@ export component AppWindow inherits Window {
                     width: 100%;
                     height: 100%;
                     has-client: root.flags-has-client;
-                    share: root.flags-share;
+                    share: root.win-share;
                     rows: root.flags-rows;
                     table-empty: root.flags-table-empty;
                     dirty: root.flags-dirty;
@@ -546,6 +550,9 @@ export component AppWindow inherits Window {
                         placeholder: root.dlg-hint;
                         edited => { root.dlg-edited(dlg-field.text); }
                         accepted => { root.dlg-ok(dlg-field.text); }
+                        init => {
+                            dlg-field.focus-select-all();
+                        }
                     }
 
                     HorizontalLayout {

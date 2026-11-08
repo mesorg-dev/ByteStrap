@@ -123,6 +123,12 @@ export component TextField inherits Rectangle {
         edited => { root.edited(); }
     }
 
+    /// Фокус + выделение всего текста (для вводных диалогов).
+    public function focus-select-all() {
+        input.focus();
+        input.select-all();
+    }
+
     Text {
         x: 10px;
         y: 0;
