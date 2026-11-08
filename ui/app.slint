@@ -19,9 +19,9 @@ import { LogsPage } from "pages/logs.slint";
 import { VersionsPage } from "pages/versions.slint";
 import { SettingsPage } from "pages/settings.slint";
 import { ModsPage } from "pages/mods.slint";
+import { FlagsPage } from "pages/flags.slint";
 import { AboutPage } from "pages/about.slint";
-import { PlaceholderPage } from "pages/placeholder.slint";
-import { PlaceRow, LogLine, VersionRow, ModRow, ModFileRow } from "models.slint";
+import { PlaceRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -84,6 +84,27 @@ export component AppWindow inherits Window {
     in-out property <int> mods-profile-sel-index: -1;
     in-out property <bool> mods-profile-sel-valid: false;
     in-out property <bool> mods-profiles-empty: false;
+
+    // Flags (page 1)
+    in-out property <bool> flags-has-client: false;
+    in-out property <bool> flags-share: false;
+    in-out property <[FlagRow]> flags-rows: [];
+    in-out property <bool> flags-table-empty: false;
+    in-out property <bool> flags-dirty: false;
+    in-out property <string> flags-msg: "";
+    in-out property <bool> flags-msg-err: false;
+    in-out property <string> flags-sel-detail: "";
+    in-out property <bool> flags-can-delete: false;
+    in-out property <[PresetRow]> flags-presets: [];
+    in-out property <string> flags-search: "";
+    in-out property <[string]> flags-profiles: [];
+    in-out property <string> flags-profile-sel-text: "";
+    in-out property <int> flags-profile-sel-index: -1;
+    in-out property <bool> flags-profile-sel-valid: false;
+    in-out property <bool> flags-profiles-empty: false;
+    /// Очередь конфликтов импорта (модальное окно).
+    in-out property <bool> import-open: false;
+    in-out property <string> import-body: "";
 
     // Вводной диалог («Сохранить как…» и не только)
     in-out property <bool> dlg-open: false;
@@ -181,6 +202,26 @@ export component AppWindow inherits Window {
     callback dlg-edited(string);
     callback dlg-ok(string);
     callback dlg-cancel();
+    callback flags-search-edited(string);
+    callback flags-add();
+    callback flags-save();
+    callback flags-import();
+    callback flags-paste();
+    callback flags-export();
+    callback flags-delete();
+    callback flags-clear();
+    callback flags-row-select(int);
+    callback flags-cell-edited(int, int, string);
+    callback preset-pick(int, int);
+    callback preset-toggle(int, bool);
+    callback flags-profile-pick(int);
+    callback flags-profile-load();
+    callback flags-profile-save-as();
+    callback flags-profile-delete();
+    callback flags-profile-export();
+    callback flags-profile-import();
+    /// 0 — оставить, 1 — заменить, 2 — заменить все, 3 — отмена.
+    callback import-decision(int);
 
     Rectangle {
         x: 0;
@@ -268,11 +309,43 @@ export component AppWindow inherits Window {
                     search-edited(q) => { root.log-search(q); }
                 }
 
-                if root.page == 1 : PlaceholderPage {
+                if root.page == 1 : FlagsPage {
                     width: 100%;
                     height: 100%;
-                    icon: 1;
-                    name: T.nav_flags;
+                    has-client: root.flags-has-client;
+                    share: root.flags-share;
+                    rows: root.flags-rows;
+                    table-empty: root.flags-table-empty;
+                    dirty: root.flags-dirty;
+                    msg: root.flags-msg;
+                    msg-err: root.flags-msg-err;
+                    sel-detail: root.flags-sel-detail;
+                    can-delete: root.flags-can-delete;
+                    presets: root.flags-presets;
+                    search: root.flags-search;
+                    profiles: root.flags-profiles;
+                    profile-sel-text: root.flags-profile-sel-text;
+                    profile-sel-index: root.flags-profile-sel-index;
+                    profile-sel-valid: root.flags-profile-sel-valid;
+                    profiles-empty: root.flags-profiles-empty;
+                    search-edited(q) => { root.flags-search-edited(q); }
+                    add => { root.flags-add(); }
+                    save => { root.flags-save(); }
+                    import-file => { root.flags-import(); }
+                    paste => { root.flags-paste(); }
+                    export-file => { root.flags-export(); }
+                    delete-sel => { root.flags-delete(); }
+                    clear-all => { root.flags-clear(); }
+                    row-select(i) => { root.flags-row-select(i); }
+                    cell-edited(idx, col, t) => { root.flags-cell-edited(idx, col, t); }
+                    preset-pick(pi, oi) => { root.preset-pick(pi, oi); }
+                    preset-toggle(pi, on) => { root.preset-toggle(pi, on); }
+                    profile-pick(i) => { root.flags-profile-pick(i); }
+                    profile-load => { root.flags-profile-load(); }
+                    profile-save-as => { root.flags-profile-save-as(); }
+                    profile-delete => { root.flags-profile-delete(); }
+                    profile-export => { root.flags-profile-export(); }
+                    profile-import => { root.flags-profile-import(); }
                 }
                 if root.page == 2 : VersionsPage {
                     width: 100%;
@@ -491,6 +564,87 @@ export component AppWindow inherits Window {
                             width: 120px;
                             height: 34px;
                             clicked => { root.dlg-ok(dlg-field.text); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ===== Конфликт импорта (страница Flags) =====
+        if root.import-open : Rectangle {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000aa;
+
+            TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => { root.import-decision(3); }
+            }
+
+            Rectangle {
+                width: 480px;
+                height: 170px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2 - 40px;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+
+                    Text {
+                        text: T.flags_conflict_title;
+                        font-weight: 600;
+                        font-size: 13px;
+                        height: 17px;
+                        color: Theme.fg;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: root.import-body;
+                        font-size: 13px;
+                        height: 36px;
+                        color: Theme.fg;
+                        wrap: word-wrap;
+                        overflow: elide;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.flags_conflict_replace_all;
+                            kind: 0;
+                            width: 124px;
+                            height: 34px;
+                            clicked => { root.import-decision(2); }
+                        }
+                        Btn {
+                            label: T.flags_conflict_replace;
+                            kind: 0;
+                            width: 106px;
+                            height: 34px;
+                            clicked => { root.import-decision(1); }
+                        }
+                        Btn {
+                            label: T.flags_conflict_keep;
+                            kind: 2;
+                            width: 96px;
+                            height: 34px;
+                            clicked => { root.import-decision(0); }
+                        }
+                        Btn {
+                            label: T.btn_cancel;
+                            kind: 2;
+                            width: 96px;
+                            height: 34px;
+                            clicked => { root.import-decision(3); }
                         }
                     }
                 }

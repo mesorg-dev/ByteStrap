@@ -1,0 +1,526 @@
+// FastFlags: поиск + добавить/сохранить, импорт/экспорт, таблица с
+// редактированием ячеек, пресеты-контролы, профили. Модалки
+// (подтверждение/конфликт/«Сохранить как…») живут в AppWindow.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Btn, Combo, TextField } from "../widgets.slint";
+import { FlagRow, PresetRow } from "../models.slint";
+
+export component FlagsPage inherits Rectangle {
+    in-out property <bool> has-client: false;
+    /// Кнопки импорта/экспортa (только Windows).
+    in-out property <bool> share: false;
+    in-out property <[FlagRow]> rows: [];
+    /// Таблица пуста вовсе (не «ничего не нашлось по поиску»).
+    in-out property <bool> table-empty: false;
+    in-out property <bool> dirty: false;
+    in-out property <string> msg: "";
+    in-out property <bool> msg-err: false;
+    in-out property <string> sel-detail: "";
+    in-out property <bool> can-delete: false;
+    in-out property <[PresetRow]> presets: [];
+    in-out property <string> search: "";
+    in-out property <[string]> profiles: [];
+    in-out property <string> profile-sel-text: "";
+    in-out property <int> profile-sel-index: -1;
+    in-out property <bool> profile-sel-valid: false;
+    in-out property <bool> profiles-empty: false;
+    /// Открыт ли комбобокс профилей (для высоты скролла).
+    in-out property <bool> profile-open: false;
+
+    callback search-edited(string);
+    callback add();
+    callback save();
+    callback import-file();
+    callback paste();
+    callback export-file();
+    callback delete-sel();
+    callback clear-all();
+    callback row-select(int);
+    callback cell-edited(int, int, string);
+    callback preset-pick(int, int);
+    callback preset-toggle(int, bool);
+    callback profile-pick(int);
+    callback profile-load();
+    callback profile-save-as();
+    callback profile-delete();
+    callback profile-export();
+    callback profile-import();
+
+    // ===== Высоты карточек (абсолютное позиционирование во Flickable) =====
+    property <length> tool-h: 100px;
+    property <length> msg-h: root.msg == "" ? 0px : 24px;
+    property <length> presets-head-y: root.tool-h + root.msg-h + 10px;
+    property <length> presets-y: root.presets-head-y + 21px;
+    property <length> presets-h: 380px;
+    property <length> table-y: root.presets-y + root.presets-h + 12px;
+    property <length> table-h: root.rows.length == 0
+        ? 56px
+        : 32px + root.rows.length * 26px;
+    property <length> detail-y: root.table-y + root.table-h + 6px;
+    property <length> detail-h: root.sel-detail == "" ? 0px : 15px;
+    property <length> prof-y: root.detail-y + root.detail-h + 12px;
+    property <length> prof-h: root.profiles-empty ? 146px : 123px;
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Text {
+            text: T.flags_h1;
+            font-family: Theme.font-display;
+            font-weight: 700;
+            font-size: 23px;
+            color: Theme.fg;
+        }
+        Rectangle { height: 4px; }
+        Text {
+            text: T.flags_sub;
+            font-size: 13px;
+            color: Theme.fg-dim;
+        }
+        Rectangle { height: 14px; }
+
+        if !root.has-client : Text {
+            text: T.flags_no_client;
+            font-size: 13px;
+            color: Theme.fg-dimmer;
+        }
+
+        if root.has-client : flick := Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: root.prof-y + root.prof-h + 16px
+                + (root.profile-open ? 230px : 0px);
+
+            // ===== Тулбар =====
+            c-tool := Rectangle {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: root.tool-h;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
+
+                search-field := TextField {
+                    x: 16px;
+                    y: 16px;
+                    width: 220px;
+                    text: root.search;
+                    placeholder: T.flags_search;
+                    edited => { root.search-edited(search-field.text); }
+                }
+                Btn {
+                    x: 244px;
+                    y: 16px;
+                    width: 96px;
+                    height: 30px;
+                    label: T.flags_add;
+                    kind: 2;
+                    clicked => { root.add(); }
+                }
+
+                // Несохранённые правки — красная точка слева от «Сохранить».
+                Rectangle {
+                    visible: root.dirty;
+                    x: parent.width - 142px;
+                    y: 28px;
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.bad;
+                }
+                Btn {
+                    x: parent.width - 126px;
+                    y: 16px;
+                    width: 110px;
+                    height: 30px;
+                    label: T.flags_save;
+                    kind: root.dirty ? 0 : 2;
+                    enabled: root.dirty;
+                    clicked => { root.save(); }
+                }
+
+                // Ряд 2: импорт/буфер/экспорт (Windows), удалить, очистить.
+                Btn {
+                    x: 16px;
+                    y: 54px;
+                    width: 100px;
+                    height: 30px;
+                    visible: root.share;
+                    label: T.flags_import;
+                    kind: 2;
+                    clicked => { root.import-file(); }
+                }
+                Btn {
+                    x: 124px;
+                    y: 54px;
+                    width: 110px;
+                    height: 30px;
+                    visible: root.share;
+                    label: T.flags_paste;
+                    kind: 2;
+                    clicked => { root.paste(); }
+                }
+                Btn {
+                    x: 242px;
+                    y: 54px;
+                    width: 110px;
+                    height: 30px;
+                    visible: root.share;
+                    label: T.flags_export;
+                    kind: 2;
+                    clicked => { root.export-file(); }
+                }
+                Btn {
+                    x: root.share ? 360px : 16px;
+                    y: 54px;
+                    width: 96px;
+                    height: 30px;
+                    label: T.flags_delete;
+                    kind: 2;
+                    enabled: root.can-delete;
+                    clicked => { root.delete-sel(); }
+                }
+                Btn {
+                    x: root.share ? 464px : 120px;
+                    y: 54px;
+                    width: 116px;
+                    height: 30px;
+                    label: T.flags_clear;
+                    kind: 2;
+                    clicked => { root.clear-all(); }
+                }
+            }
+
+            // ===== Сообщение =====
+            if root.msg != "" : Text {
+                x: 16px;
+                y: root.tool-h + 6px;
+                width: parent.width - 32px;
+                height: 18px;
+                text: root.msg;
+                font-family: Theme.font-mono;
+                font-size: 12px;
+                color: root.msg-err ? Theme.bad : Theme.good;
+                overflow: elide;
+            }
+
+            // ===== Пресеты =====
+            Text {
+                x: 0;
+                y: root.presets-head-y;
+                width: 100%;
+                height: 15px;
+                text: T.flags_presets;
+                font-family: Theme.font-mono;
+                font-size: 11px;
+                color: Theme.fg-dimmer;
+            }
+
+            c-presets := Rectangle {
+                x: 0;
+                y: root.presets-y;
+                width: 100%;
+                height: root.presets-h;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
+                clip: false;
+
+                // Ряды: подпись/описание слева, контроль справа.
+                for p[i] in root.presets : Rectangle {
+                    x: 0;
+                    y: 14px + i * 40px;
+                    width: 100%;
+                    height: 34px;
+
+                    Text {
+                        x: 16px;
+                        y: 0;
+                        width: parent.width - 178px;
+                        height: 17px;
+                        text: p.label;
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Theme.fg;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        x: 16px;
+                        y: 17px;
+                        width: parent.width - 178px;
+                        height: 14px;
+                        text: p.desc;
+                        font-size: 11px;
+                        color: Theme.fg-dimmer;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    // Тумблер (kind 1) — как чекбокс.
+                    if p.kind == 1 : Rectangle {
+                        x: parent.width - 34px;
+                        y: 8px;
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 4px;
+                        background: p.on ? Theme.good : Theme.field;
+                        border-width: 1px;
+                        border-color: p.on ? Theme.good : Theme.line;
+                        if p.on : Rectangle {
+                            x: 5px;
+                            y: 5px;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 2px;
+                            background: Theme.on-accent;
+                        }
+                        cb-touch := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            clicked => { root.preset-toggle(i, !p.on); }
+                        }
+                    }
+                }
+
+                // Комбобоксы вторым слоем — чтобы раскрытый список
+                // рисовался поверх последующих строк.
+                for p[i] in root.presets : Rectangle {
+                    x: 0;
+                    y: 14px + i * 40px;
+                    width: 100%;
+                    height: 34px;
+
+                    if p.kind == 0 : Combo {
+                        x: parent.width - 146px;
+                        y: 2px;
+                        width: 130px;
+                        items: p.options;
+                        selected: p.selected;
+                        current-text: p.current;
+                        pick(oi) => { root.preset-pick(i, oi); }
+                    }
+                }
+            }
+
+            // ===== Таблица =====
+            c-table := Rectangle {
+                x: 0;
+                y: root.table-y;
+                width: 100%;
+                height: root.table-h;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
+                clip: true;
+
+                if root.rows.length == 0 : Text {
+                    x: 16px;
+                    y: 16px;
+                    width: parent.width - 32px;
+                    height: 26px;
+                    text: root.table-empty ? T.flags_empty : T.flags_search_empty;
+                    font-size: 12px;
+                    color: Theme.fg-dimmer;
+                    wrap: word-wrap;
+                }
+
+                if root.rows.length > 0 : Text {
+                    x: 10px;
+                    y: 10px;
+                    width: 290px;
+                    height: 22px;
+                    text: T.flags_col_name;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    color: Theme.fg-dimmer;
+                    vertical-alignment: center;
+                }
+                if root.rows.length > 0 : Text {
+                    x: 310px;
+                    y: 10px;
+                    width: 170px;
+                    height: 22px;
+                    text: T.flags_col_value;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    color: Theme.fg-dimmer;
+                    vertical-alignment: center;
+                }
+                if root.rows.length > 0 : Text {
+                    x: 490px;
+                    y: 10px;
+                    width: parent.width - 500px;
+                    height: 22px;
+                    text: T.flags_col_desc;
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                    color: Theme.fg-dimmer;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                for r[i] in root.rows : Rectangle {
+                    x: 0;
+                    y: 32px + i * 26px;
+                    width: 100%;
+                    height: 26px;
+                    background: r.selected
+                        ? Theme.line-soft
+                        : r.alt
+                            ? Theme.line-soft.transparentize(0.55)
+                            : transparent;
+
+                    row-touch := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        clicked => { root.row-select(r.idx); }
+                    }
+
+                    name-cell := TextInput {
+                        x: 8px;
+                        y: 0;
+                        width: 284px;
+                        height: 26px;
+                        single-line: true;
+                        font-size: 12px;
+                        color: Theme.fg;
+                        text: r.name;
+                        edited => { root.cell-edited(r.idx, 0, name-cell.text); }
+                    }
+                    value-cell := TextInput {
+                        x: 308px;
+                        y: 0;
+                        width: 164px;
+                        height: 26px;
+                        single-line: true;
+                        font-size: 12px;
+                        color: Theme.fg;
+                        text: r.value;
+                        edited => { root.cell-edited(r.idx, 1, value-cell.text); }
+                    }
+                    Text {
+                        x: 488px;
+                        y: 0;
+                        width: parent.width - 496px;
+                        height: 26px;
+                        text: r.desc;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        color: Theme.fg-dimmer;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // ===== Описание выделенного флага =====
+            if root.sel-detail != "" : Text {
+                x: 0;
+                y: root.detail-y;
+                width: 100%;
+                height: 15px;
+                text: root.sel-detail;
+                font-family: Theme.font-mono;
+                font-size: 11px;
+                color: Theme.fg-dim;
+                overflow: elide;
+            }
+
+            // ===== Профили =====
+            c-prof := Rectangle {
+                x: 0;
+                y: root.prof-y;
+                width: 100%;
+                height: root.prof-h;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                border-radius: Theme.r-card;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.flags_profiles;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        combo := Combo {
+                            width: 240px;
+                            items: root.profiles;
+                            selected: root.profile-sel-index;
+                            current-text: root.profile-sel-text;
+                            pick(i) => { root.profile-pick(i); }
+                            open-changed(v) => { root.profile-open = v; }
+                        }
+                        Btn {
+                            label: T.prof_load;
+                            kind: 0;
+                            width: 90px;
+                            height: 30px;
+                            enabled: root.profile-sel-valid;
+                            clicked => { root.profile-load(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.prof_save_as;
+                            kind: 2;
+                            width: 126px;
+                            height: 30px;
+                            clicked => { root.profile-save-as(); }
+                        }
+                        Btn {
+                            label: T.prof_delete;
+                            kind: 2;
+                            width: 90px;
+                            height: 30px;
+                            enabled: root.profile-sel-valid;
+                            clicked => { root.profile-delete(); }
+                        }
+                        if root.share : Btn {
+                            label: T.prof_export;
+                            kind: 2;
+                            width: 96px;
+                            height: 30px;
+                            enabled: root.profile-sel-valid;
+                            clicked => { root.profile-export(); }
+                        }
+                        if root.share : Btn {
+                            label: T.prof_import;
+                            kind: 2;
+                            width: 96px;
+                            height: 30px;
+                            clicked => { root.profile-import(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    if root.profiles-empty : Text {
+                        text: T.flags_profiles_empty;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}

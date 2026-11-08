@@ -8,6 +8,7 @@
 slint::include_modules!();
 
 use std::cell::RefCell;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,7 +24,8 @@ use crate::app::{effective_installed, AsyncEvent, InstallUi, UpdateUi};
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime};
-use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, roblox_link, updater, versions};
+use crate::core::flags::FlagError;
+use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 
 // ===== Состояние =====
@@ -35,12 +37,88 @@ enum Confirm {
     RevertMods,
     LoadModProfile(String),
     DeleteModProfile(String),
+    ClearAll,
+    ApplyProfile(String),
+    DeleteProfile(String),
 }
 
 /// Какой вводной диалог открыт («Сохранить как…»).
 #[derive(Clone, Copy)]
 enum Dlg {
     ModsProfile,
+    FlagsProfile,
+}
+
+/// Очередь конфликтов импорта FastFlags (окно спрашивает по одному).
+struct ImportQueue {
+    conflicts: VecDeque<(String, String)>,
+    replace_all: bool,
+    keep_rest: bool,
+    applied: usize,
+    skipped: usize,
+}
+
+/// Локализация опций пресетов (канон EN → RU).
+fn local_option(lang: Lang, opt: &str) -> String {
+    if lang != Lang::Ru {
+        return opt.to_string();
+    }
+    match opt {
+        "Auto" => "Авто".into(),
+        "Low" => "Низкая".into(),
+        "Medium" => "Средняя".into(),
+        "High" => "Высокая".into(),
+        "Off" => "Выкл".into(),
+        "Far" => "Дальняя".into(),
+        _ => opt.to_string(),
+    }
+}
+
+fn set_flag_pair(flags: &mut Vec<(String, String)>, name: &str, value: &str) {
+    match flags.iter_mut().find(|(n, _)| n == name) {
+        Some(row) => row.1 = value.to_string(),
+        None => flags.push((name.to_string(), value.to_string())),
+    }
+}
+
+fn error_text(lang: Lang, name: &str, detail: &str, err: FlagError) -> String {
+    let info = flags::lookup(name);
+    let hint = info.map(flags::hint).unwrap_or_default();
+    let min = info
+        .and_then(|i| i.min)
+        .map(|m| m.to_string())
+        .unwrap_or_default();
+    let max = info
+        .and_then(|i| i.max)
+        .map(|m| m.to_string())
+        .unwrap_or_default();
+    let allowed = info
+        .map(|i| i.allowed.join(", "))
+        .unwrap_or_default();
+    let text = match err {
+        FlagError::NotBoolean => fmt(lang, "FlagErr_NotBoolFmt", &[detail]),
+        FlagError::NotInteger => fmt(lang, "FlagErr_NotIntFmt", &[detail]),
+        FlagError::BelowMin => fmt(lang, "FlagErr_MinFmt", &[detail, &min]),
+        FlagError::AboveMax => fmt(lang, "FlagErr_MaxFmt", &[detail, &max]),
+        FlagError::NotAllowed => fmt(lang, "FlagErr_AllowedFmt", &[detail, &allowed]),
+    };
+    if hint.is_empty() {
+        text
+    } else {
+        format!("{text}  ({hint})")
+    }
+}
+
+#[cfg(windows)]
+fn clipboard_json() -> Option<String> {
+    let mut c = arboard::Clipboard::new().ok()?;
+    let t = c.get_text().ok()?;
+    let trimmed = t.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 struct Ctx {
@@ -104,6 +182,15 @@ struct Ctx {
     /// Открытый вводной диалог (None — закрыт).
     save_dlg: Option<Dlg>,
     dlg_input: String,
+
+    // — FastFlags —
+    flags: Vec<(String, String)>,
+    flags_loaded_for: Option<String>,
+    flags_selected: Option<usize>,
+    flags_dirty: bool,
+    flags_search: String,
+    flag_msg: Option<(String, bool)>,
+    import: Option<ImportQueue>,
 }
 
 impl Ctx {
@@ -669,33 +756,79 @@ impl Ctx {
         }
     }
 
-    fn open_save_dlg(&mut self) {
-        self.dlg_input = if self.profile_sel_valid() {
-            self.profile_sel.clone()
-        } else {
-            self.config.active_mod_profile.clone()
+    fn open_save_dlg(&mut self, kind: Dlg) {
+        self.dlg_input = match kind {
+            Dlg::ModsProfile => {
+                if self.profile_sel_valid() {
+                    self.profile_sel.clone()
+                } else {
+                    self.config.active_mod_profile.clone()
+                }
+            }
+            Dlg::FlagsProfile => {
+                if self.flags_profile_sel_valid() {
+                    self.profile_sel.clone()
+                } else {
+                    self.config.active_flag_profile.clone()
+                }
+            }
         };
-        self.save_dlg = Some(Dlg::ModsProfile);
+        self.save_dlg = Some(kind);
     }
 
     fn save_dlg_ok(&mut self, name: &str) {
         let lang = self.lang;
         let name = name.trim().to_string();
-        if !matches!(self.save_dlg, Some(Dlg::ModsProfile)) {
-            return;
-        }
-        if name.is_empty() {
-            self.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
-            return;
-        }
-        self.save_dlg = None;
-        match mods::save_profile(&self.config.base(), &name) {
-            Ok(()) => {
-                self.dlg_input.clear();
-                self.profile_sel = name.clone();
-                self.mods_msg = Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
+        match self.save_dlg {
+            Some(Dlg::ModsProfile) => {
+                if name.is_empty() {
+                    self.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
+                    return;
+                }
+                self.save_dlg = None;
+                match mods::save_profile(&self.config.base(), &name) {
+                    Ok(()) => {
+                        self.dlg_input.clear();
+                        self.profile_sel = name.clone();
+                        self.mods_msg =
+                            Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
+                    }
+                    Err(e) => self.mods_msg = Some((e.to_string(), true)),
+                }
             }
-            Err(e) => self.mods_msg = Some((e.to_string(), true)),
+            Some(Dlg::FlagsProfile) => {
+                if name.is_empty() {
+                    self.flag_msg =
+                        Some((tr(lang, "Prof_NeedName").to_string(), false));
+                    return;
+                }
+                if self.flags.is_empty() {
+                    self.flag_msg =
+                        Some((tr(lang, "Prof_EmptyTable").to_string(), false));
+                    return;
+                }
+                self.save_dlg = None;
+                let base = self.config.base();
+                let mut profiles = flags::load_profiles(&base);
+                profiles
+                    .profiles
+                    .insert(name.clone(), flags::flags_to_profile(&self.flags));
+                match flags::save_profiles(&base, &profiles) {
+                    Ok(()) => {
+                        self.dlg_input.clear();
+                        self.profile_sel = name.clone();
+                        self.flag_msg =
+                            Some((fmt(lang, "Prof_SavedFmt", &[&name]), false));
+                    }
+                    Err(e) => {
+                        self.flag_msg = Some((
+                            fmt(lang, "Flags_SaveErr", &[&e.to_string()]),
+                            true,
+                        ));
+                    }
+                }
+            }
+            None => {}
         }
     }
 
@@ -753,6 +886,446 @@ impl Ctx {
 
     #[cfg(not(windows))]
     fn profile_import(&mut self) {}
+
+    // ---- FastFlags (порт src/ui/flags.rs) ----
+
+    fn flags_dir(&self, guid: &str) -> PathBuf {
+        self.config.base().join("Versions").join(guid)
+    }
+
+    /// (Пере)загрузка таблицы при смене активной версии.
+    fn flags_ensure_loaded(&mut self) {
+        let Some(target) = self.installed.clone() else {
+            return;
+        };
+        if self.flags_loaded_for.as_ref() != Some(&target) {
+            let dir = self.flags_dir(&target);
+            self.flags = flags::load(&dir).into_iter().collect();
+            self.flags_loaded_for = Some(target);
+            self.flags_dirty = false;
+            self.flags_selected = None;
+            self.flag_msg = None;
+            self.import = None;
+        }
+    }
+
+    fn flags_profile_sel_valid(&self) -> bool {
+        flags::load_profiles(&self.config.base())
+            .profiles
+            .keys()
+            .any(|n| n == &self.profile_sel)
+    }
+
+    fn flags_save(&mut self) {
+        if !self.flags_dirty {
+            return;
+        }
+        let Some(guid) = self.installed.clone() else {
+            return;
+        };
+        let lang = self.lang;
+        let dir = self.flags_dir(&guid);
+        let map: BTreeMap<String, String> = self.flags.iter().cloned().collect();
+        match flags::save(&dir, &map) {
+            Ok(()) => {
+                self.flags_dirty = false;
+                if !self.config.active_flag_profile.is_empty() {
+                    self.config.active_flag_profile.clear();
+                    self.config.save();
+                }
+                self.flag_msg = Some((fmt(lang, "Flags_Saved", &[]), false));
+            }
+            Err(e) => {
+                self.flag_msg =
+                    Some((fmt(lang, "Flags_SaveErr", &[&e.to_string()]), true));
+            }
+        }
+    }
+
+    fn flags_add(&mut self) {
+        self.flags.push(("NewFlag".to_string(), "true".to_string()));
+        self.flags_selected = Some(self.flags.len() - 1);
+        self.flags_dirty = true;
+        self.flag_msg = None;
+    }
+
+    fn flags_delete_sel(&mut self) {
+        if let Some(i) = self.flags_selected.take() {
+            if i < self.flags.len() {
+                self.flags.remove(i);
+                self.flags_dirty = true;
+            }
+        }
+    }
+
+    fn flags_clear_request(&mut self) {
+        if !self.flags.is_empty() {
+            self.confirm = Some(Confirm::ClearAll);
+        }
+    }
+
+    fn flags_search_edited(&mut self, q: &str) {
+        self.flags_search = q.to_string();
+    }
+
+    fn flags_row_select(&mut self, idx: usize) {
+        if idx < self.flags.len() {
+            self.flags_selected = Some(idx);
+        }
+    }
+
+    fn flags_cell_edited(&mut self, idx: usize, col: i32, text: &str) {
+        if idx >= self.flags.len() {
+            return;
+        }
+        self.flags_selected = Some(idx);
+        if col == 0 {
+            if self.flags[idx].0 != text {
+                self.flags[idx].0 = text.to_string();
+                self.flags_dirty = true;
+            }
+            return;
+        }
+        let lang = self.lang;
+        let name = self.flags[idx].0.trim().to_string();
+        match flags::validate(&name, text.trim()) {
+            Ok(()) => {
+                self.flags[idx].1 = text.to_string();
+                self.flags_dirty = true;
+                if matches!(self.flag_msg, Some((_, true))) {
+                    self.flag_msg = None;
+                }
+            }
+            Err(e) => {
+                let detail = text.trim().to_string();
+                self.flag_msg = Some((error_text(lang, &name, &detail, e), true));
+            }
+        }
+    }
+
+    fn preset_pick(&mut self, pi: i32, oi: i32) {
+        if pi < 0 || oi < 0 {
+            return;
+        }
+        let Some(p) = presets::PRESETS.get(pi as usize) else {
+            return;
+        };
+        if p.kind != presets::Kind::Combo || oi as usize > p.map.len() {
+            return;
+        }
+        presets::apply(&mut self.flags, p, oi as usize);
+        self.flags_dirty = true;
+        self.flag_msg = None;
+    }
+
+    fn preset_toggle(&mut self, pi: i32, on: bool) {
+        if pi < 0 {
+            return;
+        }
+        let Some(p) = presets::PRESETS.get(pi as usize) else {
+            return;
+        };
+        if p.kind != presets::Kind::Toggle {
+            return;
+        }
+        presets::apply(&mut self.flags, p, usize::from(on));
+        self.flags_dirty = true;
+        self.flag_msg = None;
+    }
+
+    fn flags_profile_load(&mut self) {
+        if !self.flags_profile_sel_valid() {
+            return;
+        }
+        let name = self.profile_sel.clone();
+        if self.flags.is_empty() {
+            self.apply_flag_profile(&name);
+        } else {
+            self.confirm = Some(Confirm::ApplyProfile(name));
+        }
+    }
+
+    fn apply_flag_profile(&mut self, name: &str) {
+        let lang = self.lang;
+        let base = self.config.base();
+        let profiles = flags::load_profiles(&base);
+        let Some(profile) = profiles.profiles.get(name) else {
+            self.flag_msg = Some((fmt(lang, "Prof_NoSuchFmt", &[name]), false));
+            return;
+        };
+        self.flags = flags::profile_to_flags(profile);
+        self.flags_selected = None;
+        let Some(guid) = self.installed.clone() else {
+            self.flags_dirty = true;
+            return;
+        };
+        let dir = self.flags_dir(&guid);
+        let map: BTreeMap<String, String> = self.flags.iter().cloned().collect();
+        match flags::save(&dir, &map) {
+            Ok(()) => {
+                self.flags_dirty = false;
+                if !self.config.active_flag_profile.eq_ignore_ascii_case(name) {
+                    self.config.active_flag_profile = name.to_string();
+                    self.config.save();
+                }
+                self.flag_msg = Some((
+                    fmt(
+                        lang,
+                        "Prof_AppliedFmt",
+                        &[name, &self.flags.len().to_string()],
+                    ),
+                    false,
+                ));
+            }
+            Err(e) => {
+                self.flag_msg =
+                    Some((fmt(lang, "Flags_SaveErr", &[&e.to_string()]), true));
+            }
+        }
+    }
+
+    fn flags_profile_delete_request(&mut self) {
+        if self.flags_profile_sel_valid() {
+            let name = self.profile_sel.clone();
+            self.confirm = Some(Confirm::DeleteProfile(name));
+        }
+    }
+
+    #[cfg(windows)]
+    fn flags_profile_export(&mut self) {
+        let lang = self.lang;
+        let base = self.config.base();
+        let name = self.profile_sel.clone();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_ProfExport"))
+            .add_filter("JSON", &["json"])
+            .set_file_name(format!("{name}.json"))
+            .save_file()
+        {
+            match crate::core::share::export_flag_profile(&base, &name, &path) {
+                Ok(()) => {
+                    self.flag_msg =
+                        Some((fmt(lang, "Prof_ExportedFmt", &[&name]), false));
+                }
+                Err(e) => {
+                    self.flag_msg = Some((
+                        fmt(lang, "Prof_ShareErr", &[&e.to_string()]),
+                        true,
+                    ));
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn flags_profile_export(&mut self) {}
+
+    #[cfg(windows)]
+    fn flags_profile_import(&mut self) {
+        let lang = self.lang;
+        let base = self.config.base();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_ProfImport"))
+            .add_filter("JSON", &["json"])
+            .add_filter(tr(lang, "Dlg_AllFiles"), &["*"])
+            .pick_file()
+        {
+            match crate::core::share::import_flag_profile(&base, &path) {
+                Ok(name) => {
+                    self.profile_sel = name.clone();
+                    self.flag_msg =
+                        Some((fmt(lang, "Prof_ImportedFmt", &[&name]), false));
+                }
+                Err(e) => {
+                    self.flag_msg = Some((
+                        fmt(lang, "Prof_ShareErr", &[&e.to_string()]),
+                        true,
+                    ));
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn flags_profile_import(&mut self) {}
+
+    #[cfg(windows)]
+    fn flags_import_file(&mut self) {
+        let lang = self.lang;
+        let picked = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_FlagsImport"))
+            .add_filter("JSON", &["json"])
+            .add_filter(tr(lang, "Dlg_AllFiles"), &["*"])
+            .pick_file();
+        if let Some(path) = picked {
+            if let Ok(text) = std::fs::read_to_string(path) {
+                self.apply_import(&text);
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn flags_import_file(&mut self) {}
+
+    #[cfg(windows)]
+    fn flags_paste(&mut self) {
+        match clipboard_json() {
+            Some(t) => self.apply_import(&t),
+            None => {
+                let lang = self.lang;
+                self.flag_msg = Some((tr(lang, "Flags_NoClipboard").to_string(), false));
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn flags_paste(&mut self) {}
+
+    #[cfg(windows)]
+    fn flags_export(&mut self) {
+        let lang = self.lang;
+        let json = flags::export_json(&self.flags);
+        let count = self.flags.len().to_string();
+        let picked = rfd::FileDialog::new()
+            .set_title("Export")
+            .add_filter("JSON", &["json"])
+            .set_file_name("fastflags.json")
+            .save_file();
+        if let Some(path) = picked {
+            match std::fs::write(path, json) {
+                Ok(()) => {
+                    self.flag_msg =
+                        Some((fmt(lang, "Flags_ExportedFmt", &[&count]), false));
+                }
+                Err(e) => {
+                    self.flag_msg = Some((
+                        fmt(lang, "Flags_ExportErr", &[&e.to_string()]),
+                        true,
+                    ));
+                }
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn flags_export(&mut self) {}
+
+    /// Наложение импорта: новые — сразу, совпадающие — пропуск,
+    /// конфликты — в очередь окна спроса.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn apply_import(&mut self, text: &str) {
+        let lang = self.lang;
+        let incoming = match flags::parse_import(text) {
+            Ok(v) => v,
+            Err(e) => {
+                self.flag_msg =
+                    Some((fmt(lang, "Flags_ImportErr", &[&e.to_string()]), true));
+                return;
+            }
+        };
+        if incoming.is_empty() {
+            self.flag_msg = Some((tr(lang, "Flags_EmptyImport").to_string(), false));
+            return;
+        }
+
+        let mut conflicts = VecDeque::new();
+        let mut applied = 0usize;
+        for (k, v) in incoming {
+            match self.flags.iter().position(|(n, _)| *n == k) {
+                None => {
+                    self.flags.push((k, v));
+                    applied += 1;
+                }
+                Some(i) => {
+                    if self.flags[i].1 != v {
+                        conflicts.push_back((k, v));
+                    }
+                }
+            }
+        }
+
+        if conflicts.is_empty() {
+            self.flags_dirty = true;
+            self.flag_msg = Some((
+                fmt(lang, "Flags_Imported", &[&applied.to_string(), "0"]),
+                false,
+            ));
+        } else {
+            self.import = Some(ImportQueue {
+                conflicts,
+                replace_all: false,
+                keep_rest: false,
+                applied,
+                skipped: 0,
+            });
+        }
+    }
+
+    /// Решение в окне конфликта: 0 — оставить, 1 — заменить,
+    /// 2 — заменить все, 3 — отмена.
+    fn import_decide(&mut self, d: i32) {
+        match d {
+            0 => {
+                if let Some(q) = &mut self.import {
+                    q.keep_rest = true;
+                }
+            }
+            1 => {
+                if let Some(q) = &mut self.import {
+                    if let Some((n, v)) = q.conflicts.pop_front() {
+                        set_flag_pair(&mut self.flags, &n, &v);
+                        q.applied += 1;
+                    }
+                }
+            }
+            2 => {
+                if let Some(q) = &mut self.import {
+                    q.replace_all = true;
+                    if let Some((n, v)) = q.conflicts.pop_front() {
+                        set_flag_pair(&mut self.flags, &n, &v);
+                        q.applied += 1;
+                    }
+                }
+            }
+            _ => self.import = None,
+        }
+        self.drain_import();
+    }
+
+    /// Дожим очереди конфликтов (после решения или при пустой очереди).
+    fn drain_import(&mut self) {
+        let lang = self.lang;
+        let mut finished: Option<(usize, usize)> = None;
+        if let Some(q) = &mut self.import {
+            loop {
+                if q.keep_rest {
+                    q.skipped += q.conflicts.len();
+                    q.conflicts.clear();
+                } else if q.replace_all {
+                    match q.conflicts.pop_front() {
+                        Some((n, v)) => {
+                            set_flag_pair(&mut self.flags, &n, &v);
+                            q.applied += 1;
+                            continue;
+                        }
+                        None => {}
+                    }
+                }
+                if q.conflicts.is_empty() {
+                    finished = Some((q.applied, q.skipped));
+                }
+                break;
+            }
+        }
+        if let Some((a, s)) = finished {
+            self.import = None;
+            self.flags_dirty = true;
+            self.flag_msg = Some((
+                fmt(lang, "Flags_Imported", &[&a.to_string(), &s.to_string()]),
+                false,
+            ));
+        }
+    }
 
     // ---- Настройки (порт src/app.rs) ----
 
@@ -851,6 +1424,44 @@ impl Ctx {
                         self.mods_msg = Some((fmt(lang, "Prof_DeletedFmt", &[&name]), false));
                     }
                     Err(e) => self.mods_msg = Some((e.to_string(), true)),
+                }
+            }
+            Some(Confirm::ClearAll) => {
+                self.flags.clear();
+                self.flags_selected = None;
+                self.flags_dirty = true;
+                self.flag_msg = Some((fmt(lang, "Flags_Cleared", &[]), false));
+            }
+            Some(Confirm::ApplyProfile(name)) => self.apply_flag_profile(&name),
+            Some(Confirm::DeleteProfile(name)) => {
+                let base = self.config.base();
+                let mut profiles = flags::load_profiles(&base);
+                profiles.profiles.remove(&name);
+                match flags::save_profiles(&base, &profiles) {
+                    Ok(()) => {
+                        if self.dlg_input.trim().eq_ignore_ascii_case(&name) {
+                            self.dlg_input.clear();
+                        }
+                        if self.profile_sel.eq_ignore_ascii_case(&name) {
+                            self.profile_sel.clear();
+                        }
+                        if self
+                            .config
+                            .active_flag_profile
+                            .eq_ignore_ascii_case(&name)
+                        {
+                            self.config.active_flag_profile.clear();
+                            self.config.save();
+                        }
+                        self.flag_msg =
+                            Some((fmt(lang, "Prof_DeletedFmt", &[&name]), false));
+                    }
+                    Err(e) => {
+                        self.flag_msg = Some((
+                            fmt(lang, "Flags_SaveErr", &[&e.to_string()]),
+                            true,
+                        ));
+                    }
                 }
             }
             None => {}
@@ -1114,6 +1725,13 @@ impl Ctx {
             Some(Confirm::RevertMods) => Some(tr(lang, "Mods_RevertConfirm").to_string()),
             Some(Confirm::LoadModProfile(n)) => Some(fmt(lang, "Mods_LoadConfirm", &[n.as_str()])),
             Some(Confirm::DeleteModProfile(n)) => Some(fmt(lang, "Prof_DelConfirm", &[n.as_str()])),
+            Some(Confirm::ClearAll) => Some(tr(lang, "Flags_ClearConfirm").to_string()),
+            Some(Confirm::ApplyProfile(n)) => {
+                Some(fmt(lang, "Prof_ApplyConfirm", &[n.as_str()]))
+            }
+            Some(Confirm::DeleteProfile(n)) => {
+                Some(fmt(lang, "Prof_DelConfirm", &[n.as_str()]))
+            }
             None => None,
         };
         ui.set_confirm_body(body.unwrap_or_default().as_str().into());
@@ -1218,6 +1836,144 @@ impl Ctx {
         ui.set_mods_profiles_empty(profiles.is_empty());
     }
 
+    fn push_flags(&mut self, ui: &AppWindow) {
+        self.flags_ensure_loaded();
+        ui.set_flags_search(self.flags_search.as_str().into());
+        self.push_flags_rows(ui);
+        self.push_flags_meta(ui);
+    }
+
+    /// Сообщение, красная точка, деталь выделения, окно конфликта импорта.
+    fn push_flags_meta(&self, ui: &AppWindow) {
+        let lang = self.lang;
+        ui.set_flags_has_client(self.installed.is_some());
+        ui.set_flags_dirty(self.flags_dirty);
+        ui.set_flags_can_delete(self.flags_selected.is_some());
+
+        match &self.flag_msg {
+            Some((text, err)) => {
+                ui.set_flags_msg(text.as_str().into());
+                ui.set_flags_msg_err(*err);
+            }
+            None => {
+                ui.set_flags_msg("".into());
+                ui.set_flags_msg_err(false);
+            }
+        }
+
+        let detail = self
+            .flags_selected
+            .and_then(|i| self.flags.get(i))
+            .and_then(|(n, _)| flags::lookup(n.trim()))
+            .map(|info| {
+                format!(
+                    "{} · {} · {}",
+                    info.category,
+                    flags::hint(info),
+                    info.desc
+                )
+            })
+            .unwrap_or_default();
+        ui.set_flags_sel_detail(detail.as_str().into());
+
+        let (open, body) = match self.import.as_ref().and_then(|q| q.conflicts.front())
+        {
+            Some((name, incoming)) => {
+                let old = self
+                    .flags
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                (true, fmt(lang, "Flags_ConflictMsg", &[name, &old, incoming]))
+            }
+            None => (false, String::new()),
+        };
+        ui.set_import_open(open);
+        ui.set_import_body(body.as_str().into());
+    }
+
+    /// Таблица, пресеты, профили (пересборка моделей — фокус внутри
+    /// редактируемых ячеек при этом теряется, поэтому зовётся только
+    /// на структурных изменениях).
+    fn push_flags_rows(&self, ui: &AppWindow) {
+        let lang = self.lang;
+
+        let query = self.flags_search.trim().to_lowercase();
+        let rows: Vec<FlagRow> = self
+            .flags
+            .iter()
+            .enumerate()
+            .filter(|(_, (n, _))| query.is_empty() || n.to_lowercase().contains(&query))
+            .map(|(i, (n, v))| FlagRow {
+                idx: i as i32,
+                name: n.as_str().into(),
+                value: v.as_str().into(),
+                desc: flags::lookup(n.trim())
+                    .map(|f| format!("{} · {}", f.category, f.desc))
+                    .unwrap_or_default()
+                    .into(),
+                selected: self.flags_selected == Some(i),
+                alt: i % 2 == 1,
+            })
+            .collect();
+        ui.set_flags_rows(ModelRc::new(VecModel::from(rows)));
+        ui.set_flags_table_empty(self.flags.is_empty());
+
+        let presets: Vec<PresetRow> = presets::PRESETS
+            .iter()
+            .map(|p| {
+                let cur = presets::current_index(&self.flags, p);
+                let current = p.options.get(cur).copied().unwrap_or("Auto");
+                PresetRow {
+                    label: tr(lang, p.label_key).into(),
+                    desc: tr(lang, p.desc_key).into(),
+                    kind: if p.kind == presets::Kind::Toggle { 1 } else { 0 },
+                    options: ModelRc::new(VecModel::from(
+                        p.options
+                            .iter()
+                            .map(|o| local_option(lang, o).into())
+                            .collect::<Vec<SharedString>>(),
+                    )),
+                    selected: cur as i32,
+                    current: local_option(lang, current).into(),
+                    on: cur == 1,
+                }
+            })
+            .collect();
+        ui.set_flags_presets(ModelRc::new(VecModel::from(presets)));
+
+        let base = self.config.base();
+        let names: Vec<String> = flags::load_profiles(&base)
+            .profiles
+            .keys()
+            .cloned()
+            .collect();
+        let sel_index = names
+            .iter()
+            .position(|n| n == &self.profile_sel)
+            .map(|i| i as i32)
+            .unwrap_or(-1);
+        let sel_valid = sel_index >= 0;
+        let sel_text = if sel_valid {
+            self.profile_sel.clone()
+        } else if !self.config.active_flag_profile.is_empty()
+            && names
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(&self.config.active_flag_profile))
+        {
+            self.config.active_flag_profile.clone()
+        } else {
+            tr(lang, "Prof_Select").to_string()
+        };
+        let items: Vec<SharedString> = names.iter().cloned().map(Into::into).collect();
+        ui.set_flags_profiles(ModelRc::new(VecModel::from(items)));
+        ui.set_flags_profile_sel_text(sel_text.as_str().into());
+        ui.set_flags_profile_sel_index(sel_index);
+        ui.set_flags_profile_sel_valid(sel_valid);
+        ui.set_flags_profiles_empty(names.is_empty());
+    }
+
     fn push_dlg(&self, ui: &AppWindow) {
         let lang = self.lang;
         match &self.save_dlg {
@@ -1227,6 +1983,23 @@ impl Ctx {
                 let n = self.dlg_input.trim();
                 let exists =
                     !n.is_empty() && mods::list_profiles(&base).iter().any(|p| p == n);
+                ui.set_dlg_open(true);
+                ui.set_dlg_desc(tr(lang, "Prof_SaveAsDesc").into());
+                ui.set_dlg_hint(tr(lang, "Flags_ProfileName").into());
+                ui.set_dlg_ok_label(
+                    (if exists {
+                        tr(lang, "Prof_Overwrite")
+                    } else {
+                        tr(lang, "Prof_Save")
+                    })
+                    .into(),
+                );
+            }
+            Some(Dlg::FlagsProfile) => {
+                let base = self.config.base();
+                let n = self.dlg_input.trim();
+                let exists = !n.is_empty()
+                    && flags::load_profiles(&base).profiles.contains_key(n);
                 ui.set_dlg_open(true);
                 ui.set_dlg_desc(tr(lang, "Prof_SaveAsDesc").into());
                 ui.set_dlg_hint(tr(lang, "Flags_ProfileName").into());
@@ -1603,6 +2376,29 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_prof_export(tr(lang, "Prof_Export").into());
     t.set_prof_import(tr(lang, "Prof_Import").into());
     t.set_profile_name_hint(tr(lang, "Flags_ProfileName").into());
+    t.set_flags_h1(tr(lang, "Flags_H1").into());
+    t.set_flags_sub(tr(lang, "Flags_Sub").into());
+    t.set_flags_search(tr(lang, "Flags_Search").into());
+    t.set_flags_add(tr(lang, "Flags_Add").into());
+    t.set_flags_save(tr(lang, "Flags_Save").into());
+    t.set_flags_import(tr(lang, "Flags_Import").into());
+    t.set_flags_paste(tr(lang, "Flags_Paste").into());
+    t.set_flags_export(tr(lang, "Flags_Export").into());
+    t.set_flags_delete(tr(lang, "Flags_Delete").into());
+    t.set_flags_clear(tr(lang, "Flags_Clear").into());
+    t.set_flags_presets(tr(lang, "Flags_Presets").into());
+    t.set_flags_col_name(tr(lang, "Flags_ColName").into());
+    t.set_flags_col_value(tr(lang, "Flags_ColValue").into());
+    t.set_flags_col_desc(tr(lang, "Flags_ColDesc").into());
+    t.set_flags_conflict_title(tr(lang, "Flags_ConflictTitle").into());
+    t.set_flags_conflict_keep(tr(lang, "Flags_ConflictKeep").into());
+    t.set_flags_conflict_replace(tr(lang, "Flags_ConflictReplace").into());
+    t.set_flags_conflict_replace_all(tr(lang, "Flags_ConflictReplaceAll").into());
+    t.set_flags_profiles(tr(lang, "Flags_Profiles").into());
+    t.set_flags_profiles_empty(tr(lang, "Flags_ProfilesEmpty").into());
+    t.set_flags_empty(tr(lang, "Empty_Flags").into());
+    t.set_flags_search_empty(tr(lang, "Search_Empty").into());
+    t.set_flags_no_client(tr(lang, "Home_Status_NoClient").into());
     t.set_common_soon(tr(lang, "Common_ComingSoon").into());
 }
 
@@ -2037,6 +2833,8 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.push_confirm(&weak.unwrap());
             c.push_mods(&weak.unwrap());
             c.push_dlg(&weak.unwrap());
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
         });
     }
     {
@@ -2154,7 +2952,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
         let weak = weak.clone();
         ui.on_mods_profile_save_as(move || {
             {
-                ctx.borrow_mut().open_save_dlg();
+                ctx.borrow_mut().open_save_dlg(Dlg::ModsProfile);
             }
             let c = ctx.borrow();
             c.push_dlg(&weak.unwrap());
@@ -2232,6 +3030,240 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let c = ctx.borrow();
             c.push_dlg(&weak.unwrap());
             c.push_dlg_input(&weak.unwrap());
+        });
+    }
+
+    // — FastFlags —
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_search_edited(move |q: SharedString| {
+            {
+                ctx.borrow_mut().flags_search_edited(q.as_str());
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_add(move || {
+            {
+                ctx.borrow_mut().flags_add();
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_save(move || {
+            {
+                ctx.borrow_mut().flags_save();
+            }
+            let c = ctx.borrow();
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_import(move || {
+            {
+                ctx.borrow_mut().flags_import_file();
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_paste(move || {
+            {
+                ctx.borrow_mut().flags_paste();
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_export(move || {
+            {
+                ctx.borrow_mut().flags_export();
+            }
+            let c = ctx.borrow();
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_delete(move || {
+            {
+                ctx.borrow_mut().flags_delete_sel();
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_clear(move || {
+            {
+                ctx.borrow_mut().flags_clear_request();
+            }
+            let c = ctx.borrow();
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_row_select(move |i: i32| {
+            {
+                ctx.borrow_mut().flags_row_select(i.max(0) as usize);
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_cell_edited(move |idx: i32, col: i32, t: SharedString| {
+            {
+                ctx.borrow_mut().flags_cell_edited(idx.max(0) as usize, col, t.as_str());
+            }
+            let c = ctx.borrow();
+            // Без push_flags_rows: пересборка строк съела бы фокус ячейки.
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_preset_pick(move |pi: i32, oi: i32| {
+            {
+                ctx.borrow_mut().preset_pick(pi, oi);
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_preset_toggle(move |pi: i32, on: bool| {
+            {
+                ctx.borrow_mut().preset_toggle(pi, on);
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_profile_pick(move |i: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                if i >= 0 {
+                    let names: Vec<String> = flags::load_profiles(&c.config.base())
+                        .profiles
+                        .keys()
+                        .cloned()
+                        .collect();
+                    if let Some(n) = names.get(i as usize) {
+                        c.profile_sel = n.clone();
+                    }
+                }
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_profile_load(move || {
+            {
+                ctx.borrow_mut().flags_profile_load();
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_profile_save_as(move || {
+            {
+                ctx.borrow_mut().open_save_dlg(Dlg::FlagsProfile);
+            }
+            let c = ctx.borrow();
+            c.push_dlg(&weak.unwrap());
+            c.push_dlg_input(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_profile_delete(move || {
+            {
+                ctx.borrow_mut().flags_profile_delete_request();
+            }
+            let c = ctx.borrow();
+            c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_profile_export(move || {
+            {
+                ctx.borrow_mut().flags_profile_export();
+            }
+            let c = ctx.borrow();
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_flags_profile_import(move || {
+            {
+                ctx.borrow_mut().flags_profile_import();
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_import_decision(move |d: i32| {
+            {
+                ctx.borrow_mut().import_decide(d);
+            }
+            let c = ctx.borrow();
+            c.push_flags_rows(&weak.unwrap());
+            c.push_flags_meta(&weak.unwrap());
         });
     }
 }
@@ -2327,10 +3359,18 @@ pub fn run() -> Result<(), slint::PlatformError> {
         profile_sel: String::new(),
         save_dlg: None,
         dlg_input: String::new(),
+        flags: Vec::new(),
+        flags_loaded_for: None,
+        flags_selected: None,
+        flags_dirty: false,
+        flags_search: String::new(),
+        flag_msg: None,
+        import: None,
     }));
 
     wire(&ui, &ctx);
     ui.set_about_version(updater::current_version().into());
+    ui.set_flags_share(cfg!(windows));
     if ctx.borrow().config.auto_update {
         ctx.borrow_mut().check_updates();
     }
@@ -2361,6 +3401,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
                 if page == 4 {
                     c.logs_tick(&ui);
                 }
+            }
+            if page == 1 {
+                c.push_flags(&ui);
             }
             if page == 3 {
                 if !c.mods_scanned {

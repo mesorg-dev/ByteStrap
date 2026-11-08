@@ -35,3 +35,27 @@ export struct ModFileRow {
     /// 0 — применён, 1 — не применён, 2 — файл клиента.
     status-kind: int,
 }
+
+export struct FlagRow {
+    /// Индекс в таблице контроллера (не в отфильтрованной выборке).
+    idx: int,
+    name: string,
+    value: string,
+    /// «категория · описание» из реестра (пусто — флаг неизвестен).
+    desc: string,
+    selected: bool,
+    /// Полосатость строки (i % 2).
+    alt: bool,
+}
+
+export struct PresetRow {
+    label: string,
+    desc: string,
+    /// 0 — выпадающий список, 1 — тумблер.
+    kind: int,
+    options: [string],
+    selected: int,
+    /// Локализованный текущий вариант для закрытого комбобокса.
+    current: string,
+    on: bool,
+}

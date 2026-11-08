@@ -277,6 +277,8 @@ export component Combo inherits Rectangle {
     in-out property <string> current-text;
     in-out property <bool> open: false;
     callback pick(int);
+    /// Состояние списка изменилось (для высоты скролла у вызывающего).
+    callback open-changed(bool);
 
     height: 30px;
     border-radius: Theme.r-soft;
@@ -312,7 +314,10 @@ export component Combo inherits Rectangle {
     touch := TouchArea {
         width: 100%;
         height: 100%;
-        clicked => { root.open = !root.open; }
+        clicked => {
+            root.open-changed(!root.open);
+            root.open = !root.open;
+        }
     }
 
     if root.open && root.items.length > 0 : Rectangle {
@@ -353,6 +358,7 @@ export component Combo inherits Rectangle {
                 clicked => {
                     root.pick(i);
                     root.open = false;
+                    root.open-changed(false);
                 }
             }
         }
