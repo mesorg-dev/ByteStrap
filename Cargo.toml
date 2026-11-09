@@ -49,6 +49,9 @@ slint-build = "1.18"
 
 [dev-dependencies]
 tempfile = "3"
+# Скриншоты UI без дисплея (cargo test с BYTESTRAP_SHOTS=1).
+image = "0.25"
+i-slint-backend-testing = { version = "1.18", features = ["renderer-software"] }
 
 [profile.release]
 opt-level = 2

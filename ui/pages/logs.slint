@@ -95,7 +95,7 @@ export component LogsPage inherits Rectangle {
         }
         Rectangle { height: 14px; }
 
-        // ===== Тулбар =====
+        // ===== Тулбар, ряд 1: файлы + действия =====
         Rectangle {
             height: 34px;
 
@@ -104,24 +104,16 @@ export component LogsPage inherits Rectangle {
 
                 // Файлы (максимум 5, новые сверху).
                 for file-name[i] in root.files : FileSeg {
-                    width: 150px;
-                    horizontal-stretch: 0;
+                    width: 110px;
+                    horizontal-stretch: 1;
                     label: file-name;
                     selected: i == root.selected;
                     clicked => { root.select-file(i); }
                 }
 
                 Rectangle {
-                    horizontal-stretch: 1;
+                    horizontal-stretch: 1000;
                     height: 1px;
-                }
-
-                TextField {
-                    width: 200px;
-                    horizontal-stretch: 0;
-                    placeholder: T.logs_search;
-                    accepted => { root.search-edited(self.text); }
-                    edited => { root.search-edited(self.text); }
                 }
 
                 Btn {
@@ -151,6 +143,24 @@ export component LogsPage inherits Rectangle {
                     horizontal-stretch: 0;
                     tip: T.logs_refresh;
                     clicked => { root.refresh(); }
+                }
+            }
+        }
+
+        Rectangle { height: 8px; }
+
+        // ===== Тулбар, ряд 2: поиск =====
+        Rectangle {
+            height: 34px;
+
+            HorizontalLayout {
+                spacing: 8px;
+
+                TextField {
+                    width: 100%;
+                    placeholder: T.logs_search;
+                    accepted => { root.search-edited(self.text); }
+                    edited => { root.search-edited(self.text); }
                 }
             }
         }

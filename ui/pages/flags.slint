@@ -53,7 +53,10 @@ export component FlagsPage inherits Rectangle {
     property <length> msg-h: root.msg == "" ? 0px : 24px;
     property <length> presets-head-y: root.tool-h + root.msg-h + 10px;
     property <length> presets-y: root.presets-head-y + 21px;
-    property <length> presets-h: 380px;
+    // Высота карточки пресетов — по числу строк (14px + n*40px + 14px).
+    property <length> presets-h: root.presets.length == 0
+        ? 56px
+        : 22px + root.presets.length * 40px;
     property <length> table-y: root.presets-y + root.presets-h + 12px;
     property <length> table-h: root.rows.length == 0
         ? 56px
@@ -332,7 +335,7 @@ export component FlagsPage inherits Rectangle {
                 }
 
                 if root.rows.length > 0 : Text {
-                    x: 10px;
+                    x: 8px;
                     y: 10px;
                     width: 290px;
                     height: 22px;
@@ -343,7 +346,7 @@ export component FlagsPage inherits Rectangle {
                     vertical-alignment: center;
                 }
                 if root.rows.length > 0 : Text {
-                    x: 310px;
+                    x: 308px;
                     y: 10px;
                     width: 170px;
                     height: 22px;
@@ -354,9 +357,9 @@ export component FlagsPage inherits Rectangle {
                     vertical-alignment: center;
                 }
                 if root.rows.length > 0 : Text {
-                    x: 490px;
+                    x: 488px;
                     y: 10px;
-                    width: parent.width - 500px;
+                    width: parent.width - 498px;
                     height: 22px;
                     text: T.flags_col_desc;
                     font-family: Theme.font-mono;

@@ -3658,3 +3658,323 @@ pub fn run() -> Result<(), slint::PlatformError> {
     logger::info("Интерфейс Slint завершён");
     res
 }
+
+// ===== Визуальные скриншоты (headless) =====
+// BYTESTRAP_SHOTS=1 cargo test take_page_shots -- --nocapture
+// Рендерит каждую страницу в target/shots/*.png через software renderer
+// (i-slint-backend-testing), без дисплея. В обычном cargo test — no-op.
+#[cfg(test)]
+mod shots {
+    use super::*;
+
+    fn rows<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
+        ModelRc::new(VecModel::from(v))
+    }
+
+    fn strings(v: &[&str]) -> ModelRc<SharedString> {
+        rows(v.iter().map(|s| (*s).into()).collect())
+    }
+
+    #[test]
+    fn take_page_shots() {
+        if std::env::var("BYTESTRAP_SHOTS").is_err() {
+            return;
+        }
+
+        slint::platform::set_platform(Box::new(i_slint_backend_testing::TestingBackend::new(
+            i_slint_backend_testing::TestingBackendOptions {
+                mock_time: true,
+                threading: false,
+                renderer_name: Some("software".into()),
+            },
+        )))
+        .expect("set_platform");
+        // configure_test_fonts() недоступен: в опубликованном крейте
+        // отсутствуют include_bytes-шрифты из репозитория Slint. Используем
+        // системные шрифты (fontique).
+
+        let ui = AppWindow::new().expect("AppWindow");
+        apply_i18n(&ui, Lang::Ru);
+
+        // ---- Общее состояние (как после запуска с установленным клиентом) ----
+        ui.set_status_text("Клиент готов".into());
+        ui.set_status_dot(1);
+        ui.set_busy(false);
+        ui.set_primary_label("Играть".into());
+        ui.set_version_text("Версия: 0.9.40".into());
+        ui.set_mods_count("12".into());
+        ui.set_flags_count("248".into());
+        ui.set_hours_count("86".into());
+        ui.set_show_update(true);
+        ui.set_win_share(true);
+        ui.set_progress(0.0);
+        ui.set_progress_text("".into());
+
+        // ---- Home ----
+        ui.set_session_text("В игре 01:24:05 · Bloxburg".into());
+        ui.set_top_places(rows(vec![
+            PlaceRow { name: "Bloxburg".into(), duration: "14 ч 05 мин".into() },
+            PlaceRow { name: "Grow a Garden".into(), duration: "9 ч 41 мин".into() },
+            PlaceRow { name: "Rivals".into(), duration: "6 ч 12 мин".into() },
+            PlaceRow { name: "Dead Rails".into(), duration: "3 ч 57 мин".into() },
+            PlaceRow { name: "Blade Ball".into(), duration: "2 ч 30 мин".into() },
+        ]));
+        ui.set_link_paste_text("roblox://experiences/start?placeId=920587237".into());
+        ui.set_link_msg("Ссылка скопирована".into());
+        ui.set_link_msg_bad(false);
+
+        // ---- Flags ----
+        ui.set_flags_has_client(true);
+        ui.set_flags_table_empty(false);
+        ui.set_flags_dirty(true);
+        ui.set_flags_msg("Импортировано: 3, пропущено: 1".into());
+        ui.set_flags_msg_err(false);
+        ui.set_flags_search("".into());
+        ui.set_flags_can_delete(true);
+        ui.set_flags_sel_detail(
+            "Rendering · Включает новое освещение · Отрисовка нового освещения".into(),
+        );
+        ui.set_flags_rows(rows(vec![
+            FlagRow { idx: 0, name: "FFlagDebugForceFutureLights".into(), value: "true".into(), desc: "Rendering · Новое освещение".into(), selected: true, alt: false },
+            FlagRow { idx: 1, name: "DFFlagTextureQualityOverride".into(), value: "2".into(), desc: "Graphics · Качество текстур".into(), selected: false, alt: true },
+            FlagRow { idx: 2, name: "FIntDebugFRMClamp".into(), value: "16".into(), desc: "Performance · Ограничение FRM".into(), selected: false, alt: false },
+            FlagRow { idx: 3, name: "FFlagRenderFixPBR".into(), value: "false".into(), desc: "Rendering · PBR-фикс".into(), selected: false, alt: true },
+            FlagRow { idx: 4, name: "FIntTextureQualityOverride1".into(), value: "3".into(), desc: "Graphics · Уровень текстур".into(), selected: false, alt: false },
+            FlagRow { idx: 5, name: "FFlagHandleAltEnterFullscreenManually".into(), value: "false".into(), desc: "UI · Полноэкранный режим".into(), selected: false, alt: true },
+            FlagRow { idx: 6, name: "DFIntTaskSchedulerTargetFps".into(), value: "60".into(), desc: "Performance · Лимит FPS".into(), selected: false, alt: false },
+            FlagRow { idx: 7, name: "FFlagEnableInGameMenuModern".into(), value: "true".into(), desc: "UI · Новое меню".into(), selected: false, alt: true },
+            FlagRow { idx: 8, name: "FIntRenderShadowIntensity".into(), value: "3".into(), desc: "Rendering · Тени".into(), selected: false, alt: false },
+            FlagRow { idx: 9, name: "FFlagDebugPreferSingleThread".into(), value: "false".into(), desc: "Performance · Один поток".into(), selected: false, alt: true },
+            FlagRow { idx: 10, name: "DFIntConnectionMTU".into(), value: "1400".into(), desc: "Network · MTU".into(), selected: false, alt: false },
+            FlagRow { idx: 11, name: "FFlagAdServiceEnabled".into(), value: "false".into(), desc: "Ads · Реклама".into(), selected: false, alt: true },
+        ]));
+        // Реальные пресеты контроллера (на пустом наборе флагов — как при первом запуске).
+        let preset_rows: Vec<PresetRow> = presets::PRESETS
+            .iter()
+            .map(|p| {
+                let cur = presets::current_index(&[], p);
+                let current = p.options.get(cur).copied().unwrap_or("Auto");
+                PresetRow {
+                    label: tr(Lang::Ru, p.label_key).into(),
+                    desc: tr(Lang::Ru, p.desc_key).into(),
+                    kind: if p.kind == presets::Kind::Toggle { 1 } else { 0 },
+                    options: rows(
+                        p.options
+                            .iter()
+                            .map(|o| local_option(Lang::Ru, o).into())
+                            .collect::<Vec<SharedString>>(),
+                    ),
+                    selected: cur as i32,
+                    current: local_option(Lang::Ru, current).into(),
+                    on: cur == 1,
+                }
+            })
+            .collect();
+        ui.set_flags_presets(rows(preset_rows));
+        ui.set_flags_profiles(strings(&["Default", "PvP", "Низкий ПК"]));
+        ui.set_flags_profile_sel_text("Default".into());
+        ui.set_flags_profile_sel_index(0);
+        ui.set_flags_profile_sel_valid(true);
+        ui.set_flags_profiles_empty(false);
+
+        // ---- Versions ----
+        ui.set_ver_installed_guid("version-56d8f3a2c1b0e947".into());
+        ui.set_ver_selected_guid("version-7c1e9b44a2d0f836".into());
+        ui.set_ver_versions(rows(vec![
+            VersionRow { guid: "version-56d8f3a2c1b0e947".into(), size: "1,42 ГБ".into(), active: true, no_player: false, alt: false },
+            VersionRow { guid: "version-7c1e9b44a2d0f836".into(), size: "1,41 ГБ".into(), active: false, no_player: false, alt: true },
+            VersionRow { guid: "version-9a02c7e51b63d480".into(), size: "1,39 ГБ".into(), active: false, no_player: false, alt: false },
+            VersionRow { guid: "version-3f8d16c0e7a95b21".into(), size: "1,38 ГБ".into(), active: false, no_player: true, alt: true },
+            VersionRow { guid: "version-0b47e2d98c15af63".into(), size: "1,35 ГБ".into(), active: false, no_player: false, alt: false },
+        ]));
+        ui.set_ver_integrity_kind(1);
+        ui.set_ver_integrity_text("Хеш-сверка пройдена · 0 проблем".into());
+        ui.set_ver_checked_text("checked: сегодня, 14:32".into());
+
+        // ---- Mods ----
+        ui.set_mods_path("C:\\Users\\Linar\\AppData\\Local\\ByteStrap\\Versions\\version-56d8f3a2c1b0e947".into());
+        ui.set_mods_apply_enabled(true);
+        ui.set_mods_revert_enabled(true);
+        ui.set_mods_msg("Применено: 4 из 5".into());
+        ui.set_mods_msg_err(false);
+        ui.set_mods_files_count("Файлов: 6".into());
+        ui.set_mods_list(rows(vec![
+            ModRow { id: "Blaze ESP".into(), meta: "файлов: 3 · 12,4 МБ".into(), enabled: true, can_up: false, can_down: true },
+            ModRow { id: "FPS Boost".into(), meta: "файлов: 1 · 84 КБ".into(), enabled: true, can_up: true, can_down: true },
+            ModRow { id: "Old Death Sound".into(), meta: "файлов: 1 · 12 КБ".into(), enabled: true, can_up: true, can_down: true },
+            ModRow { id: "Shaders".into(), meta: "файлов: 5 · 4,8 МБ".into(), enabled: false, can_up: true, can_down: true },
+            ModRow { id: "Custom Skybox".into(), meta: "файлов: 2 · 2,1 МБ".into(), enabled: true, can_up: true, can_down: true },
+            ModRow { id: "Low GFX".into(), meta: "файлов: 1 · 320 КБ".into(), enabled: false, can_up: true, can_down: true },
+            ModRow { id: "Old Cursor".into(), meta: "файлов: 2 · 48 КБ".into(), enabled: false, can_up: true, can_down: true },
+            ModRow { id: "Classic Menu".into(), meta: "файлов: 4 · 1,2 МБ".into(), enabled: false, can_up: true, can_down: false },
+        ]));
+        ui.set_mods_files(rows(vec![
+            ModFileRow { rel: "Blaze/esp.lua".into(), size: "4,2 КБ".into(), status_kind: 0 },
+            ModFileRow { rel: "Blaze/config.json".into(), size: "1,1 КБ".into(), status_kind: 0 },
+            ModFileRow { rel: "fps-boost/flags.txt".into(), size: "84 B".into(), status_kind: 0 },
+            ModFileRow { rel: "shaders/enable.post".into(), size: "12,8 КБ".into(), status_kind: 1 },
+            ModFileRow { rel: "skybox/day.tex".into(), size: "1,9 МБ".into(), status_kind: 1 },
+            ModFileRow { rel: "content/skybox.map".into(), size: "256 МБ".into(), status_kind: 2 },
+        ]));
+        ui.set_mods_profiles(strings(&["Default", "PvP"]));
+        ui.set_mods_profile_sel_text("Default".into());
+        ui.set_mods_profile_sel_index(0);
+        ui.set_mods_profile_sel_valid(true);
+        ui.set_mods_profiles_empty(false);
+
+        // ---- Logs ----
+        let log: Vec<(&str, i32, &str)> = vec![
+            ("14:31:58", 1, "Запуск ByteStrap 0.9.40"),
+            ("14:31:58", 0, "Загрузка конфигурации: config.json"),
+            ("14:31:58", 1, "Клиент найден: version-56d8f3a2c1b0e947"),
+            ("14:31:59", 1, "Проверка обновлений лаунчера…"),
+            ("14:32:00", 1, "Доступна версия 0.9.41"),
+            ("14:32:00", 0, "Discord RPC: инициализация"),
+            ("14:32:01", 1, "Discord RPC подключён"),
+            ("14:32:01", 2, "Каталог Mods отсутствует — создан"),
+            ("14:32:02", 1, "Загружено флагов: 248"),
+            ("14:32:02", 0, "Профиль флагов: Default"),
+            ("14:32:03", 1, "Сессия запущена: placeId=920587237"),
+            ("14:32:03", 0, "Rich Presence: обновление состояния"),
+            ("14:32:04", 1, "Сессия завершена: 00:04:12"),
+            ("14:32:05", 0, "Playtime: сохранение (86 ч)"),
+            ("14:32:06", 3, "Не удалось применить мод: файл занят"),
+            ("14:32:06", 0, "Повтор через 5 секунд…"),
+            ("14:32:07", 1, "Мод применён: FPS Boost"),
+            ("14:32:08", 2, "Клиент не запущен — проверка integrity пропущена"),
+            ("14:32:09", 1, "Хеш-сверка пройдена: 12 файлов"),
+            ("14:32:10", 0, "Кэш версий обновлён"),
+            ("14:32:11", 1, "Deep-link зарегистрирован: roblox://"),
+            ("14:32:12", 0, "Скачивание манифеста каналов…"),
+            ("14:32:13", 1, "Канал: LIVE (0.9.40)"),
+            ("14:32:14", 0, "Очистка временных файлов: 128 МБ"),
+            ("14:32:15", 2, "Антивирус: файл подозрительный — пропущено"),
+            ("14:32:16", 1, "Готово к запуску"),
+        ];
+        ui.set_log_lines(rows(
+            log.iter()
+                .enumerate()
+                .map(|(i, (t, l, x))| LogLine {
+                    time: (*t).into(),
+                    level: *l,
+                    text: (*x).into(),
+                    zebra: i % 2 == 0,
+                })
+                .collect(),
+        ));
+        ui.set_log_files(strings(&["bytestrap.log", "Player.log", "Player.previous.log"]));
+        ui.set_log_selected(0);
+        ui.set_log_follow(true);
+        ui.set_log_missing(false);
+        ui.set_log_info("26 строк · bytestrap.log".into());
+
+        // ---- Settings ----
+        ui.set_set_ch_sel(0);
+        ui.set_set_ch_checking(false);
+        ui.set_set_ch_preview_kind(2);
+        ui.set_set_ch_preview_text("Доступна версия 0.9.40".into());
+        ui.set_set_ch_changed(false);
+        ui.set_set_lang_code(0);
+        ui.set_set_threads(4);
+        ui.set_set_auto_update(true);
+        ui.set_set_close_launch(false);
+        ui.set_set_discord_rp(true);
+        ui.set_set_rp_place(true);
+        ui.set_set_rp_time(true);
+        ui.set_set_rp_brand(true);
+        ui.set_set_discord_status(1);
+        ui.set_set_discord_text("Подключено".into());
+        ui.set_set_deeplink(true);
+        ui.set_set_deeplink_ok(1);
+        ui.set_set_cleanup_busy(false);
+        ui.set_set_cleanup_text("".into());
+        ui.set_set_cleanup_err(false);
+        ui.set_set_path("C:\\Users\\Linar\\AppData\\Local\\ByteStrap".into());
+        ui.set_set_path_hint("Папка с версиями, модами и профилями".into());
+        ui.set_set_path_token(0);
+
+        // ---- About ----
+        ui.set_about_version("0.9.40".into());
+        ui.set_update_kind(3);
+        ui.set_update_text("Доступна версия 0.9.41".into());
+        ui.set_update_notes("- Исправлено окно логов\n- Ускорен запуск клиента\n- Новый счётчик сессии в профиле".into());
+        ui.set_update_pct(0.0);
+
+        ui.show().expect("show");
+
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/shots");
+        std::fs::create_dir_all(&dir).expect("mkdir shots");
+
+        let shots: Vec<(i32, String)> = vec![
+            (0, "0-home".into()),
+            (1, "1-flags".into()),
+            (2, "2-versions".into()),
+            (3, "3-mods".into()),
+            (4, "4-logs".into()),
+            (5, "5-settings".into()),
+            (6, "6-about".into()),
+            // Прокрутки: таблица флагов, файлы модов, низ настроек.
+            (1, "1-flags-table".into()),
+            (3, "3-mods-files".into()),
+            (5, "5-settings-b".into()),
+            // Модальные поверхности.
+            (3, "3-mods-saveas".into()),
+            (1, "1-flags-import".into()),
+            (0, "0-home-confirm".into()),
+        ];
+
+        for (page, name) in shots {
+            ui.set_page(page);
+            // Сброс скролла предыдущего снимка (delta_y > 0 — к началу).
+            scroll(&ui, 1_000.0, 4);
+            // Сброс модальных поверхностей предыдущего снимка.
+            ui.set_dlg_open(false);
+            ui.set_import_open(false);
+            ui.set_confirm_body("".into());
+            match name.as_str() {
+                "1-flags-table" | "3-mods-files" | "5-settings-b" => {
+                    scroll(&ui, -120.0, 6);
+                }
+                "3-mods-saveas" => {
+                    ui.set_dlg_open(true);
+                    ui.set_dlg_desc("Сохранить профиль модов".into());
+                    ui.set_dlg_hint("Название профиля".into());
+                    ui.set_dlg_input("PvP-32-нмр".into());
+                    ui.set_dlg_ok_label("Сохранить".into());
+                }
+                "1-flags-import" => {
+                    ui.set_import_open(true);
+                    ui.set_import_body(
+                        "Конфликт импорта: 3 файла уже существуют в папке Mods.\n\n\
+                         blaze/esp.lua — перезаписать?\n\
+                         fps-boost/flags.txt — перезаписать?\n\
+                         shaders/enable.post — пропустить".into(),
+                    );
+                }
+                "0-home-confirm" => {
+                    ui.set_confirm_body("Удалить версию version-0b47e2d98c15af63?".into());
+                }
+                _ => {}
+            }
+
+            let buf = ui.window().take_snapshot().unwrap_or_else(|e| {
+                panic!("snapshot {name}: {e}");
+            });
+            let path = dir.join(format!("{name}.png"));
+            image::save_buffer(&path, buf.as_bytes(), buf.width(), buf.height(), image::ColorType::Rgba8)
+                .unwrap_or_else(|e| panic!("save {name}: {e}"));
+            println!("saved {name}");
+        }
+    }
+
+    /// Прокрутка Flickable под указателем (700, 500) в окне.
+    fn scroll(ui: &AppWindow, dy: f32, times: usize) {
+        for _ in 0..times {
+            ui.window().dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+                position: slint::LogicalPosition::new(700.0, 500.0),
+                delta_x: 0.0,
+                delta_y: dy,
+            });
+        }
+    }
+}
