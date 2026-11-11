@@ -1871,6 +1871,9 @@ impl Ctx {
             Some(false) => 2,
         });
 
+        ui.set_set_sound(self.config.sound);
+        ui.set_set_sound_vol(self.config.sound_volume.min(100) as i32);
+
         ui.set_set_cleanup_busy(self.cleanup_busy);
         match &self.cleanup_msg {
             Some((text, err)) => {
@@ -2520,6 +2523,10 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_cleanup_desc(tr(lang, "Settings_CleanupDesc").into());
     t.set_settings_cleanup_btn(tr(lang, "Settings_CleanupBtn").into());
     t.set_settings_cleanup_busy(tr(lang, "Settings_CleanupBusy").into());
+    t.set_settings_sound(tr(lang, "Settings_Sound").into());
+    t.set_settings_sound_desc(tr(lang, "Settings_SoundDesc").into());
+    t.set_settings_sound_on(tr(lang, "Settings_SoundOn").into());
+    t.set_settings_sound_volume(tr(lang, "Settings_SoundVolume").into());
     t.set_btn_yes(tr(lang, "Btn_Yes").into());
     t.set_btn_no(tr(lang, "Btn_No").into());
     t.set_mods_h1(tr(lang, "Mods_H1").into());
@@ -2992,6 +2999,36 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     {
         let ctx = Rc::clone(ctx);
         let weak = weak.clone();
+        let audio = crate::audio::global();
+        ui.on_sound_set(move |v: bool| {
+            audio.set_enabled(v);
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.sound = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        let audio = crate::audio::global();
+        ui.on_sound_vol_set(move |v: i32| {
+            audio.set_volume(v.clamp(0, 100) as u32);
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.sound_volume = v.clamp(0, 100) as u32;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
         ui.on_confirm_yes(move || {
             {
                 ctx.borrow_mut().confirm_yes();
@@ -3448,6 +3485,18 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let lang = Lang::resolve(&config.language);
     apply_i18n(&ui, lang);
 
+    // Звук интерфейса: движок (только Windows), начальные громкость/вкл.
+    let audio = crate::audio::global();
+    audio.set_enabled(config.sound);
+    audio.set_volume(config.sound_volume);
+    {
+        let snd = ui.global::<Snd>();
+        snd.set_enabled(config.sound);
+        snd.set_volume(config.sound_volume.min(100) as i32);
+        let audio = crate::audio::global();
+        snd.on_play(move |kind| audio.play(kind));
+    }
+
     let installed = effective_installed(&config);
     let mods_count = mods::scan_mods(&config.base()).len();
     let flags_count = match &installed {
@@ -3886,6 +3935,8 @@ mod shots {
         ui.set_set_discord_text("Подключено".into());
         ui.set_set_deeplink(true);
         ui.set_set_deeplink_ok(1);
+        ui.set_set_sound(true);
+        ui.set_set_sound_vol(70);
         ui.set_set_cleanup_busy(false);
         ui.set_set_cleanup_text("".into());
         ui.set_set_cleanup_err(false);

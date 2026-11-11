@@ -1,12 +1,12 @@
-// Моды: папки-моды (чекбокс/порядок/открыть), список включённых файлов,
+// Моды: папки-моды (тумблер/порядок/открыть), список включённых файлов,
 // профили (комбобокс + действия). Диалоги — на уровне AppWindow.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { Btn, IconBtn, GlyphBtn, Combo } from "../widgets.slint";
+import { PageFade, Btn, IconBtn, GlyphBtn, Combo, Toggle } from "../widgets.slint";
 import { ModRow, ModFileRow } from "../models.slint";
 
-export component ModsPage inherits Rectangle {
+export component ModsPage inherits PageFade {
     in-out property <string> mods-path: "";
     in-out property <[ModRow]> mods-list: [];
     in-out property <string> mods-msg: "";
@@ -48,16 +48,17 @@ export component ModsPage inherits Rectangle {
             text: T.mods_h1;
             font-family: Theme.font-display;
             font-weight: 700;
-            font-size: 23px;
+            font-size: 22px;
+            letter-spacing: 0.5px;
             color: Theme.fg;
         }
-        Rectangle { height: 4px; }
+        Rectangle { height: 5px; }
         Text {
             text: T.mods_sub;
-            font-size: 13px;
+            font-size: 12.5px;
             color: Theme.fg-dim;
         }
-        Rectangle { height: 14px; }
+        Rectangle { height: 16px; }
 
         flick := Flickable {
             vertical-stretch: 1;
@@ -71,11 +72,14 @@ export component ModsPage inherits Rectangle {
                 x: 0;
                 y: 0;
                 width: 100%;
-                height: 110px + (root.mods-msg == "" ? 0px : 26px);
+                height: 112px + (root.mods-msg == "" ? 0px : 26px);
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;
@@ -150,12 +154,15 @@ export component ModsPage inherits Rectangle {
                 width: 100%;
                 height: root.mods-list.length == 0
                     ? 60px
-                    : 16px + root.mods-list.length * 32px;
+                    : 16px + root.mods-list.length * 34px;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
                 clip: true;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 if root.mods-list.length == 0 : Text {
                     x: 16px;
@@ -172,42 +179,33 @@ export component ModsPage inherits Rectangle {
                     x: 0;
                     y: 8px;
                     width: 100%;
-                    height: root.mods-list.length * 32px;
+                    height: root.mods-list.length * 34px;
                     spacing: 0px;
 
                     for m in root.mods-list : Rectangle {
-                        height: 32px;
+                        height: 34px;
+                        background: row-touch.has-hover ? #ffffff06 : transparent;
+                        animate background { duration: Theme.t-fast; }
 
-                        // Чекбокс вкл/выкл
-                        Rectangle {
-                            x: 8px;
-                            y: 7px;
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 4px;
-                            background: m.enabled ? Theme.good : Theme.field;
-                            border-width: 1px;
-                            border-color: m.enabled ? Theme.good : Theme.line;
-                            if m.enabled : Rectangle {
-                                x: 5px;
-                                y: 5px;
-                                width: 8px;
-                                height: 8px;
-                                border-radius: 2px;
-                                background: Theme.on-accent;
-                            }
-                            cb-touch := TouchArea {
-                                width: 100%;
-                                height: 100%;
-                                clicked => { root.toggle-mod(m.id, !m.enabled); }
-                            }
+                        // Захват ховера строки — снизу, не перекрывает тумблер.
+                        row-touch := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        // Тумблер вкл/выкл.
+                        Toggle {
+                            x: 10px;
+                            y: 6px;
+                            on: m.enabled;
+                            toggled(v) => { root.toggle-mod(m.id, v); }
                         }
 
                         Text {
-                            x: 34px;
+                            x: 56px;
                             y: 0;
                             width: 200px;
-                            height: 32px;
+                            height: 34px;
                             text: m.id;
                             font-size: 13px;
                             color: Theme.fg;
@@ -216,10 +214,10 @@ export component ModsPage inherits Rectangle {
                         }
 
                         Text {
-                            x: 240px;
+                            x: 260px;
                             y: 0;
-                            width: parent.width - 240px - 114px;
-                            height: 32px;
+                            width: parent.width - 260px - 116px;
+                            height: 34px;
                             text: m.meta;
                             font-family: Theme.font-mono;
                             font-size: 11px;
@@ -228,10 +226,10 @@ export component ModsPage inherits Rectangle {
                             overflow: elide;
                         }
 
-                        // Порядок и папка — справа
+                        // Порядок и папка — справа.
                         GlyphBtn {
                             x: parent.width - 104px;
-                            y: 3px;
+                            y: 4px;
                             glyph: "↑";
                             enabled: m.can-up;
                             tip: T.mods_up;
@@ -239,7 +237,7 @@ export component ModsPage inherits Rectangle {
                         }
                         GlyphBtn {
                             x: parent.width - 72px;
-                            y: 3px;
+                            y: 4px;
                             glyph: "↓";
                             enabled: m.can-down;
                             tip: T.mods_down;
@@ -247,7 +245,7 @@ export component ModsPage inherits Rectangle {
                         }
                         IconBtn {
                             x: parent.width - 40px;
-                            y: 1px;
+                            y: 2px;
                             icon: 1;
                             tip: T.mods_open_folder;
                             clicked => { root.open-mod-folder(m.id); }
@@ -264,8 +262,11 @@ export component ModsPage inherits Rectangle {
                 height: root.mods-list.length == 0 ? 0px : 55px + root.files-h;
                 background: root.mods-list.length == 0 ? transparent : Theme.panel;
                 border-width: root.mods-list.length == 0 ? 0px : 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: root.mods-list.length == 0 ? 0px : 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 if root.mods-list.length > 0 && root.files.length == 0 : Text {
                     x: 16px;
@@ -288,8 +289,8 @@ export component ModsPage inherits Rectangle {
                     Text {
                         text: root.files-count;
                         font-family: Theme.font-mono;
-                        font-size: 11px;
-                        height: 15px;
+                        font-size: 10px;
+                        letter-spacing: 1.5px;
                         color: Theme.fg-dimmer;
                     }
 
@@ -353,11 +354,14 @@ export component ModsPage inherits Rectangle {
                 x: 0;
                 y: c-files.y + c-files.height + 12px;
                 width: 100%;
-                height: root.profiles-empty ? 146px : 123px;
+                height: root.profiles-empty ? 148px : 125px;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;
@@ -366,8 +370,8 @@ export component ModsPage inherits Rectangle {
                     Text {
                         text: T.mods_profiles;
                         font-family: Theme.font-mono;
-                        font-size: 11px;
-                        height: 15px;
+                        font-size: 10px;
+                        letter-spacing: 1.5px;
                         color: Theme.fg-dimmer;
                     }
 

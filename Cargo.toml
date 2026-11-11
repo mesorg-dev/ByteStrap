@@ -34,6 +34,8 @@ slint = "1.18"
 rfd = "0.17"
 arboard = { version = "3", default-features = false }
 winreg = "0.55"
+# Звуки интерфейса (клики, тумблеры) — WASAPI через rodio.
+rodio = "0.20"
 # Локальное время для launcher.log (GetLocalTime); версия уже есть в дереве.
 windows-sys = { version = "0.61", features = [
     "Win32_System_SystemInformation",

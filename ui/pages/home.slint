@@ -1,12 +1,12 @@
-// Главная: статус-карточка (играть/установить/обновить, прогресс, ссылка),
+// Главная: hero-карточка (играть/установить/обновить, прогресс, ссылка),
 // счётчики и топ мест по времени. Данные приходят свойствами из контроллера.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { Btn, TextField, ProgressBar, StatusDot } from "../widgets.slint";
+import { PageFade, Btn, TextField, ProgressBar, StatusDot } from "../widgets.slint";
 import { PlaceRow } from "../models.slint";
 
-export component HomePage inherits Rectangle {
+export component HomePage inherits PageFade {
     in-out property <string> status-text;
     in-out property <int> status-dot: 0;
     in-out property <bool> busy: false;
@@ -55,31 +55,44 @@ export component HomePage inherits Rectangle {
                 text: T.home_h1;
                 font-family: Theme.font-display;
                 font-weight: 700;
-                font-size: 23px;
+                font-size: 22px;
+                letter-spacing: 0.5px;
                 color: Theme.fg;
             }
-            Rectangle { height: 4px; }
+            Rectangle { height: 5px; }
             Text {
                 text: T.home_sub;
-                font-size: 13px;
+                font-size: 12.5px;
                 color: Theme.fg-dim;
             }
-            Rectangle { height: 14px; }
+            Rectangle { height: 16px; }
 
-            // ===== Карточка статуса =====
+            // ===== Hero-карточка статуса =====
             Rectangle {
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000066;
+                drop-shadow-offset-y: 4px;
+
+                // Верхняя световая кромка (стекло).
+                Rectangle {
+                    x: 12px;
+                    y: 0;
+                    width: parent.width - 24px;
+                    height: 1px;
+                    background: #ffffff1c;
+                }
 
                 VerticalLayout {
-                    padding: 20px;
-                    spacing: 12px;
+                    padding: 22px;
+                    spacing: 14px;
 
                     // Строка: точка + статус + кнопки справа.
                     Rectangle {
-                        height: 44px;
+                        height: 40px;
 
                         HorizontalLayout {
                             spacing: 10px;
@@ -103,6 +116,7 @@ export component HomePage inherits Rectangle {
                                 label: T.btn_cancel;
                                 kind: 2;
                                 width: 110px;
+                                height: 34px;
                                 horizontal-stretch: 0;
                                 clicked => { root.cancel(); }
                             }
@@ -110,15 +124,17 @@ export component HomePage inherits Rectangle {
                             if !root.busy && root.show-update : Btn {
                                 label: T.home_update;
                                 kind: 1;
-                                width: 150px;
+                                width: 130px;
+                                height: 40px;
                                 horizontal-stretch: 0;
                                 clicked => { root.update-client(); }
                             }
 
                             if !root.busy && root.show-update : Btn {
                                 label: T.home_play;
-                                kind: 2;
-                                width: 150px;
+                                kind: 0;
+                                width: 130px;
+                                height: 40px;
                                 horizontal-stretch: 0;
                                 clicked => { root.primary(); }
                             }
@@ -127,6 +143,7 @@ export component HomePage inherits Rectangle {
                                 label: root.primary-label;
                                 kind: 0;
                                 width: 190px;
+                                height: 40px;
                                 horizontal-stretch: 0;
                                 clicked => { root.primary(); }
                             }
@@ -135,9 +152,9 @@ export component HomePage inherits Rectangle {
 
                     // Прогресс установки.
                     if root.busy : Rectangle {
-                        height: root.progress-text == "" ? 6px : 24px;
+                        height: root.progress-text == "" ? 4px : 24px;
                         VerticalLayout {
-                            spacing: 6px;
+                            spacing: 7px;
                             ProgressBar {
                                 value: root.progress;
                             }
@@ -152,13 +169,13 @@ export component HomePage inherits Rectangle {
 
                     // Строка «запуск по ссылке».
                     Rectangle {
-                        height: 26px;
+                        height: 28px;
 
                         HorizontalLayout {
-                            spacing: 6px;
+                            spacing: 8px;
 
                             link-input := TextField {
-                                height: 26px;
+                                height: 28px;
                                 placeholder: T.home_link_hint;
                                 horizontal-stretch: 1;
                                 accepted => { root.link-go(self.text); }
@@ -168,8 +185,8 @@ export component HomePage inherits Rectangle {
                             if root.share : Btn {
                                 label: T.home_link_paste;
                                 kind: 2;
-                                width: 74px;
-                                height: 26px;
+                                width: 78px;
+                                height: 28px;
                                 horizontal-stretch: 0;
                                 clicked => { root.link-paste(); }
                             }
@@ -177,8 +194,8 @@ export component HomePage inherits Rectangle {
                             Btn {
                                 label: T.home_link_go;
                                 kind: 1;
-                                width: 84px;
-                                height: 26px;
+                                width: 88px;
+                                height: 28px;
                                 horizontal-stretch: 0;
                                 clicked => { root.link-go(link-input.text); }
                             }
@@ -193,29 +210,32 @@ export component HomePage inherits Rectangle {
 
                     Rectangle {
                         height: 1px;
-                        background: Theme.line;
+                        background: #ffffff0d;
                     }
 
                     Text {
                         text: root.version-text;
                         font-family: Theme.font-mono;
-                        font-size: 12px;
+                        font-size: 11.5px;
                         color: Theme.fg-dimmer;
                     }
                 }
             }
 
-            Rectangle { height: 12px; }
+            Rectangle { height: 14px; }
 
             // ===== Счётчики =====
             Rectangle {
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
-                    padding: 20px;
+                    padding: 22px;
                     spacing: 0px;
 
                     if root.session-text != "" : Text {
@@ -225,16 +245,17 @@ export component HomePage inherits Rectangle {
                         color: Theme.good;
                     }
                     if root.session-text != "" : Rectangle {
-                        height: 12px;
+                        height: 14px;
                     }
 
                     HorizontalLayout {
-                        spacing: 48px;
+                        spacing: 0px;
                         alignment: start;
 
                         VerticalLayout {
+                            width: 140px;
                             horizontal-stretch: 0;
-                            spacing: 0px;
+                            spacing: 2px;
                             Text {
                                 text: root.mods-count;
                                 font-family: Theme.font-display;
@@ -245,14 +266,23 @@ export component HomePage inherits Rectangle {
                             Text {
                                 text: "MODS";
                                 font-family: Theme.font-mono;
-                                font-size: 11px;
+                                font-size: 10px;
+                                letter-spacing: 2px;
                                 color: Theme.fg-dimmer;
                             }
                         }
 
+                        Rectangle {
+                            width: 1px;
+                            height: 46px;
+                            background: #ffffff0d;
+                        }
+
                         VerticalLayout {
+                            width: 168px;
+                            padding-left: 28px;
                             horizontal-stretch: 0;
-                            spacing: 0px;
+                            spacing: 2px;
                             Text {
                                 text: root.flags-count;
                                 font-family: Theme.font-display;
@@ -263,14 +293,22 @@ export component HomePage inherits Rectangle {
                             Text {
                                 text: "FLAGS";
                                 font-family: Theme.font-mono;
-                                font-size: 11px;
+                                font-size: 10px;
+                                letter-spacing: 2px;
                                 color: Theme.fg-dimmer;
                             }
                         }
 
+                        Rectangle {
+                            width: 1px;
+                            height: 46px;
+                            background: #ffffff0d;
+                        }
+
                         VerticalLayout {
+                            padding-left: 28px;
                             horizontal-stretch: 0;
-                            spacing: 0px;
+                            spacing: 2px;
                             Text {
                                 text: root.hours-count;
                                 font-family: Theme.font-display;
@@ -281,7 +319,8 @@ export component HomePage inherits Rectangle {
                             Text {
                                 text: "HOURS";
                                 font-family: Theme.font-mono;
-                                font-size: 11px;
+                                font-size: 10px;
+                                letter-spacing: 2px;
                                 color: Theme.fg-dimmer;
                             }
                         }
@@ -293,22 +332,26 @@ export component HomePage inherits Rectangle {
             if root.top-places.length > 0 : Rectangle {
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
-                    padding: 20px;
-                    spacing: 8px;
+                    padding: 22px;
+                    spacing: 10px;
 
                     Text {
                         text: T.home_places;
                         font-family: Theme.font-mono;
-                        font-size: 11px;
+                        font-size: 10px;
+                        letter-spacing: 2px;
                         color: Theme.fg-dimmer;
                     }
 
                     for place in root.top-places : Rectangle {
-                        height: 20px;
+                        height: 22px;
 
                         HorizontalLayout {
                             spacing: 8px;

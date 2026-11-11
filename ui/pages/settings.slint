@@ -1,11 +1,11 @@
 // Настройки: канал Roblox (с подтверждением), язык, потоки, поведение,
-// Discord RP, deep links, путь установки и очистка. Карточки скроллятся.
+// звук интерфейса (громкость), Discord RP, deep links, путь и очистка.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { Btn, TextField, OptionRow, StatusDot } from "../widgets.slint";
+import { PageFade, Btn, TextField, OptionRow, StatusDot, Slider } from "../widgets.slint";
 
-export component SettingsPage inherits Rectangle {
+export component SettingsPage inherits PageFade {
     in-out property <bool> busy: false;
     /// 0 — LIVE, 1 — BETA, 2 — ZNext, -1 — не выбран.
     in-out property <int> channel-sel: -1;
@@ -36,6 +36,10 @@ export component SettingsPage inherits Rectangle {
     in-out property <bool> cleanup-busy: false;
     in-out property <string> cleanup-text: "";
     in-out property <bool> cleanup-err: false;
+    // ===== Звук интерфейса =====
+    in-out property <bool> sound: true;
+    /// 0..100.
+    in-out property <int> sound-vol: 70;
 
     callback channel-pick(string);
     callback channel-apply();
@@ -49,6 +53,8 @@ export component SettingsPage inherits Rectangle {
     callback path-edited(string);
     callback path-reset();
     callback cleanup-run();
+    callback sound-set(bool);
+    callback sound-vol-set(int);
 
     changed path-token => {
         path-field.text = root.path;
@@ -62,6 +68,7 @@ export component SettingsPage inherits Rectangle {
     property <length> h-behavior: 305px
         + (root.discord-rp ? 122px : 0px)
         + (root.deeplink-ok != 0 ? 26px : 0px);
+    property <length> h-sound: 142px;
     property <length> h-path: 110px;
     property <length> h-cleanup: 112px;
 
@@ -72,23 +79,24 @@ export component SettingsPage inherits Rectangle {
             text: T.settings_h1;
             font-family: Theme.font-display;
             font-weight: 700;
-            font-size: 23px;
+            font-size: 22px;
+            letter-spacing: 0.5px;
             color: Theme.fg;
         }
-        Rectangle { height: 4px; }
+        Rectangle { height: 5px; }
         Text {
             text: T.settings_sub;
-            font-size: 13px;
+            font-size: 12.5px;
             color: Theme.fg-dim;
         }
-        Rectangle { height: 14px; }
+        Rectangle { height: 16px; }
 
         flick := Flickable {
             vertical-stretch: 1;
             content-width: self.width;
             content-height: c-channel.height + 12px + c-lang.height + 12px
-                + c-behavior.height + 12px + c-path.height + 12px + c-cleanup.height
-                + 16px;
+                + c-behavior.height + 12px + c-sound.height + 12px
+                + c-path.height + 12px + c-cleanup.height + 16px;
 
             // ===== Канал Roblox =====
             c-channel := Rectangle {
@@ -98,8 +106,11 @@ export component SettingsPage inherits Rectangle {
                 height: root.h-channel;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;
@@ -124,6 +135,7 @@ export component SettingsPage inherits Rectangle {
                         Btn {
                             label: "LIVE";
                             kind: root.channel-sel == 0 ? 1 : 2;
+                            active: root.channel-sel == 0;
                             width: 90px;
                             height: 30px;
                             clicked => { root.channel-pick("LIVE"); }
@@ -131,6 +143,7 @@ export component SettingsPage inherits Rectangle {
                         Btn {
                             label: "BETA";
                             kind: root.channel-sel == 1 ? 1 : 2;
+                            active: root.channel-sel == 1;
                             width: 90px;
                             height: 30px;
                             clicked => { root.channel-pick("BETA"); }
@@ -138,6 +151,7 @@ export component SettingsPage inherits Rectangle {
                         Btn {
                             label: "ZNext";
                             kind: root.channel-sel == 2 ? 1 : 2;
+                            active: root.channel-sel == 2;
                             width: 90px;
                             height: 30px;
                             clicked => { root.channel-pick("ZNext"); }
@@ -174,8 +188,11 @@ export component SettingsPage inherits Rectangle {
                 height: root.h-lang;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;
@@ -193,14 +210,16 @@ export component SettingsPage inherits Rectangle {
                         spacing: 8px;
                         Btn {
                             label: "Русский";
-                            kind: root.lang-code == 0 ? 1 : 2;
+                            kind: 2;
+                            active: root.lang-code == 0;
                             width: 120px;
                             height: 30px;
                             clicked => { root.lang-pick(0); }
                         }
                         Btn {
                             label: "English";
-                            kind: root.lang-code == 1 ? 1 : 2;
+                            kind: 2;
+                            active: root.lang-code == 1;
                             width: 120px;
                             height: 30px;
                             clicked => { root.lang-pick(1); }
@@ -218,8 +237,11 @@ export component SettingsPage inherits Rectangle {
                 height: root.h-behavior;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;
@@ -245,11 +267,11 @@ export component SettingsPage inherits Rectangle {
                         for i in 8 : Rectangle {
                             horizontal-stretch: 1;
                             height: 24px;
-                            border-radius: 4px;
-                            background: (i + 1) <= root.threads ? Theme.good : Theme.field;
+                            border-radius: 5px;
+                            background: (i + 1) <= root.threads ? #ffffffd9 : Theme.field;
                             border-width: 1px;
-                            border-color: Theme.line;
-                            animate background { duration: 80ms; }
+                            border-color: (i + 1) <= root.threads ? #ffffff00 : Theme.line;
+                            animate background { duration: Theme.t-fast; }
 
                             Text {
                                 width: 100%;
@@ -282,7 +304,7 @@ export component SettingsPage inherits Rectangle {
 
                     Rectangle {
                         height: 1px;
-                        background: Theme.line;
+                        background: #ffffff0d;
                     }
 
                     OptionRow {
@@ -327,13 +349,13 @@ export component SettingsPage inherits Rectangle {
                                 height: 18px;
                                 StatusDot {
                                     x: 0;
-                                    y: 3px;
+                                    y: 4px;
                                     kind: root.discord-status == 2 ? 3 : root.discord-status;
                                 }
                                 Text {
-                                    x: 18px;
+                                    x: 16px;
                                     y: 0;
-                                    width: parent.width - 18px;
+                                    width: parent.width - 16px;
                                     height: 18px;
                                     text: root.discord-text;
                                     font-size: 11px;
@@ -358,13 +380,13 @@ export component SettingsPage inherits Rectangle {
                         height: 18px;
                         StatusDot {
                             x: 0;
-                            y: 3px;
+                            y: 4px;
                             kind: root.deeplink-ok == 1 ? 1 : 3;
                         }
                         Text {
-                            x: 18px;
+                            x: 16px;
                             y: 0;
-                            width: parent.width - 18px;
+                            width: parent.width - 16px;
                             height: 18px;
                             text: root.deeplink-ok == 1 ? T.settings_deeplink_on : T.settings_deeplink_fail;
                             font-size: 11px;
@@ -376,16 +398,102 @@ export component SettingsPage inherits Rectangle {
                 }
             }
 
+            // ===== Звук интерфейса =====
+            c-sound := Rectangle {
+                x: 0;
+                y: c-behavior.y + c-behavior.height + 12px;
+                width: 100%;
+                height: root.h-sound;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.settings_sound;
+                        font-weight: 600;
+                        font-size: 13px;
+                        height: 17px;
+                        color: Theme.fg;
+                    }
+                    Text {
+                        text: T.settings_sound_desc;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    OptionRow {
+                        title: T.settings_sound_on;
+                        checked: root.sound;
+                        toggled(v) => { root.sound-set(v); }
+                    }
+
+                    // Громкость: подпись + слайдер + процент.
+                    Rectangle {
+                        height: 26px;
+
+                        Text {
+                            x: 0;
+                            y: 0;
+                            width: 80px;
+                            height: 26px;
+                            text: T.settings_sound_volume;
+                            font-size: 12px;
+                            color: Theme.fg;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        vol-slider := Slider {
+                            x: 88px;
+                            y: 0;
+                            width: parent.width - 130px;
+                            height: 26px;
+                            enabled: root.sound;
+                            value: root.sound-vol / 100;
+                            changed => {
+                                root.sound-vol-set(Math.round(vol-slider.value * 100));
+                            }
+                            opacity: root.sound ? 1.0 : 0.4;
+                        }
+
+                        Text {
+                            x: parent.width - 38px;
+                            y: 0;
+                            width: 38px;
+                            height: 26px;
+                            text: root.sound-vol + "%";
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dim;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
             // ===== Путь установки =====
             c-path := Rectangle {
                 x: 0;
-                y: c-behavior.y + c-behavior.height + 12px;
+                y: c-sound.y + c-sound.height + 12px;
                 width: 100%;
                 height: root.h-path;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;
@@ -432,8 +540,11 @@ export component SettingsPage inherits Rectangle {
                 height: root.h-cleanup;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
                     padding: 16px;

@@ -29,6 +29,10 @@ pub struct Config {
     pub discord_rp_brand: bool,
     /// Открывать ссылки roblox:// (друзья, приватки, плейсы) через ByteStrap.
     pub deeplink: bool,
+    /// Звуки интерфейса (клики, тумблеры, переходы).
+    pub sound: bool,
+    /// Громкость звуков интерфейса: 0..100.
+    pub sound_volume: u32,
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
@@ -52,6 +56,8 @@ impl Default for Config {
             discord_rp_time: true,
             discord_rp_brand: true,
             deeplink: true,
+            sound: true,
+            sound_volume: 70,
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,

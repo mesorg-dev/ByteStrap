@@ -2,9 +2,10 @@
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { Btn, ProgressBar } from "../widgets.slint";
+import { PageFade, Btn, ProgressBar } from "../widgets.slint";
+import { IconStar } from "../icons.slint";
 
-export component AboutPage inherits Rectangle {
+export component AboutPage inherits PageFade {
     in-out property <string> app-version;
     /// 0 — idle, 1 — проверяем, 2 — актуально, 3 — найдено, 4 — загрузка, 5 — ошибка.
     in-out property <int> update-kind: 0;
@@ -31,33 +32,51 @@ export component AboutPage inherits Rectangle {
                 text: T.about_h1;
                 font-family: Theme.font-display;
                 font-weight: 700;
-                font-size: 23px;
+                font-size: 22px;
+                letter-spacing: 0.5px;
                 color: Theme.fg;
             }
-            Rectangle { height: 4px; }
+            Rectangle { height: 5px; }
             Text {
                 text: T.about_sub;
-                font-size: 13px;
+                font-size: 12.5px;
                 color: Theme.fg-dim;
             }
-            Rectangle { height: 14px; }
+            Rectangle { height: 16px; }
 
             // ===== О программе =====
             Rectangle {
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                    padding: 20px;
+                    spacing: 10px;
 
-                    Text {
-                        text: T.about_version + ": " + root.app-version;
-                        font-family: Theme.font-mono;
-                        font-size: 12px;
-                        color: Theme.fg;
+                    // Большая версия — фирменный дисплейный шрифт.
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+
+                        IconStar {
+                            y: 2px;
+                            width: 20px;
+                            height: 20px;
+                            c: Theme.fg;
+                        }
+
+                        Text {
+                            text: root.app-version;
+                            font-family: Theme.font-display;
+                            font-weight: 700;
+                            font-size: 22px;
+                            color: Theme.fg;
+                        }
                     }
 
                     Rectangle {
@@ -74,7 +93,7 @@ export component AboutPage inherits Rectangle {
                                 text: "mesorg-dev/ByteStrap";
                                 font-family: Theme.font-mono;
                                 font-size: 12px;
-                                color: repo-touch.has-hover ? Theme.good.brighter(0.15) : Theme.good;
+                                color: repo-touch.has-hover ? #ffffff : #ffffffb3;
                                 vertical-alignment: center;
                             }
                         }
@@ -103,19 +122,22 @@ export component AboutPage inherits Rectangle {
                     }
                 }
             }
-            Rectangle { height: 12px; }
+            Rectangle { height: 14px; }
 
             // ===== Обновления =====
             Rectangle {
                 vertical-stretch: 1;
                 background: Theme.panel;
                 border-width: 1px;
-                border-color: Theme.line;
+                border-color: #ffffff17;
                 border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
 
                 VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                    padding: 20px;
+                    spacing: 10px;
 
                     Text {
                         text: T.about_check_updates;
@@ -165,7 +187,7 @@ export component AboutPage inherits Rectangle {
                         label: T.about_download;
                         kind: 0;
                         width: 180px;
-                        height: 32px;
+                        height: 36px;
                         clicked => { root.download(); }
                     }
 

@@ -266,6 +266,10 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Settings_CleanupDesc" => "Оборванные загрузки, логи Roblox и временные файлы",
     "Settings_CleanupBtn" => "Очистить",
     "Settings_CleanupBusy" => "Чистим…",
+    "Settings_Sound" => "Звук интерфейса",
+    "Settings_SoundDesc" => "Клики, тумблеры и переходы между страницами",
+    "Settings_SoundOn" => "Звуковые эффекты",
+    "Settings_SoundVolume" => "Громкость",
     "Settings_CleanupDoneFmt" => "Освобождено {0} ({1} файлов)",
     "Settings_CleanupNone" => "Мусор не найден",
     // Счётчик времени
@@ -510,6 +514,10 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Settings_CleanupDesc" => "Interrupted downloads, Roblox logs and temp files",
     "Settings_CleanupBtn" => "Clean up",
     "Settings_CleanupBusy" => "Cleaning\u{2026}",
+    "Settings_Sound" => "Interface sounds",
+    "Settings_SoundDesc" => "Clicks, toggles and page transitions",
+    "Settings_SoundOn" => "Sound effects",
+    "Settings_SoundVolume" => "Volume",
     "Settings_CleanupDoneFmt" => "Freed {0} ({1} files)",
     "Settings_CleanupNone" => "Nothing to clean",
     // Playtime

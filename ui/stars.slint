@@ -1,0 +1,97 @@
+// Живое звёздное небо: три слоя звёзд с разной глубиной, мерцание и
+// лёгкий дрейф «туманностей» — радиальные градиенты поверх фона.
+// Всё анимируется от animation-tick() — непрерывный кадр без таймеров Rust.
+// Позиционирование звёзд делается на месте использования (в корне компонента
+// `parent` недоступен), компоненты отдают хэши как out-свойства.
+
+import { Theme } from "theme.slint";
+
+// Одна звезда: позиция/размер/фаза детерминированы индексом.
+component Star inherits Rectangle {
+    in property <int> idx;
+    in property <float> scale: 1.0;
+    out property <float> h1: Theme.hash(idx * 1.0 + 0.3);
+    out property <float> h2: Theme.hash(idx * 1.0 + 7.7);
+    out property <float> h3: Theme.hash(idx * 1.0 + 19.3);
+
+    width: (0.8 + h3 * 1.6) * scale * 1px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: #ffffff;
+    opacity: (0.14 + 0.55 * h3) * (0.4 + 0.6 * Theme.twinkle(idx * 1.0, animation-tick() / 1ms));
+}
+
+// Крупная «героиня» с ореолом — штук пять на всё небо.
+component HeroStar inherits Rectangle {
+    in property <int> idx;
+    out property <float> h1: Theme.hash(idx * 1.0 + 41.7);
+    out property <float> h2: Theme.hash(idx * 1.0 + 53.9);
+    out property <float> h3: Theme.hash(idx * 1.0 + 67.1);
+
+    width: 2.4px + h3 * 1.2px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: #ffffff;
+    drop-shadow-blur: 6px;
+    drop-shadow-color: #ffffff66;
+    opacity: (0.35 + 0.3 * h3) * (0.55 + 0.45 * Theme.twinkle(idx * 1.0 + 11.0, animation-tick() / 1ms));
+}
+
+// Туманность: медленно плывущий радиальный ореол.
+component Nebula inherits Rectangle {
+    in property <float> cx: 0.5;
+    in property <float> cy: 0.4;
+    in property <length> size: 420px;
+    in property <color> tint: #ffffff12;
+    in property <float> phase: 0.0;
+
+    width: self.size;
+    height: self.size;
+    border-radius: self.size / 2;
+    background: @radial-gradient(circle, self.tint 0%, #ffffff00 68%);
+}
+
+export component Starfield inherits Rectangle {
+    background: transparent;
+    clip: true;
+
+    // Туманности — фоновая глубина.
+    Nebula {
+        cx: 0.78; cy: 0.22; size: 460px; tint: #ffffff10; phase: 0.0;
+        x: parent.width * self.cx - self.size / 2 + Theme.drift(animation-tick() / 1ms, self.phase) * 1px;
+        y: parent.height * self.cy - self.size / 2 + Theme.drift(animation-tick() / 1ms, self.phase + 120.0) * 0.7px;
+    }
+    Nebula {
+        cx: 0.15; cy: 0.78; size: 520px; tint: #ffffff0c; phase: 200.0;
+        x: parent.width * self.cx - self.size / 2 + Theme.drift(animation-tick() / 1ms, self.phase) * 1px;
+        y: parent.height * self.cy - self.size / 2 + Theme.drift(animation-tick() / 1ms, self.phase + 120.0) * 0.7px;
+    }
+    Nebula {
+        cx: 0.45; cy: 0.5; size: 640px; tint: #ffffff07; phase: 380.0;
+        x: parent.width * self.cx - self.size / 2 + Theme.drift(animation-tick() / 1ms, self.phase) * 1px;
+        y: parent.height * self.cy - self.size / 2 + Theme.drift(animation-tick() / 1ms, self.phase + 120.0) * 0.7px;
+    }
+
+    // Дальний слой — мелкие тусклые.
+    for s in 72: Star {
+        idx: s;
+        scale: 0.75;
+        x: parent.width * self.h1;
+        y: parent.height * self.h2 + Theme.drift(animation-tick() / 1ms, self.h1 * 360.0) * 0.12px;
+    }
+
+    // Ближний слой.
+    for s in 28: Star {
+        idx: s + 100;
+        scale: 1.15;
+        x: parent.width * self.h1;
+        y: parent.height * self.h2 + Theme.drift(animation-tick() / 1ms, self.h1 * 360.0) * 0.12px;
+    }
+
+    // Героини с ореолом.
+    for s in 5: HeroStar {
+        idx: s + 200;
+        x: parent.width * self.h1;
+        y: parent.height * self.h2 + Theme.drift(animation-tick() / 1ms, self.h1 * 360.0) * 0.1px;
+    }
+}

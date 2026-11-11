@@ -1,10 +1,10 @@
 // Страница «Логи»: журнал лаунчера и клиент Roblox.
-// Тулбар (файл, поиск, автопрокрутка, копирование, папка, обновление),
-// монострочный список с цветными уровнями, зеброй и автопрокруткой вниз.
+// Тулбар (файлы, поиск, автопрокрутка, копирование, папка, обновление),
+// консольная карточка с цветными уровнями, зеброй и автопрокруткой вниз.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { Btn, IconBtn, TextField } from "../widgets.slint";
+import { PageFade, Btn, IconBtn, TextField } from "../widgets.slint";
 import { LogLine } from "../models.slint";
 
 export global LogStyle {
@@ -12,7 +12,7 @@ export global LogStyle {
         level == 3 ? Theme.bad
             : level == 2 ? Theme.warn
             : level == 0 ? Theme.fg-dimmer
-            : #c6c6ce
+            : #c9d2e0
     }
 
     pure public function label-of(level: int) -> string {
@@ -28,12 +28,12 @@ component FileSeg inherits Rectangle {
     height: 30px;
     border-radius: Theme.r-soft;
     background: root.selected
-        ? Theme.line-soft
-        : (touch.has-hover ? Theme.line-soft.transparentize(0.5) : transparent);
-    animate background { duration: 100ms; }
+        ? Theme.glass
+        : (touch.has-hover ? #ffffff0a : transparent);
+    animate background { duration: Theme.t-fast; }
     border-width: root.selected ? 1px : 0px;
-    border-color: Theme.good;
-    animate border-color { duration: 100ms; }
+    border-color: #ffffff3d;
+    animate border-color { duration: Theme.t-fast; }
 
     Text {
         x: 10px;
@@ -55,7 +55,7 @@ component FileSeg inherits Rectangle {
     }
 }
 
-export component LogsPage inherits Rectangle {
+export component LogsPage inherits PageFade {
     in-out property <[LogLine]> lines;
     in-out property <[string]> files;
     in-out property <int> selected: 0;
@@ -84,16 +84,17 @@ export component LogsPage inherits Rectangle {
             text: T.logs_h1;
             font-family: Theme.font-display;
             font-weight: 700;
-            font-size: 23px;
+            font-size: 22px;
+            letter-spacing: 0.5px;
             color: Theme.fg;
         }
-        Rectangle { height: 4px; }
+        Rectangle { height: 5px; }
         Text {
             text: T.logs_sub;
-            font-size: 13px;
+            font-size: 12.5px;
             color: Theme.fg-dim;
         }
-        Rectangle { height: 14px; }
+        Rectangle { height: 16px; }
 
         // ===== Тулбар, ряд 1: файлы + действия =====
         Rectangle {
@@ -158,6 +159,7 @@ export component LogsPage inherits Rectangle {
 
                 TextField {
                     width: 100%;
+                    height: 32px;
                     placeholder: T.logs_search;
                     accepted => { root.search-edited(self.text); }
                     edited => { root.search-edited(self.text); }
@@ -165,16 +167,28 @@ export component LogsPage inherits Rectangle {
             }
         }
 
-        Rectangle { height: 12px; }
+        Rectangle { height: 14px; }
 
-        // ===== Список строк =====
+        // ===== Консоль =====
         Rectangle {
             vertical-stretch: 1;
-            background: Theme.bg;
+            background: Theme.bg-deep;
             border-width: 1px;
-            border-color: Theme.line;
+            border-color: #ffffff14;
             border-radius: Theme.r-card;
             clip: true;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000055;
+            drop-shadow-offset-y: 4px;
+
+            // Светлая кромка сверху.
+            Rectangle {
+                x: 12px;
+                y: 0;
+                width: parent.width - 24px;
+                height: 1px;
+                background: #ffffff1c;
+            }
 
             flick := Flickable {
                 x: 1px;
@@ -189,7 +203,7 @@ export component LogsPage inherits Rectangle {
                     y: i * 17px;
                     width: flick.width;
                     height: 17px;
-                    background: line.zebra ? Theme.panel-alt : transparent;
+                    background: line.zebra ? #ffffff05 : transparent;
 
                     Text {
                         x: 10px;

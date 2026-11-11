@@ -3,6 +3,24 @@
 
 import { Theme } from "theme.slint";
 
+// Четырёхлучевая звезда — логотип лаунчера.
+export component IconStar inherits Rectangle {
+    in-out property <color> c: Theme.fg;
+    width: 18px;
+    height: 18px;
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: 18;
+        viewbox-height: 18;
+        stroke: transparent;
+        fill: root.c;
+        commands: "M9 0.8 C9.8 4.6 10.6 5.9 12.1 6.9 C13.6 7.9 15.4 8.6 17.2 9 C15.4 9.4 13.6 10.1 12.1 11.1 C10.6 12.1 9.8 13.4 9 17.2 C8.2 13.4 7.4 12.1 5.9 11.1 C4.4 10.1 2.6 9.4 0.8 9 C2.6 8.6 4.4 7.9 5.9 6.9 C7.4 5.9 8.2 4.6 9 0.8 Z";
+    }
+}
+
 export component IconHome inherits Rectangle {
     in-out property <color> c: Theme.fg-dim;
     width: 18px;

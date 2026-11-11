@@ -1,25 +1,39 @@
-// Дизайн-токены ByteStrap: тёмная тема в духе Lunar Client.
-// Цвета совпадают с egui-темой (src/theme.rs) — переход без визуального слома.
+// Дизайн-токены ByteStrap «Stellar Mono»: звёздный монохром, холодный белый.
+// Глубокий тёмный фон, стеклянные панели, единственный акцент — белый свет.
+// Здесь же — математика звёздного неба (детерминированный «шум» + мерцание).
 
 export global Theme {
-    in-out property <color> bg: #0a0a0b;
-    in-out property <color> sidebar: #0d0d0f;
-    in-out property <color> panel: #121214;
-    in-out property <color> panel-alt: #0e0e11;
-    in-out property <color> field: #0e0e10;
-    in-out property <color> line: #2a2a2e;
-    in-out property <color> line-soft: #1c1c1f;
-    in-out property <color> fg: #f2f2ef;
-    in-out property <color> fg-dim: #98989e;
-    in-out property <color> fg-dimmer: #5c5c62;
-    in-out property <color> good: #78dc82;
-    in-out property <color> bad: #ff8087;
-    in-out property <color> warn: #ffc857;
-    in-out property <color> accent: #78dc82;
-    in-out property <color> on-accent: #0a0a0b;
+    // ===== Палитра =====
+    in-out property <color> bg: #05060c;
+    in-out property <color> bg-deep: #030409;
+    in-out property <color> sidebar: #070810;
+    in-out property <color> panel: #0c0f17;
+    in-out property <color> panel-alt: #090b12;
+    in-out property <color> field: #0a0d14;
+    in-out property <color> line: #1f232e;
+    in-out property <color> line-soft: #14161e;
+    in-out property <color> fg: #f4f6fb;
+    in-out property <color> fg-dim: #a2aab9;
+    in-out property <color> fg-dimmer: #5b6270;
 
-    in-out property <length> r-card: 8px;
-    in-out property <length> r-soft: 6px;
+    // Холодный белый — единственный акцент.
+    in-out property <color> accent: #ffffff;
+    in-out property <color> on-accent: #07090f;
+
+    // Семантика — приглушённая, чтобы не ломать монохром.
+    in-out property <color> good: #8ed6a4;
+    in-out property <color> bad: #e2959f;
+    in-out property <color> warn: #dcc28d;
+
+    // Стекло: заливки и свечения поверх фона.
+    in-out property <color> glass: #ffffff08;
+    in-out property <color> glass-hover: #ffffff12;
+    in-out property <color> glass-press: #ffffff1c;
+    in-out property <color> glow: #ffffff2b;
+
+    // ===== Метрики =====
+    in-out property <length> r-card: 10px;
+    in-out property <length> r-soft: 7px;
 
     in-out property <string> font: "Inter";
     in-out property <string> font-mono: "JetBrains Mono";
@@ -29,4 +43,35 @@ export global Theme {
     in-out property <length> sidebar-w: 236px;
     in-out property <length> nav-item-h: 46px;
     in-out property <length> nav-step: 50px;
+
+    // ===== Тайминги анимаций =====
+    in-out property <duration> t-fast: 120ms;
+    in-out property <duration> t-mid: 220ms;
+    in-out property <duration> t-slow: 380ms;
+
+    // ===== Математика неба =====
+    // Дробная часть числа.
+    pure public function frac(x: float) -> float {
+        x - Math.floor(x);
+    }
+
+    // Детерминированный «шум» по индексу: 0..1, стабилен между кадрами.
+    pure public function hash(i: float) -> float {
+        Theme.frac(Math.sin((i * 127.1 + 311.7) * 1deg) * 43758.5453);
+    }
+
+    // Мерцание звезды 0..1: i — фаза, t — время в мс (animation-tick() / 1ms).
+    // Синусы Slint принимают угол; умножаем градусы на 1deg.
+    pure public function twinkle(i: float, t: float) -> float {
+        0.5 + 0.5 * Math.sin(
+            (t * (0.045 + Theme.hash(i * 3.1) * 0.07)
+                + i * 97.0
+                + Theme.hash(i * 7.7) * 360.0) * 1deg
+        );
+    }
+
+    // Плавный дрейф по синусу: t — время в мс, phase — начальная фаза в градусах.
+    pure public function drift(t: float, phase: float) -> float {
+        Math.sin((t * 0.003 + phase) * 1deg) * 40.0;
+    }
 }

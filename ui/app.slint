@@ -1,5 +1,6 @@
-// Корневое окно ByteStrap (Slint): frameless, кастомный titlebar + сайдбар,
-// переключение страниц, состояние и колбэки — из контроллера src/app_slint.rs.
+// Корневое окно ByteStrap (Slint): frameless, звёздное небо под всем,
+// кастомный titlebar + сайдбар, переключение страниц, анимированные модалки.
+// Состояние и колбэки — из контроллера src/app_slint.rs.
 
 import "../assets/fonts/Inter-Regular.ttf";
 import "../assets/fonts/Inter-Bold.ttf";
@@ -9,11 +10,13 @@ import "../assets/fonts/Unbounded-Regular.ttf";
 import "../assets/fonts/Unbounded-Bold.ttf";
 
 import { Theme } from "theme.slint";
+import { Snd } from "snd.slint";
 import { T } from "i18n.slint";
-export { T } from "i18n.slint";
+export { T, Theme, Snd }
 import { TitleBar } from "titlebar.slint";
 import { Btn, TextField } from "widgets.slint";
 import { SideBar } from "sidebar.slint";
+import { Starfield } from "stars.slint";
 import { HomePage } from "pages/home.slint";
 import { LogsPage } from "pages/logs.slint";
 import { VersionsPage } from "pages/versions.slint";
@@ -31,7 +34,7 @@ export component AppWindow inherits Window {
     min-height: 580px;
     preferred-width: 1120px;
     preferred-height: 700px;
-    background: Theme.bg;
+    background: Theme.bg-deep;
     default-font-family: Theme.font;
 
     // ===== Состояние (заполняет контроллер) =====
@@ -139,6 +142,8 @@ export component AppWindow inherits Window {
     in-out property <bool> set-cleanup-busy: false;
     in-out property <string> set-cleanup-text: "";
     in-out property <bool> set-cleanup-err: false;
+    in-out property <bool> set-sound: true;
+    in-out property <int> set-sound-vol: 70;
     /// Тело модального подтверждения ("" — закрыто).
     in-out property <string> confirm-body: "";
 
@@ -186,6 +191,8 @@ export component AppWindow inherits Window {
     callback path-edited(string);
     callback path-reset();
     callback cleanup-run();
+    callback sound-set(bool);
+    callback sound-vol-set(int);
     callback confirm-yes();
     callback confirm-no();
     callback mods-open-folder();
@@ -225,12 +232,21 @@ export component AppWindow inherits Window {
     /// 0 — оставить, 1 — заменить, 2 — заменить все, 3 — отмена.
     callback import-decision(int);
 
+    // ===== Звёздное небо под всем =====
+    Starfield {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    // ===== Контент =====
     Rectangle {
         x: 0;
         y: 0;
         width: 100%;
         height: 100%;
-        background: Theme.bg;
+        background: transparent;
 
         TitleBar {
             x: 0;
@@ -258,7 +274,7 @@ export component AppWindow inherits Window {
             y: Theme.titlebar-h;
             width: parent.width - Theme.sidebar-w;
             height: parent.height - Theme.titlebar-h;
-            background: Theme.bg;
+            background: transparent;
 
             Rectangle {
                 x: 32px;
@@ -424,6 +440,8 @@ export component AppWindow inherits Window {
                     cleanup-busy: root.set-cleanup-busy;
                     cleanup-text: root.set-cleanup-text;
                     cleanup-err: root.set-cleanup-err;
+                    sound: root.set-sound;
+                    sound-vol: root.set-sound-vol;
                     channel-pick(c) => { root.ch-pick(c); }
                     channel-apply => { root.ch-apply(); }
                     lang-pick(i) => { root.lang-pick(i); }
@@ -436,6 +454,8 @@ export component AppWindow inherits Window {
                     path-edited(t) => { root.path-edited(t); }
                     path-reset => { root.path-reset(); }
                     cleanup-run => { root.cleanup-run(); }
+                    sound-set(v) => { root.sound-set(v); }
+                    sound-vol-set(v) => { root.sound-vol-set(v); }
                 }
                 if root.page == 6 : AboutPage {
                     width: 100%;
@@ -451,208 +471,238 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
 
-        // ===== Модальное подтверждение =====
-        if root.confirm-body != "" : Rectangle {
-            x: 0;
-            y: 0;
+    // ===== Модальное подтверждение =====
+    if root.confirm-body != "" : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea {
             width: 100%;
             height: 100%;
-            background: #000000aa;
+            clicked => { root.confirm-no(); }
+        }
 
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => { root.confirm-no(); }
-            }
+        modal-confirm := Rectangle {
+            property <bool> shown: false;
+            width: 400px;
+            height: 140px;
+            x: (parent.width - self.width) / 2;
+            y: root.confirm-body != ""
+                ? ((parent.height - self.height) / 2
+                    + (modal-confirm.shown ? 0px : 14px))
+                : 0px;
+            animate y { duration: Theme.t-mid; easing: ease-out; }
+            opacity: modal-confirm.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-mid; }
+            init => { modal-confirm.shown = true; }
 
-            Rectangle {
-                width: 400px;
-                height: 140px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: Theme.line;
-                border-radius: Theme.r-card;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff22;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000cc;
+            drop-shadow-offset-y: 8px;
 
-                VerticalLayout {
-                    padding: 20px;
-                    spacing: 14px;
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
 
-                    Text {
-                        text: root.confirm-body;
-                        font-size: 13px;
-                        color: Theme.fg;
-                        wrap: word-wrap;
+                Text {
+                    text: root.confirm-body;
+                    font-size: 13px;
+                    color: Theme.fg;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn {
+                        label: T.btn_yes;
+                        kind: 0;
+                        width: 90px;
+                        height: 34px;
+                        clicked => { root.confirm-yes(); }
                     }
-
-                    HorizontalLayout {
-                        Rectangle { horizontal-stretch: 1; }
-                        Btn {
-                            label: T.btn_yes;
-                            kind: 0;
-                            width: 90px;
-                            height: 34px;
-                            clicked => { root.confirm-yes(); }
-                        }
-                        Rectangle { width: 8px; horizontal-stretch: 0; }
-                        Btn {
-                            label: T.btn_no;
-                            kind: 2;
-                            width: 90px;
-                            height: 34px;
-                            clicked => { root.confirm-no(); }
-                        }
+                    Rectangle { width: 8px; horizontal-stretch: 0; }
+                    Btn {
+                        label: T.btn_no;
+                        kind: 2;
+                        width: 90px;
+                        height: 34px;
+                        clicked => { root.confirm-no(); }
                     }
                 }
             }
         }
+    }
 
-        // ===== Вводной диалог =====
-        if root.dlg-open : Rectangle {
-            x: 0;
-            y: 0;
+    // ===== Вводной диалог =====
+    if root.dlg-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea {
             width: 100%;
             height: 100%;
-            background: #000000aa;
+            clicked => { root.dlg-cancel(); }
+        }
 
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => { root.dlg-cancel(); }
-            }
+        modal-dlg := Rectangle {
+            property <bool> shown: false;
+            width: 420px;
+            height: 172px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 + (modal-dlg.shown ? 0px : 14px);
+            animate y { duration: Theme.t-mid; easing: ease-out; }
+            opacity: modal-dlg.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-mid; }
+            init => { modal-dlg.shown = true; }
 
-            Rectangle {
-                width: 420px;
-                height: 170px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: Theme.line;
-                border-radius: Theme.r-card;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff22;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000cc;
+            drop-shadow-offset-y: 8px;
 
-                VerticalLayout {
-                    padding: 20px;
-                    spacing: 10px;
+            VerticalLayout {
+                padding: 22px;
+                spacing: 10px;
 
-                    Text {
-                        text: root.dlg-desc;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                        overflow: elide;
+                Text {
+                    text: root.dlg-desc;
+                    font-size: 13px;
+                    height: 17px;
+                    color: Theme.fg;
+                    overflow: elide;
+                }
+
+                dlg-field := TextField {
+                    text: root.dlg-input;
+                    placeholder: root.dlg-hint;
+                    edited => { root.dlg-edited(dlg-field.text); }
+                    accepted => { root.dlg-ok(dlg-field.text); }
+                    init => {
+                        dlg-field.focus-select-all();
                     }
+                }
 
-                    dlg-field := TextField {
-                        text: root.dlg-input;
-                        placeholder: root.dlg-hint;
-                        edited => { root.dlg-edited(dlg-field.text); }
-                        accepted => { root.dlg-ok(dlg-field.text); }
-                        init => {
-                            dlg-field.focus-select-all();
-                        }
+                HorizontalLayout {
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn {
+                        label: T.btn_cancel;
+                        kind: 2;
+                        width: 100px;
+                        height: 34px;
+                        clicked => { root.dlg-cancel(); }
                     }
-
-                    HorizontalLayout {
-                        Rectangle { horizontal-stretch: 1; }
-                        Btn {
-                            label: T.btn_cancel;
-                            kind: 2;
-                            width: 100px;
-                            height: 34px;
-                            clicked => { root.dlg-cancel(); }
-                        }
-                        Rectangle { width: 8px; horizontal-stretch: 0; }
-                        Btn {
-                            label: root.dlg-ok-label;
-                            kind: 0;
-                            width: 120px;
-                            height: 34px;
-                            clicked => { root.dlg-ok(dlg-field.text); }
-                        }
+                    Rectangle { width: 8px; horizontal-stretch: 0; }
+                    Btn {
+                        label: root.dlg-ok-label;
+                        kind: 0;
+                        width: 120px;
+                        height: 34px;
+                        clicked => { root.dlg-ok(dlg-field.text); }
                     }
                 }
             }
         }
+    }
 
-        // ===== Конфликт импорта (страница Flags) =====
-        if root.import-open : Rectangle {
-            x: 0;
-            y: 0;
+    // ===== Конфликт импорта (страница Flags) =====
+    if root.import-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea {
             width: 100%;
             height: 100%;
-            background: #000000aa;
+            clicked => { root.import-decision(3); }
+        }
 
-            TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => { root.import-decision(3); }
-            }
+        modal-import := Rectangle {
+            property <bool> shown: false;
+            width: 480px;
+            height: 170px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 - 40px + (modal-import.shown ? 0px : 14px);
+            animate y { duration: Theme.t-mid; easing: ease-out; }
+            opacity: modal-import.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-mid; }
+            init => { modal-import.shown = true; }
 
-            Rectangle {
-                width: 480px;
-                height: 170px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2 - 40px;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: Theme.line;
-                border-radius: Theme.r-card;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff22;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000cc;
+            drop-shadow-offset-y: 8px;
 
-                VerticalLayout {
-                    padding: 20px;
-                    spacing: 12px;
+            VerticalLayout {
+                padding: 22px;
+                spacing: 12px;
 
-                    Text {
-                        text: T.flags_conflict_title;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                        overflow: elide;
+                Text {
+                    text: T.flags_conflict_title;
+                    font-weight: 600;
+                    font-size: 13px;
+                    height: 17px;
+                    color: Theme.fg;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.import-body;
+                    font-size: 13px;
+                    height: 36px;
+                    color: Theme.fg;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Btn {
+                        label: T.flags_conflict_replace_all;
+                        kind: 0;
+                        width: 124px;
+                        height: 34px;
+                        clicked => { root.import-decision(2); }
                     }
-
-                    Text {
-                        text: root.import-body;
-                        font-size: 13px;
-                        height: 36px;
-                        color: Theme.fg;
-                        wrap: word-wrap;
-                        overflow: elide;
+                    Btn {
+                        label: T.flags_conflict_replace;
+                        kind: 0;
+                        width: 106px;
+                        height: 34px;
+                        clicked => { root.import-decision(1); }
                     }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Btn {
-                            label: T.flags_conflict_replace_all;
-                            kind: 0;
-                            width: 124px;
-                            height: 34px;
-                            clicked => { root.import-decision(2); }
-                        }
-                        Btn {
-                            label: T.flags_conflict_replace;
-                            kind: 0;
-                            width: 106px;
-                            height: 34px;
-                            clicked => { root.import-decision(1); }
-                        }
-                        Btn {
-                            label: T.flags_conflict_keep;
-                            kind: 2;
-                            width: 96px;
-                            height: 34px;
-                            clicked => { root.import-decision(0); }
-                        }
-                        Btn {
-                            label: T.btn_cancel;
-                            kind: 2;
-                            width: 96px;
-                            height: 34px;
-                            clicked => { root.import-decision(3); }
-                        }
+                    Btn {
+                        label: T.flags_conflict_keep;
+                        kind: 2;
+                        width: 96px;
+                        height: 34px;
+                        clicked => { root.import-decision(0); }
+                    }
+                    Btn {
+                        label: T.btn_cancel;
+                        kind: 2;
+                        width: 96px;
+                        height: 34px;
+                        clicked => { root.import-decision(3); }
                     }
                 }
             }
