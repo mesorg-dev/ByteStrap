@@ -356,7 +356,6 @@ export component Combo inherits Rectangle {
     in-out property <[string]> items;
     in-out property <int> selected: -1;
     in-out property <string> current-text;
-    in-out property <bool> open: false;
     callback pick(int);
     /// Состояние списка изменилось (для высоты скролла у вызывающего).
     callback open-changed(bool);
@@ -365,7 +364,7 @@ export component Combo inherits Rectangle {
     border-radius: Theme.r-soft;
     background: Theme.field;
     border-width: 1px;
-    border-color: root.open ? #ffffff52 : Theme.line;
+    border-color: pop.is-open ? #ffffff52 : Theme.line;
     animate border-color { duration: Theme.t-fast; }
 
     Text {
@@ -385,11 +384,12 @@ export component Combo inherits Rectangle {
         y: 0;
         width: 12px;
         height: parent.height;
-        text: root.open ? "▴" : "▾";
+        text: pop.is-open ? "▴" : "▾";
         font-size: 10px;
-        color: Theme.fg-dim;
+        color: pop.is-open ? Theme.fg : Theme.fg-dim;
         horizontal-alignment: center;
         vertical-alignment: center;
+        animate color { duration: Theme.t-fast; }
     }
 
     touch := TouchArea {
@@ -397,61 +397,64 @@ export component Combo inherits Rectangle {
         height: 100%;
         clicked => {
             Snd.play(0);
-            root.open-changed(!root.open);
-            root.open = !root.open;
+            if pop.is-open { pop.close(); } else { pop.show(); }
+            root.open-changed(!pop.is-open);
         }
     }
 
-    if root.open && root.items.length > 0 : pop := Rectangle {
-        // Появление: сдвиг вверх + fade.
-        property <bool> shown: false;
+    pop := PopupWindow {
         x: -1px;
-        y: root.open ? parent.height + 4px : parent.height - 10px;
-        animate y { duration: Theme.t-fast; easing: ease-out; }
-        opacity: pop.shown ? 1.0 : 0.0;
-        animate opacity { duration: Theme.t-fast; }
-        init => { pop.shown = true; }
-
-        width: parent.width + 2px;
+        y: parent.height + 4px;
+        width: root.width + 2px;
         height: min(root.items.length * 27px + 10px, 214px);
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: #ffffff30;
-        border-radius: Theme.r-soft;
-        clip: true;
-        drop-shadow-blur: 18px;
-        drop-shadow-color: #000000a6;
+        close-policy: PopupClosePolicy.close-on-click-outside;
 
-        for it[i] in root.items : Rectangle {
-            x: 0;
-            y: 5px + i * 27px;
-            width: parent.width;
-            height: 27px;
-            background: i == root.selected ? Theme.glass
-                : row-touch.has-hover ? Theme.glass-hover
-                : transparent;
-            animate background { duration: Theme.t-fast; }
+        content := Rectangle {
+            // Появление: fade + лёгкий сдвиг.
+            property <bool> shown: false;
+            opacity: content.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-fast; }
+            init => { content.shown = true; }
 
-            Text {
-                x: 11px;
-                y: 0;
-                width: parent.width - 22px;
-                height: parent.height;
-                text: it;
-                font-size: 12px;
-                color: i == root.selected ? Theme.fg : Theme.fg-dim;
-                vertical-alignment: center;
-                overflow: elide;
-            }
+            width: 100%;
+            height: 100%;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff30;
+            border-radius: Theme.r-soft;
+            clip: true;
 
-            row-touch := TouchArea {
-                width: 100%;
-                height: 100%;
-                clicked => {
-                    Snd.play(2);
-                    root.pick(i);
-                    root.open = false;
-                    root.open-changed(false);
+            for it[i] in root.items : Rectangle {
+                x: 0;
+                y: 5px + i * 27px;
+                width: parent.width;
+                height: 27px;
+                background: i == root.selected ? Theme.glass
+                    : row-touch.has-hover ? Theme.glass-hover
+                    : transparent;
+                animate background { duration: Theme.t-fast; }
+
+                Text {
+                    x: 11px;
+                    y: 0;
+                    width: parent.width - 22px;
+                    height: parent.height;
+                    text: it;
+                    font-size: 12px;
+                    color: i == root.selected ? Theme.fg : Theme.fg-dim;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                row-touch := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    clicked => {
+                        Snd.play(2);
+                        root.pick(i);
+                        pop.close();
+                        root.open-changed(false);
+                    }
                 }
             }
         }

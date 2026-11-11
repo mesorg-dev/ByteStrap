@@ -21,7 +21,7 @@ export component ModsPage inherits PageFade {
     in-out property <bool> profile-sel-valid: false;
     in-out property <bool> profiles-empty: false;
     /// Открыт ли комбобокс профилей (для высоты скролла).
-    in-out property <bool> profile-open <=> combo.open;
+    in-out property <bool> profile-open: false;
 
     callback open-folder();
     callback refresh();
@@ -383,6 +383,7 @@ export component ModsPage inherits PageFade {
                             selected: root.profile-sel-index;
                             current-text: root.profile-sel-text;
                             pick(i) => { root.profile-pick(i); }
+                            open-changed(v) => { root.profile-open = v; }
                         }
                         Btn {
                             label: T.prof_load;

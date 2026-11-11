@@ -66,8 +66,9 @@ export component SettingsPage inherits PageFade {
         + (root.channel-changed ? 40px : 0px);
     property <length> h-lang: 90px;
     property <length> h-behavior: 305px
-        + (root.discord-rp ? 122px : 0px)
+        + (root.discord-rp ? 126px : 0px)
         + (root.deeplink-ok != 0 ? 26px : 0px);
+    animate h-behavior { duration: Theme.t-mid; easing: ease-out; }
     property <length> h-sound: 142px;
     property <length> h-path: 110px;
     property <length> h-cleanup: 112px;
@@ -326,9 +327,32 @@ export component SettingsPage inherits PageFade {
                         toggled(v) => { root.discord-rp-set(v); }
                     }
 
-                    if root.discord-rp : Rectangle {
-                        height: 114px;
+                    // Discord RP: плавно раскрывающийся под-блок
+                    // (высота анимируется, клиппинг скрывает контент).
+                    Rectangle {
+                        height: root.discord-rp ? 118px : 0px;
+                        animate height { duration: Theme.t-mid; easing: ease-out; }
+                        clip: true;
+                        opacity: root.discord-rp ? 1.0 : 0.0;
+                        animate opacity { duration: Theme.t-mid; }
+
+                        // Направляющая линия под-группы.
+                        Rectangle {
+                            x: 6px;
+                            y: 2px;
+                            width: 1px;
+                            height: parent.height - 10px;
+                            background: #ffffff26;
+                            animate background { duration: Theme.t-mid; }
+                        }
+
                         VerticalLayout {
+                            x: 18px;
+                            width: parent.width - 22px;
+                            padding-left: 0px;
+                            padding-right: 4px;
+                            padding-top: 2px;
+                            padding-bottom: 0px;
                             spacing: 4px;
                             OptionRow {
                                 title: T.settings_rp_place;
