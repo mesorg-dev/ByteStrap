@@ -5,12 +5,16 @@
 //! Источник звука: каталог `sounds/` рядом с exe (click/toggle/tab/success/
 //! error + .wav/.ogg/.mp3). Если файла нет — используется встроенный
 //! синтезированный вариант, так что звук работает сразу из коробки.
+//!
+//! Потоковые типы rodio (cpal) не Send/Sync, поэтому весь движок живёт в
+//! отдельном потоке, а наружу торчит только mpsc-канал + атомарные настройки.
 
 #![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::{Arc, OnceLock};
 
 /// kind из глобала Snd.
 pub const CLICK: i32 = 0;
@@ -22,79 +26,31 @@ pub const ERROR: i32 = 4;
 /// Канонические имена (ищем <name>.wav/.ogg/.mp3 рядом с exe).
 const NAMES: [&str; 5] = ["click", "toggle", "tab", "success", "error"];
 
-pub struct Audio {
-    _keep: Option<Engine>,
-    enabled: AtomicBool,
-    volume: AtomicU32,
-    /// Готовые к воспроизведению байты на имя (None — не найдено).
-    sources: Mutex<HashMap<&'static str, Vec<u8>>>,
+/// Сообщения аудио-потоку.
+enum Msg {
+    Play(i32),
 }
 
-/// Единственный экземпляр: движок expensive, создаём один раз.
+/// Публичный хэндл: Send + Sync, реальный движок — в отдельном потоке.
+pub struct Audio {
+    tx: Sender<Msg>,
+    enabled: Arc<AtomicBool>,
+    volume: Arc<AtomicU32>,
+}
+
+/// Единственный экземпляр: движок создаётся один раз.
 pub fn global() -> Arc<Audio> {
     static AUDIO: OnceLock<Arc<Audio>> = OnceLock::new();
-    AUDIO.get_or_init(Audio::new).clone()
+    AUDIO.get_or_init(|| {
+        let (tx, rx) = channel::<Msg>();
+        let enabled = Arc::new(AtomicBool::new(true));
+        let volume = Arc::new(AtomicU32::new(70));
+        spawn_engine(rx, Arc::clone(&enabled), Arc::clone(&volume));
+        Arc::new(Audio { tx, enabled, volume })
+    }).clone()
 }
-
-#[cfg(windows)]
-struct Engine {
-    _stream: rodio::OutputStream,
-    handle: rodio::OutputStreamHandle,
-}
-
-#[cfg(not(windows))]
-struct Engine;
 
 impl Audio {
-    pub fn new() -> Arc<Self> {
-        let engine = Self::open_engine();
-        let sources = Self::load_sources();
-        Arc::new(Self {
-            _keep: engine,
-            enabled: AtomicBool::new(true),
-            volume: AtomicU32::new(70),
-            sources: Mutex::new(sources),
-        })
-    }
-
-    #[cfg(windows)]
-    fn open_engine() -> Option<Engine> {
-        match rodio::OutputStream::try_default() {
-            Ok((stream, handle)) => Some(Engine { _stream: stream, handle }),
-            Err(_) => None,
-        }
-    }
-
-    #[cfg(not(windows))]
-    fn open_engine() -> Option<Engine> {
-        None
-    }
-
-    /// Пользовательские файлы из `sounds/` рядом с exe; чего нет — синтез.
-    fn load_sources() -> HashMap<&'static str, Vec<u8>> {
-        let mut map: HashMap<&'static str, Vec<u8>> = HashMap::new();
-        let dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("sounds")));
-
-        for (i, name) in NAMES.iter().enumerate() {
-            let mut loaded = None;
-            if let Some(dir) = &dir {
-                for ext in ["wav", "ogg", "mp3"] {
-                    let path = dir.join(format!("{name}.{ext}"));
-                    if path.is_file() {
-                        if let Ok(bytes) = std::fs::read(&path) {
-                            loaded = Some(bytes);
-                            break;
-                        }
-                    }
-                }
-            }
-            map.insert(*name, loaded.unwrap_or_else(|| synth(i)));
-        }
-        map
-    }
-
     pub fn set_enabled(&self, on: bool) {
         self.enabled.store(on, Ordering::Relaxed);
     }
@@ -108,38 +64,107 @@ impl Audio {
         if !self.enabled.load(Ordering::Relaxed) {
             return;
         }
-        let name: &str = match kind {
-            CLICK => "click",
-            TOGGLE => "toggle",
-            TAB => "tab",
-            SUCCESS => "success",
-            ERROR => "error",
-            _ => return,
-        };
-        let data = {
-            let map = self.sources.lock().unwrap();
-            match map.get(name) {
-                Some(bytes) => bytes.clone(),
-                None => return,
+        let _ = self.tx.send(Msg::Play(kind));
+    }
+}
+
+/// Отдельный поток: владеет OutputStream (не Send/Sync) и источниками.
+fn spawn_engine(
+    rx: std::sync::mpsc::Receiver<Msg>,
+    enabled: Arc<AtomicBool>,
+    volume: Arc<AtomicU32>,
+) {
+    std::thread::Builder::new()
+        .name("audio".into())
+        .spawn(move || {
+            let engine = open_engine();
+            let sources = load_sources();
+            while let Ok(msg) = rx.recv() {
+                if !enabled.load(Ordering::Relaxed) {
+                    continue;
+                }
+                let Msg::Play(kind) = msg;
+                let name: &str = match kind {
+                    CLICK => "click",
+                    TOGGLE => "toggle",
+                    TAB => "tab",
+                    SUCCESS => "success",
+                    ERROR => "error",
+                    _ => continue,
+                };
+                let Some(data) = sources.get(name) else { continue };
+                engine_play(&engine, data, volume.load(Ordering::Relaxed));
             }
-        };
-        self.sink_play(&data);
-    }
+        })
+        .ok();
+}
 
-    #[cfg(windows)]
-    fn sink_play(&self, data: &[u8]) {
-        let Some(engine) = &self._keep else { return };
-        let cursor = std::io::Cursor::new(data.to_vec());
-        let Ok(source) = rodio::Decoder::new(cursor) else { return };
-        let Ok(sink) = rodio::Sink::try_new(&engine.handle) else { return };
-        let vol = self.volume.load(Ordering::Relaxed) as f32 / 100.0;
-        sink.set_volume(vol.clamp(0.0, 1.0) * 0.9);
-        sink.append(source);
-        sink.detach();
-    }
+// ===== Windows: rodio/WASAPI =====
 
-    #[cfg(not(windows))]
-    fn sink_play(&self, _data: &[u8]) {}
+#[cfg(windows)]
+struct Engine {
+    _stream: rodio::OutputStream,
+    handle: rodio::OutputStreamHandle,
+}
+
+#[cfg(windows)]
+fn open_engine() -> Option<Engine> {
+    match rodio::OutputStream::try_default() {
+        Ok((stream, handle)) => Some(Engine { _stream: stream, handle }),
+        Err(_) => None,
+    }
+}
+
+#[cfg(windows)]
+fn engine_play(engine: &Option<Engine>, data: &[u8], volume: u32) {
+    let Some(engine) = engine else { return };
+    let cursor = std::io::Cursor::new(data.to_vec());
+    let Ok(source) = rodio::Decoder::new(cursor) else { return };
+    let Ok(sink) = rodio::Sink::try_new(&engine.handle) else { return };
+    let vol = volume as f32 / 100.0;
+    sink.set_volume(vol.clamp(0.0, 1.0) * 0.9);
+    sink.append(source);
+    sink.detach();
+}
+
+// ===== Прочие платформы: тишина =====
+
+#[cfg(not(windows))]
+struct Engine;
+
+#[cfg(not(windows))]
+fn open_engine() -> Option<Engine> {
+    None
+}
+
+#[cfg(not(windows))]
+fn engine_play(_engine: &Option<Engine>, _data: &[u8], _volume: u32) {}
+
+// ===== Источники =====
+
+/// Пользовательские файлы из `sounds/` рядом с exe; чего нет — синтез.
+fn load_sources() -> HashMap<&'static str, Vec<u8>> {
+    let mut map: HashMap<&'static str, Vec<u8>> = HashMap::new();
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("sounds")));
+
+    for (i, name) in NAMES.iter().enumerate() {
+        let mut loaded = None;
+        if let Some(dir) = &dir {
+            for ext in ["wav", "ogg", "mp3"] {
+                let path = dir.join(format!("{name}.{ext}"));
+                if path.is_file() {
+                    if let Ok(bytes) = std::fs::read(&path) {
+                        loaded = Some(bytes);
+                        break;
+                    }
+                }
+            }
+        }
+        map.insert(*name, loaded.unwrap_or_else(|| synth(i)));
+    }
+    map
 }
 
 // ===== Синтез заглушек =====
@@ -191,7 +216,7 @@ fn tone(freq: f32, ms: usize, decay: f32, amp: f32) -> Vec<f32> {
         .collect()
 }
 
-/// Смешать дорожки (обрезать по самой короткой не пустой).
+/// Смешать дорожки (обрезать по самой длинной).
 fn mix(tracks: Vec<Vec<f32>>) -> Vec<f32> {
     let len = tracks.iter().map(|t| t.len()).max().unwrap_or(0);
     let mut out = vec![0.0f32; len];
