@@ -46,6 +46,8 @@ export struct FlagRow {
     selected: bool,
     /// Полосатость строки (i % 2).
     alt: bool,
+    /// Флаг в официальном allowlist Roblox — иначе клиент его игнорирует.
+    works: bool,
 }
 
 export struct PresetRow {
@@ -58,4 +60,6 @@ export struct PresetRow {
     /// Локализованный текущий вариант для закрытого комбобокса.
     current: string,
     on: bool,
+    /// Все флаги пресета в allowlist Roblox.
+    works: bool,
 }

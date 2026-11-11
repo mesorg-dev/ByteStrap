@@ -66,7 +66,52 @@ pub static REGISTRY: &[FlagInfo] = &[
     flag!("FFlagEnableNewChat", Boolean, "Enable new chat system", "UI", "true"),
     flag!("FFlagLuaDebuggerEnabled", Boolean, "Enable Lua debugger", "Developer", "false"),
     flag!("FFlagDebugShowPingInMenu", Boolean, "Show ping in escape menu", "UI", "false"),
+    // Флаги из официального allowlist, которых не хватало.
+    flag!("DFIntCSGLevelOfDetailSwitchingDistanceL12", Integer, "CSG LOD switching distance, level 1-2", "Performance", "250", min: 0, max: 100000),
+    flag!("DFIntCSGLevelOfDetailSwitchingDistanceL23", Integer, "CSG LOD switching distance, level 2-3", "Performance", "500", min: 0, max: 100000),
+    flag!("DFIntCSGLevelOfDetailSwitchingDistanceL34", Integer, "CSG LOD switching distance, level 3-4", "Performance", "750", min: 0, max: 100000),
+    flag!("FFlagHandleAltEnterFullscreenManually", Boolean, "Handle Alt+Enter fullscreen manually", "UI", "false"),
+    flag!("DFFlagTextureQualityOverrideEnabled", Boolean, "Enable texture quality override", "Rendering", "false"),
+    flag!("DFIntTextureQualityOverride", Integer, "Texture quality level (0=low .. 3=high)", "Rendering", "3", min: 0, max: 3),
+    flag!("FFlagDebugSkyGray", Boolean, "Replace sky with flat gray (faster load)", "Rendering", "false"),
+    flag!("DFFlagDebugPauseVoxelizer", Boolean, "Pause voxelizer (freeze lighting updates)", "Rendering", "false"),
+    flag!("DFIntDebugFRMQualityLevelOverride", Integer, "Force FRM quality level (1..21)", "Performance", "21", min: 1, max: 21),
+    flag!("FIntFRMMinGrassDistance", Integer, "Minimum grass render distance", "Performance", "0", min: 0, max: 5000),
+    flag!("FFlagDebugGraphicsPreferOpenGL", Boolean, "Prefer OpenGL over D3D11", "Rendering", "false"),
+    flag!("FIntGrassMovementReducedMotionFactor", Integer, "Reduce grass movement (0=off .. 100=full)", "UI", "0", min: 0, max: 100),
 ];
+
+/// Официальный allowlist Roblox для ClientAppSettings.json
+/// (devforum: «Allowlist for local client configuration via Fast Flags»,
+/// 29.09.2025). Клиент молча игнорирует любые другие флаги.
+pub static ALLOWLIST: &[&str] = &[
+    // Geometry
+    "DFIntCSGLevelOfDetailSwitchingDistance",
+    "DFIntCSGLevelOfDetailSwitchingDistanceL12",
+    "DFIntCSGLevelOfDetailSwitchingDistanceL23",
+    "DFIntCSGLevelOfDetailSwitchingDistanceL34",
+    // Rendering
+    "FFlagHandleAltEnterFullscreenManually",
+    "DFFlagTextureQualityOverrideEnabled",
+    "DFIntTextureQualityOverride",
+    "FIntDebugForceMSAASamples",
+    "DFFlagDisableDPIScale",
+    "FFlagDebugGraphicsPreferD3D11",
+    "FFlagDebugSkyGray",
+    "DFFlagDebugPauseVoxelizer",
+    "DFIntDebugFRMQualityLevelOverride",
+    "FIntFRMMaxGrassDistance",
+    "FIntFRMMinGrassDistance",
+    "FFlagDebugGraphicsPreferVulkan",
+    "FFlagDebugGraphicsPreferOpenGL",
+    // UI
+    "FIntGrassMovementReducedMotionFactor",
+];
+
+/// Флаг будет реально применён клиентом? (вне allowlist Roblox его игнорирует).
+pub fn is_allowlisted(name: &str) -> bool {
+    ALLOWLIST.iter().any(|f| f.eq_ignore_ascii_case(name.trim()))
+}
 
 pub fn lookup(name: &str) -> Option<&'static FlagInfo> {
     REGISTRY.iter().find(|f| f.name == name)
@@ -307,6 +352,18 @@ mod tests {
     fn validate_allowed_list() {
         assert_eq!(validate("FIntDebugForceMSAASamples", "4"), Ok(()));
         assert_eq!(validate("FIntDebugForceMSAASamples", "3"), Err(FlagError::NotAllowed));
+    }
+
+    #[test]
+    fn allowlist_matches() {
+        assert!(is_allowlisted("DFIntTaskSchedulerTargetFps") == false);
+        assert!(is_allowlisted("FIntDebugForceMSAASamples"));
+        assert!(is_allowlisted("fflagdebuggraphicspreferVulkan"));
+        assert!(is_allowlisted("  DFIntCSGLevelOfDetailSwitchingDistance  "));
+        // Все флаги allowlist либо есть в реестре, либо допустимы как unknown.
+        for name in ALLOWLIST {
+            assert!(is_allowlisted(name));
+        }
     }
 
     #[test]

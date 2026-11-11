@@ -101,7 +101,8 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Home_MbOf" => "{0} / {1} МБ",
     // FastFlags
     "Flags_H1" => "FastFlags",
-    "Flags_Sub" => "Флаги клиентской настройки",
+    "Flags_Sub" => "Флаги клиентской настройки · ⚠ — Roblox игнорирует флаги вне официального allowlist",
+    "Flags_NotAllowlisted" => "не в allowlist Roblox — клиент игнорирует этот флаг",
     "Flags_Search" => "Поиск по имени…",
     "Flags_Add" => "Добавить",
     "Flags_Save" => "Сохранить",
@@ -349,7 +350,8 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Home_MbOf" => "{0} / {1} MB",
     // FastFlags
     "Flags_H1" => "FastFlags",
-    "Flags_Sub" => "Client settings flags",
+    "Flags_Sub" => "Client settings flags · ⚠ — Roblox ignores flags outside the official allowlist",
+    "Flags_NotAllowlisted" => "not on the Roblox allowlist — the client ignores this flag",
     "Flags_Search" => "Search by name…",
     "Flags_Add" => "Add",
     "Flags_Save" => "Save",

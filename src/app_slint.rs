@@ -2036,14 +2036,18 @@ impl Ctx {
         let detail = self
             .flags_selected
             .and_then(|i| self.flags.get(i))
-            .and_then(|(n, _)| flags::lookup(n.trim()))
-            .map(|info| {
-                format!(
-                    "{} · {} · {}",
-                    info.category,
-                    flags::hint(info),
-                    info.desc
-                )
+            .and_then(|(n, _)| {
+                let name = n.trim();
+                flags::lookup(name).map(|info| {
+                    let mut text = format!("{} · {} · {}", info.category, flags::hint(info), info.desc);
+                    if !flags::is_allowlisted(name) {
+                        text.push_str(&format!(
+                            " · ⚠ {}",
+                            tr(self.lang, "Flags_NotAllowlisted")
+                        ));
+                    }
+                    text
+                })
             })
             .unwrap_or_default();
         ui.set_flags_sel_detail(detail.as_str().into());
@@ -2087,6 +2091,7 @@ impl Ctx {
                     .into(),
                 selected: self.flags_selected == Some(i),
                 alt: i % 2 == 1,
+                works: flags::is_allowlisted(n),
             })
             .collect();
         ui.set_flags_rows(ModelRc::new(VecModel::from(rows)));
@@ -2110,6 +2115,7 @@ impl Ctx {
                     selected: cur as i32,
                     current: local_option(lang, current).into(),
                     on: cur == 1,
+                    works: p.works,
                 }
             })
             .collect();
@@ -3784,18 +3790,18 @@ mod shots {
             "Rendering · Включает новое освещение · Отрисовка нового освещения".into(),
         );
         ui.set_flags_rows(rows(vec![
-            FlagRow { idx: 0, name: "FFlagDebugForceFutureLights".into(), value: "true".into(), desc: "Rendering · Новое освещение".into(), selected: true, alt: false },
-            FlagRow { idx: 1, name: "DFFlagTextureQualityOverride".into(), value: "2".into(), desc: "Graphics · Качество текстур".into(), selected: false, alt: true },
-            FlagRow { idx: 2, name: "FIntDebugFRMClamp".into(), value: "16".into(), desc: "Performance · Ограничение FRM".into(), selected: false, alt: false },
-            FlagRow { idx: 3, name: "FFlagRenderFixPBR".into(), value: "false".into(), desc: "Rendering · PBR-фикс".into(), selected: false, alt: true },
-            FlagRow { idx: 4, name: "FIntTextureQualityOverride1".into(), value: "3".into(), desc: "Graphics · Уровень текстур".into(), selected: false, alt: false },
-            FlagRow { idx: 5, name: "FFlagHandleAltEnterFullscreenManually".into(), value: "false".into(), desc: "UI · Полноэкранный режим".into(), selected: false, alt: true },
-            FlagRow { idx: 6, name: "DFIntTaskSchedulerTargetFps".into(), value: "60".into(), desc: "Performance · Лимит FPS".into(), selected: false, alt: false },
-            FlagRow { idx: 7, name: "FFlagEnableInGameMenuModern".into(), value: "true".into(), desc: "UI · Новое меню".into(), selected: false, alt: true },
-            FlagRow { idx: 8, name: "FIntRenderShadowIntensity".into(), value: "3".into(), desc: "Rendering · Тени".into(), selected: false, alt: false },
-            FlagRow { idx: 9, name: "FFlagDebugPreferSingleThread".into(), value: "false".into(), desc: "Performance · Один поток".into(), selected: false, alt: true },
-            FlagRow { idx: 10, name: "DFIntConnectionMTU".into(), value: "1400".into(), desc: "Network · MTU".into(), selected: false, alt: false },
-            FlagRow { idx: 11, name: "FFlagAdServiceEnabled".into(), value: "false".into(), desc: "Ads · Реклама".into(), selected: false, alt: true },
+            FlagRow { idx: 0, name: "FFlagDebugForceFutureLights".into(), value: "true".into(), desc: "Rendering · Новое освещение".into(), selected: true, alt: false, works: false },
+            FlagRow { idx: 1, name: "DFFlagTextureQualityOverride".into(), value: "2".into(), desc: "Graphics · Качество текстур".into(), selected: false, alt: true, works: true },
+            FlagRow { idx: 2, name: "FIntDebugFRMClamp".into(), value: "16".into(), desc: "Performance · Ограничение FRM".into(), selected: false, alt: false, works: false },
+            FlagRow { idx: 3, name: "FFlagRenderFixPBR".into(), value: "false".into(), desc: "Rendering · PBR-фикс".into(), selected: false, alt: true, works: false },
+            FlagRow { idx: 4, name: "FIntTextureQualityOverride1".into(), value: "3".into(), desc: "Graphics · Уровень текстур".into(), selected: false, alt: false, works: false },
+            FlagRow { idx: 5, name: "FFlagHandleAltEnterFullscreenManually".into(), value: "false".into(), desc: "UI · Полноэкранный режим".into(), selected: false, alt: true, works: true },
+            FlagRow { idx: 6, name: "DFIntTaskSchedulerTargetFps".into(), value: "60".into(), desc: "Performance · Лимит FPS".into(), selected: false, alt: false, works: false },
+            FlagRow { idx: 7, name: "FFlagEnableInGameMenuModern".into(), value: "true".into(), desc: "UI · Новое меню".into(), selected: false, alt: true, works: false },
+            FlagRow { idx: 8, name: "FIntRenderShadowIntensity".into(), value: "3".into(), desc: "Rendering · Тени".into(), selected: false, alt: false, works: false },
+            FlagRow { idx: 9, name: "FFlagDebugPreferSingleThread".into(), value: "false".into(), desc: "Performance · Один поток".into(), selected: false, alt: true, works: false },
+            FlagRow { idx: 10, name: "DFIntConnectionMTU".into(), value: "1400".into(), desc: "Network · MTU".into(), selected: false, alt: false, works: false },
+            FlagRow { idx: 11, name: "FFlagAdServiceEnabled".into(), value: "false".into(), desc: "Ads · Реклама".into(), selected: false, alt: true, works: false },
         ]));
         // Реальные пресеты контроллера (на пустом наборе флагов — как при первом запуске).
         let preset_rows: Vec<PresetRow> = presets::PRESETS
@@ -3816,6 +3822,7 @@ mod shots {
                     selected: cur as i32,
                     current: local_option(Lang::Ru, current).into(),
                     on: cur == 1,
+                    works: p.works,
                 }
             })
             .collect();

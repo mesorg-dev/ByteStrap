@@ -258,10 +258,10 @@ export component FlagsPage inherits PageFade {
                         y: 0;
                         width: parent.width - 190px;
                         height: 17px;
-                        text: p.label;
+                        text: p.works ? p.label : "⚠ " + p.label;
                         font-size: 13px;
                         font-weight: 600;
-                        color: Theme.fg;
+                        color: p.works ? Theme.fg : Theme.warn;
                         vertical-alignment: center;
                         overflow: elide;
                     }
@@ -415,10 +415,10 @@ export component FlagsPage inherits PageFade {
                         y: 0;
                         width: parent.width - 496px;
                         height: 26px;
-                        text: r.desc;
+                        text: r.works ? r.desc : "⚠ " + r.desc;
                         font-family: Theme.font-mono;
                         font-size: 11px;
-                        color: Theme.fg-dimmer;
+                        color: r.works ? Theme.fg-dimmer : Theme.warn;
                         vertical-alignment: center;
                         overflow: elide;
                     }
