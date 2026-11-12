@@ -181,8 +181,8 @@ mod imp {
             last_tick = Instant::now();
 
             let game = find_game_hwnd();
-            if game.is_null() || IsIconic(game) != 0 || !params.enabled {
-                if !host.is_null() && IsWindowVisible(host) != 0 {
+            if game.is_null() || unsafe { IsIconic(game) } != 0 || !params.enabled {
+                if !host.is_null() && unsafe { IsWindowVisible(host) } != 0 {
                     unsafe { ShowWindow(host, SW_HIDE) };
                 }
                 continue;
@@ -271,7 +271,7 @@ mod imp {
                         SetLayeredWindowAttributes(host, 0, a.max(1), LWA_ALPHA);
                         ShowWindow(host, SW_SHOWNOACTIVATE);
                     }
-                } else if IsWindowVisible(host) != 0 {
+                } else if unsafe { IsWindowVisible(host) } != 0 {
                     unsafe { ShowWindow(host, SW_HIDE) };
                 }
             }
@@ -353,36 +353,38 @@ mod imp {
     /// Окно Roblox: видимое топ-левел окно процесса RobloxPlayerBeta.
     fn find_game_hwnd() -> HWND {
         extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> i32 {
-            let out = lparam as *mut HWND;
-            if IsWindowVisible(hwnd) == 0 {
-                return 1;
-            }
-            let mut pid: u32 = 0;
-            GetWindowThreadProcessId(hwnd, &mut pid);
-            if pid == 0 {
-                return 1;
-            }
-            let proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if proc.is_null() {
-                return 1;
-            }
-            let mut buf = [0u16; 260];
-            let mut len = buf.len() as u32;
-            let ok = QueryFullProcessImageNameW(proc, 0, buf.as_mut_ptr(), &mut len);
-            CloseHandle(proc);
-            if ok != 0 {
-                let path = String::from_utf16_lossy(&buf[..len as usize]);
-                let name = path
-                    .rsplit(['\\', '/'])
-                    .next()
-                    .unwrap_or("")
-                    .to_ascii_lowercase();
-                if name == GAME_EXE {
-                    unsafe { *out = hwnd };
-                    return 0;
+            unsafe {
+                let out = lparam as *mut HWND;
+                if IsWindowVisible(hwnd) == 0 {
+                    return 1;
                 }
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, &mut pid);
+                if pid == 0 {
+                    return 1;
+                }
+                let proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+                if proc.is_null() {
+                    return 1;
+                }
+                let mut buf = [0u16; 260];
+                let mut len = buf.len() as u32;
+                let ok = QueryFullProcessImageNameW(proc, 0, buf.as_mut_ptr(), &mut len);
+                CloseHandle(proc);
+                if ok != 0 {
+                    let path = String::from_utf16_lossy(&buf[..len as usize]);
+                    let name = path
+                        .rsplit(['\\', '/'])
+                        .next()
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    if name == GAME_EXE {
+                        *out = hwnd;
+                        return 0;
+                    }
+                }
+                1
             }
-            1
         }
 
         let mut found: HWND = std::ptr::null_mut();
