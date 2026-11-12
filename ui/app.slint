@@ -14,7 +14,7 @@ import { Snd } from "snd.slint";
 import { T } from "i18n.slint";
 export { T, Theme, Snd }
 import { TitleBar } from "titlebar.slint";
-import { Btn, TextField } from "widgets.slint";
+import { Btn, TextField, Dd } from "widgets.slint";
 import { SideBar } from "sidebar.slint";
 import { Starfield } from "stars.slint";
 import { HomePage } from "pages/home.slint";
@@ -288,7 +288,7 @@ export component AppWindow inherits Window {
             width: Theme.sidebar-w;
             height: parent.height - Theme.titlebar-h;
             page: root.page;
-            navigate(p) => { root.page = p; }
+            navigate(p) => { root.page = p; Dd.open = false; }
         }
 
         Rectangle {
@@ -748,6 +748,78 @@ export component AppWindow inherits Window {
                         height: 34px;
                         clicked => { root.import-decision(3); }
                     }
+                }
+            }
+        }
+    }
+
+    // ===== Оверлей дропдаунов (Combo) — поверх всего содержимого =====
+    // Клик-вне закрывает список.
+    if Dd.open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { Dd.open = false; }
+        }
+    }
+    // Список: у комбо, при нехватке места снизу — раскрывается вверх.
+    if Dd.open : Rectangle {
+        property <length> list-h: min(Dd.items.length * 27px + 10px, 214px);
+        x: Dd.x - 1px;
+        y: Dd.y + 4px + list-h > root.height - 8px
+            ? max(8px, Dd.y - list-h - 4px - 36px)
+            : Dd.y + 4px;
+        width: Dd.w + 2px;
+        height: list-h;
+
+        property <bool> shown: false;
+        opacity: shown ? 1.0 : 0.0;
+        animate opacity { duration: Theme.t-fast; }
+        init => { shown = true; }
+
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: #ffffff30;
+        border-radius: Theme.r-soft;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+
+        for it[i] in Dd.items : Rectangle {
+            x: 0;
+            y: 5px + i * 27px;
+            width: parent.width;
+            height: 27px;
+            background: i == Dd.selected ? Theme.glass
+                : row-touch.has-hover ? Theme.glass-hover
+                : transparent;
+            animate background { duration: Theme.t-fast; }
+
+            Text {
+                x: 11px;
+                y: 0;
+                width: parent.width - 22px;
+                height: parent.height;
+                text: it;
+                font-size: 12px;
+                color: i == Dd.selected ? Theme.fg : Theme.fg-dim;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            row-touch := TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {
+                    Snd.play(2);
+                    Dd.open = false;
+                    if Dd.owner >= 0 && Dd.owner < 100 { root.preset-pick(Dd.owner, i); }
+                    else if Dd.owner == 100 { root.flags-profile-pick(i); }
+                    else if Dd.owner == 200 { root.mods-profile-pick(i); }
                 }
             }
         }

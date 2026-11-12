@@ -94,8 +94,7 @@ export component FlagsPage inherits PageFade {
         if root.has-client : flick := Flickable {
             vertical-stretch: 1;
             content-width: self.width;
-            content-height: root.prof-y + root.prof-h + 16px
-                + (root.profile-open ? 230px : 0px);
+            content-height: root.prof-y + root.prof-h + 16px;
 
             // ===== Тулбар =====
             c-tool := Rectangle {
@@ -298,6 +297,7 @@ export component FlagsPage inherits PageFade {
                         x: parent.width - 146px;
                         y: 2px;
                         width: 130px;
+                        dd-id: i;
                         items: p.options;
                         selected: p.selected;
                         current-text: p.current;
@@ -468,6 +468,7 @@ export component FlagsPage inherits PageFade {
                         spacing: 8px;
                         combo := Combo {
                             width: 240px;
+                            dd-id: 100;
                             items: root.profiles;
                             selected: root.profile-sel-index;
                             current-text: root.profile-sel-text;

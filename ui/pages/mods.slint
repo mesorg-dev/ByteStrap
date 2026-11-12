@@ -64,8 +64,7 @@ export component ModsPage inherits PageFade {
             vertical-stretch: 1;
             content-width: self.width;
             content-height: c-act.height + 12px + c-list.height + 12px
-                + c-files.height + 12px + c-prof.height + 16px
-                + (root.profile-open ? 230px : 0px);
+                + c-files.height + 12px + c-prof.height + 16px;
 
             // ===== Действия =====
             c-act := Rectangle {
@@ -379,6 +378,7 @@ export component ModsPage inherits PageFade {
                         spacing: 8px;
                         combo := Combo {
                             width: 240px;
+                            dd-id: 200;
                             items: root.profiles;
                             selected: root.profile-sel-index;
                             current-text: root.profile-sel-text;

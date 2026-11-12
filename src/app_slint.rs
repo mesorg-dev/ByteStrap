@@ -4172,12 +4172,7 @@ mod shots {
         rows(v.iter().map(|s| (*s).into()).collect())
     }
 
-    #[test]
-    fn take_page_shots() {
-        if std::env::var("BYTESTRAP_SHOTS").is_err() {
-            return;
-        }
-
+    fn shots_setup() -> AppWindow {
         slint::platform::set_platform(Box::new(i_slint_backend_testing::TestingBackend::new(
             i_slint_backend_testing::TestingBackendOptions {
                 mock_time: true,
@@ -4423,6 +4418,16 @@ mod shots {
         ui.set_update_notes("- Исправлено окно логов\n- Ускорен запуск клиента\n- Новый счётчик сессии в профиле".into());
         ui.set_update_pct(0.0);
 
+        ui
+    }
+
+    #[test]
+    fn take_page_shots() {
+        if std::env::var("BYTESTRAP_SHOTS").is_err() {
+            return;
+        }
+
+        let ui = shots_setup();
         ui.show().expect("show");
 
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/shots");
@@ -4489,6 +4494,45 @@ mod shots {
                 .unwrap_or_else(|e| panic!("save {name}: {e}"));
             println!("saved {name}");
         }
+    }
+
+    /// Дебаг PopupWindow: открыть дропдаун пресета FPS на Flags и снять.
+    #[test]
+    fn take_popup_shot() {
+        if std::env::var("BYTESTRAP_POPUP").is_err() {
+            return;
+        }
+        let ui = shots_setup();
+        ui.set_page(2);
+        ui.show().expect("show");
+        // FPS-пресет (строка 0): центр комбобокса в окне.
+        click(&ui, 1007.0, 324.0);
+        // Анимация появления попапа (mock_time) — промотать вперёд.
+        i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(400));
+        let buf = ui.window().take_snapshot().expect("snapshot");
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/shots");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        image::save_buffer(
+            dir.join("popup.png"),
+            buf.as_bytes(),
+            buf.width(),
+            buf.height(),
+            image::ColorType::Rgba8,
+        )
+        .expect("save");
+        println!("saved popup.png");
+    }
+
+    fn click(ui: &AppWindow, x: f32, y: f32) {
+        use slint::platform::{PointerEventButton, WindowEvent};
+        ui.window().dispatch_event(WindowEvent::PointerPressed {
+            position: slint::LogicalPosition::new(x, y),
+            button: PointerEventButton::Left,
+        });
+        ui.window().dispatch_event(WindowEvent::PointerReleased {
+            position: slint::LogicalPosition::new(x, y),
+            button: PointerEventButton::Left,
+        });
     }
 
     /// Прокрутка Flickable под указателем (700, 500) в окне.

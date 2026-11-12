@@ -46,13 +46,18 @@ export component Btn inherits Rectangle {
         : root.active ? #ffffff4d : Theme.line;
     animate border-color { duration: Theme.t-fast; }
 
-    // Нажатие — лёгкий «провал» (y занят layout'ом, утапливаем тенью).
-    drop-shadow-offset-y: touch.pressed ? 3px : 2px;
+    // Нажатие — лёгкий «провал», наведение — подъём и ореол.
+    drop-shadow-offset-y: touch.pressed ? 3px
+        : root.kind == 0 && touch.has-hover ? 5px : 2px;
+    animate drop-shadow-offset-y { duration: Theme.t-fast; }
 
-    // Ореол только у акцентной.
-    drop-shadow-blur: root.kind == 0 && root.enabled ? 16px : 0px;
-    drop-shadow-color: #ffffff26;
+    // Ореол только у акцентной: растёт и ярче при наведении.
+    drop-shadow-blur: root.kind == 0 && root.enabled
+        ? (touch.has-hover ? 30px : 16px) : 0px;
+    drop-shadow-color: root.kind == 0 && root.enabled
+        ? (touch.has-hover ? #ffffff47 : #ffffff26) : transparent;
     animate drop-shadow-blur { duration: Theme.t-fast; }
+    animate drop-shadow-color { duration: Theme.t-fast; }
 
     opacity: root.enabled ? 1.0 : 0.38;
 
@@ -351,20 +356,42 @@ export component GlyphBtn inherits Rectangle {
     }
 }
 
+// ===== Оверлей дропдаунов =====
+// Список рисуется в AppWindow поверх всего содержимого (см. dd-list) —
+// PopupWindow под frameless-окном на Windows может рисоваться под родителем.
+export global Dd {
+    in-out property <bool> open: false;
+    /// Позиция списка (левый верх комбо) и его ширина.
+    in-out property <length> x;
+    in-out property <length> y;
+    in-out property <length> w;
+    /// Маршрутизация выбора: 0..99 — пресеты флагов, 100 — профили флагов,
+    /// 200 — профили модов (см. обработчик dd-list в AppWindow).
+    in-out property <int> owner: -1;
+    in-out property <[string]> items;
+    in-out property <int> selected: -1;
+    callback pick(int);
+}
+
 // ===== Выпадающий список (профили) =====
 export component Combo inherits Rectangle {
     in-out property <[string]> items;
     in-out property <int> selected: -1;
     in-out property <string> current-text;
+    /// Идентификатор для маршрутизации выбора через Dd.
+    in-out property <int> dd-id: 0;
     callback pick(int);
     /// Состояние списка изменилось (для высоты скролла у вызывающего).
     callback open-changed(bool);
+
+    /// Список этого комбо сейчас раскрыт?
+    property <bool> opened: Dd.open && Dd.owner == root.dd-id;
 
     height: 32px;
     border-radius: Theme.r-soft;
     background: Theme.field;
     border-width: 1px;
-    border-color: pop.is-open ? #ffffff52 : Theme.line;
+    border-color: root.opened ? #ffffff52 : Theme.line;
     animate border-color { duration: Theme.t-fast; }
 
     Text {
@@ -384,9 +411,9 @@ export component Combo inherits Rectangle {
         y: 0;
         width: 12px;
         height: parent.height;
-        text: pop.is-open ? "▴" : "▾";
+        text: root.opened ? "▴" : "▾";
         font-size: 10px;
-        color: pop.is-open ? Theme.fg : Theme.fg-dim;
+        color: root.opened ? Theme.fg : Theme.fg-dim;
         horizontal-alignment: center;
         vertical-alignment: center;
         animate color { duration: Theme.t-fast; }
@@ -397,65 +424,18 @@ export component Combo inherits Rectangle {
         height: 100%;
         clicked => {
             Snd.play(0);
-            if pop.is-open { pop.close(); } else { pop.show(); }
-            root.open-changed(!pop.is-open);
-        }
-    }
-
-    pop := PopupWindow {
-        x: -1px;
-        y: parent.height + 4px;
-        width: root.width + 2px;
-        height: min(root.items.length * 27px + 10px, 214px);
-        close-policy: PopupClosePolicy.close-on-click-outside;
-
-        content := Rectangle {
-            // Появление: fade + лёгкий сдвиг.
-            property <bool> shown: false;
-            opacity: content.shown ? 1.0 : 0.0;
-            animate opacity { duration: Theme.t-fast; }
-            init => { content.shown = true; }
-
-            width: 100%;
-            height: 100%;
-            background: Theme.panel;
-            border-width: 1px;
-            border-color: #ffffff30;
-            border-radius: Theme.r-soft;
-            clip: true;
-
-            for it[i] in root.items : Rectangle {
-                x: 0;
-                y: 5px + i * 27px;
-                width: parent.width;
-                height: 27px;
-                background: i == root.selected ? Theme.glass
-                    : row-touch.has-hover ? Theme.glass-hover
-                    : transparent;
-                animate background { duration: Theme.t-fast; }
-
-                Text {
-                    x: 11px;
-                    y: 0;
-                    width: parent.width - 22px;
-                    height: parent.height;
-                    text: it;
-                    font-size: 12px;
-                    color: i == root.selected ? Theme.fg : Theme.fg-dim;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
-
-                row-touch := TouchArea {
-                    width: 100%;
-                    height: 100%;
-                    clicked => {
-                        Snd.play(2);
-                        root.pick(i);
-                        pop.close();
-                        root.open-changed(false);
-                    }
-                }
+            if root.opened {
+                Dd.open = false;
+                root.open-changed(false);
+            } else {
+                Dd.items = root.items;
+                Dd.selected = root.selected;
+                Dd.w = self.width;
+                Dd.x = self.absolute-position.x;
+                Dd.y = self.absolute-position.y + self.height;
+                Dd.owner = root.dd-id;
+                Dd.open = true;
+                root.open-changed(true);
             }
         }
     }
