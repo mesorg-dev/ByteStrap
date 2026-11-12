@@ -24,15 +24,16 @@ jobs:
         run: |
           cargo test --locked *>&1 | Tee-Object -FilePath test-out.txt | Write-Host
           if ($LASTEXITCODE -ne 0) {
-            # Строки ошибок — в аннотации чек-рана (читаются через публичный API),
-            # контекст (файл, строки, советы) — в summary (виден на странице рана).
-            Select-String -Path test-out.txt -Pattern 'error\[E\d+\]|^error:|panicked at|FAILED' |
-              ForEach-Object { Write-Output "::error::$($_.Line)" }
-            Select-String -Path test-out.txt -Pattern '^error' -Context 0,14 |
+            # Ошибки компиляции — в аннотации чек-рана (публичный API):
+            # каждая аннотация — заголовок ошибки + 14 строк контекста ниже.
+            Select-String -Path test-out.txt -Pattern '^error(\[E\d+\])?:' -Context 0,14 |
               ForEach-Object {
-                "### " + $_.Line
-                ($_.Context.PostContext -join "`n")
-              } | Add-Content $env:GITHUB_STEP_SUMMARY
+                $block = $_.Line + [Environment]::NewLine +
+                  ($_.Context.PostContext -join [Environment]::NewLine)
+                $enc = $block.Replace('%', '%25').Replace("`r", '').
+                  Replace([Environment]::NewLine, '%0A')
+                Write-Output "::error::$enc"
+              }
             exit $LASTEXITCODE
           }
 
