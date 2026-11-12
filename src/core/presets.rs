@@ -20,6 +20,9 @@ pub struct Preset {
     /// Отображаемые варианты; для combo length == map.len()+1 (первый — Авто).
     /// Для toggle — ["", ""] не используются.
     pub options: &'static [&'static str],
+    /// Все флаги пресета в официальном allowlist Roblox — иначе клиент
+    /// его игнорирует (UI помечает ⚠).
+    pub works: bool,
 }
 
 /// Все пресеты. Порядок = порядок в UI.
@@ -36,6 +39,7 @@ pub const PRESETS: &[Preset] = &[
             ("DFIntTaskSchedulerTargetFps", "360"),
         ],
         options: &["Auto", "60", "120", "144", "240", "360"],
+        works: false,
     },
     Preset {
         label_key: "Pr_Msaa",
@@ -48,6 +52,7 @@ pub const PRESETS: &[Preset] = &[
             ("FIntDebugForceMSAASamples", "8"),
         ],
         options: &["Auto", "1x", "2x", "4x", "8x"],
+        works: true,
     },
     Preset {
         label_key: "Pr_Render",
@@ -58,6 +63,7 @@ pub const PRESETS: &[Preset] = &[
             ("FFlagDebugGraphicsPreferD3D11", "true"),
         ],
         options: &["Auto", "Vulkan", "D3D11"],
+        works: true,
     },
     Preset {
         label_key: "Pr_Lod",
@@ -69,6 +75,7 @@ pub const PRESETS: &[Preset] = &[
             ("DFIntCSGLevelOfDetailSwitchingDistance", "5000"),
         ],
         options: &["Auto", "Low", "Medium", "High"],
+        works: true,
     },
     Preset {
         label_key: "Pr_Grass",
@@ -80,6 +87,7 @@ pub const PRESETS: &[Preset] = &[
             ("FIntFRMMaxGrassDistance", "500"),
         ],
         options: &["Auto", "Off", "Medium", "Far"],
+        works: true,
     },
     Preset {
         label_key: "Pr_Zoom",
@@ -91,6 +99,7 @@ pub const PRESETS: &[Preset] = &[
             ("FIntCameraMaxZoomDistance", "1000"),
         ],
         options: &["Auto", "20", "40", "1000"],
+        works: false,
     },
     Preset {
         label_key: "Pr_Dpi",
@@ -98,6 +107,7 @@ pub const PRESETS: &[Preset] = &[
         kind: Kind::Toggle,
         map: &[("DFFlagDisableDPIScale", "true")],
         options: &["", ""],
+        works: true,
     },
     Preset {
         label_key: "Pr_PostFx",
@@ -105,6 +115,7 @@ pub const PRESETS: &[Preset] = &[
         kind: Kind::Toggle,
         map: &[("FFlagDisablePostFx", "true")],
         options: &["", ""],
+        works: false,
     },
 ];
 

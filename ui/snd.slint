@@ -1,0 +1,11 @@
+// Глобал звука интерфейса: виджеты дёргают play(kind) — контроллер
+// воспроизводит звук через src/audio.rs (rodio, только Windows).
+// kind: 0 — клик, 1 — тумблер, 2 — переход вкладки, 3 — успех, 4 — ошибка.
+
+export global Snd {
+    callback play(int);
+
+    in-out property <bool> enabled: true;
+    /// 0..100 (в настройках).
+    in-out property <int> volume: 70;
+}

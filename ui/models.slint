@@ -1,0 +1,78 @@
+// Общие модели данных, которые контроллер кладёт в свойства AppWindow.
+
+export struct LogLine {
+    time: string,
+    level: int,
+    text: string,
+    zebra: bool,
+}
+
+export struct PlaceRow {
+    name: string,
+    duration: string,
+}
+
+/// Строка на странице Games: недавнее/избранное место Roblox.
+export struct GameRow {
+    id: string,
+    name: string,
+    visits: string,
+    /// «12.11» — день последнего запуска.
+    last: string,
+    fav: bool,
+    alt: bool,
+    /// true — не удаётся разобрать placeId (показываем как текст).
+    bad: bool,
+}
+
+export struct VersionRow {
+    guid: string,
+    size: string,
+    active: bool,
+    no_player: bool,
+    alt: bool,
+}
+
+export struct ModRow {
+    id: string,
+    /// «файлов: N · размер» — уже отформатировано контроллером.
+    meta: string,
+    enabled: bool,
+    can-up: bool,
+    can-down: bool,
+}
+
+export struct ModFileRow {
+    rel: string,
+    size: string,
+    /// 0 — применён, 1 — не применён, 2 — файл клиента.
+    status-kind: int,
+}
+
+export struct FlagRow {
+    /// Индекс в таблице контроллера (не в отфильтрованной выборке).
+    idx: int,
+    name: string,
+    value: string,
+    /// «категория · описание» из реестра (пусто — флаг неизвестен).
+    desc: string,
+    selected: bool,
+    /// Полосатость строки (i % 2).
+    alt: bool,
+    /// Флаг в официальном allowlist Roblox — иначе клиент его игнорирует.
+    works: bool,
+}
+
+export struct PresetRow {
+    label: string,
+    desc: string,
+    /// 0 — выпадающий список, 1 — тумблер.
+    kind: int,
+    options: [string],
+    selected: int,
+    /// Локализованный текущий вариант для закрытого комбобокса.
+    current: string,
+    on: bool,
+    /// Все флаги пресета в allowlist Roblox.
+    works: bool,
+}

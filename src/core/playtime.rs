@@ -26,6 +26,9 @@ pub struct Playtime {
     pub total_secs: u64,
     #[serde(default)]
     pub places: BTreeMap<String, PlaceEntry>,
+    /// Дневная статистика: "YYYY-MM-DD" → секунды (для графика на Home).
+    #[serde(default)]
+    pub days: BTreeMap<String, u64>,
 }
 
 impl Playtime {
@@ -49,6 +52,7 @@ impl Playtime {
     /// Слияние итогов сессии: total + разбивка по местам (id, name, secs).
     pub fn merge(&mut self, total: u64, places: &[(String, String, u64)]) {
         self.total_secs += total;
+        *self.days.entry(day_key(now_unix())).or_default() += total;
         let now = now_unix();
         for (id, name, secs) in places {
             if *secs == 0 {
@@ -78,6 +82,26 @@ pub fn fmt_duration(secs: u64) -> String {
     let m = (secs % 3600) / 60;
     let s = secs % 60;
     format!("{h:02}:{m:02}:{s:02}")
+}
+
+/// Ключ дневной статистики "YYYY-MM-DD" (UTC) по unix-времени.
+pub fn day_key(unix: u64) -> String {
+    let (y, m, d) = civil_from_days((unix / 86_400) as i64);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Алгоритм Говарда Хиннанта: дни от эпохи → (год, месяц, день).
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 pub fn now_unix() -> u64 {
@@ -255,7 +279,7 @@ fn find_place_id(line: &str) -> Option<String> {
 }
 
 /// Имя места через Roblox API (universe → games).
-async fn fetch_place_name(id: &str) -> Option<String> {
+pub(crate) async fn fetch_place_name(id: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
         .build()
@@ -307,6 +331,18 @@ mod tests {
         );
         assert_eq!(find_place_id("no ids here"), None);
         assert_eq!(find_place_id("placeId=x"), None);
+    }
+
+    #[test]
+    fn day_keys() {
+        assert_eq!(day_key(0), "1970-01-01");
+        assert_eq!(day_key(86_399), "1970-01-01");
+        assert_eq!(day_key(86_400), "1970-01-02");
+        assert_eq!(day_key(1_760_000_000), "2025-10-09");
+        let mut pt = Playtime::default();
+        pt.merge(100, &[]);
+        assert_eq!(pt.days.len(), 1);
+        assert_eq!(pt.days.values().next().copied(), Some(100));
     }
 
     #[test]

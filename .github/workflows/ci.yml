@@ -1,10 +1,11 @@
 name: ci
 
 # Сборка + тесты на каждый push/PR в main: ловим сломанный код
-# (в том числе windows-only ветки) до релиза.
+# (в том числе windows-only ветки) до релиза. feat/slint-ui — чтобы
+# гнать Windows-сборку и до мержа UI-ветки.
 on:
   push:
-    branches: [main]
+    branches: [main, feat/slint-ui]
   pull_request:
     branches: [main]
 
@@ -23,9 +24,17 @@ jobs:
         run: |
           cargo test --locked *>&1 | Tee-Object -FilePath test-out.txt | Write-Host
           if ($LASTEXITCODE -ne 0) {
-            # Строки ошибок — в аннотации чек-рана (читаются через публичный API).
-            Select-String -Path test-out.txt -Pattern 'error\[E\d+\]|^error:|panicked at|FAILED' |
-              ForEach-Object { Write-Output "::error::$($_.Line)" }
+            # Ошибки компиляции — в аннотации чек-рана (публичный API):
+            # заголовок ошибки + 15 строк контекста (~разделитель) с файлом/строкой.
+            $all = Get-Content test-out.txt
+            for ($i = 0; $i -lt $all.Length; $i++) {
+              if ($all[$i] -match '^error(\[E\d+\])?:') {
+                $end = [Math]::Min($i + 15, $all.Length - 1)
+                $block = ($all[$i..$end] -join ' ~ ')
+                if ($block.Length -gt 3800) { $block = $block.Substring(0, 3800) }
+                Write-Output "::error::$block"
+              }
+            }
             exit $LASTEXITCODE
           }
 

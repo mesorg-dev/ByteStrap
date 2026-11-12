@@ -1,0 +1,445 @@
+// Моды: папки-моды (тумблер/порядок/открыть), список включённых файлов,
+// профили (комбобокс + действия). Диалоги — на уровне AppWindow.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { PageFade, Btn, IconBtn, GlyphBtn, Combo, Toggle } from "../widgets.slint";
+import { ModRow, ModFileRow } from "../models.slint";
+
+export component ModsPage inherits PageFade {
+    in-out property <string> mods-path: "";
+    in-out property <[ModRow]> mods-list: [];
+    in-out property <string> mods-msg: "";
+    in-out property <bool> mods-msg-err: false;
+    in-out property <bool> apply-enabled: false;
+    in-out property <bool> revert-enabled: false;
+    in-out property <string> files-count: "";
+    in-out property <[ModFileRow]> files: [];
+    in-out property <[string]> profiles: [];
+    in-out property <string> profile-sel-text;
+    in-out property <int> profile-sel-index: -1;
+    in-out property <bool> profile-sel-valid: false;
+    in-out property <bool> profiles-empty: false;
+    /// Открыт ли комбобокс профилей (для высоты скролла).
+    in-out property <bool> profile-open: false;
+
+    callback open-folder();
+    callback refresh();
+    callback apply();
+    callback revert();
+    callback toggle-mod(string, bool);
+    callback move-mod(string, int);
+    callback open-mod-folder(string);
+    callback profile-pick(int);
+    callback profile-load();
+    callback profile-save-as();
+    callback profile-delete();
+    callback profile-export();
+    callback profile-import();
+
+    property <length> files-h: root.mods-list.length == 0 ? 0px
+        : root.files.length == 0 ? 60px
+        : min(root.files.length * 22px, 340px);
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Text {
+            text: T.mods_h1;
+            font-family: Theme.font-display;
+            font-weight: 700;
+            font-size: 22px;
+            letter-spacing: 0.5px;
+            color: Theme.fg;
+        }
+        Rectangle { height: 5px; }
+        Text {
+            text: T.mods_sub;
+            font-size: 12.5px;
+            color: Theme.fg-dim;
+        }
+        Rectangle { height: 16px; }
+
+        flick := Flickable {
+            vertical-stretch: 1;
+            content-width: self.width;
+            content-height: c-act.height + 12px + c-list.height + 12px
+                + c-files.height + 12px + c-prof.height + 16px;
+
+            // ===== Действия =====
+            c-act := Rectangle {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: 112px + (root.mods-msg == "" ? 0px : 26px);
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.mods_where;
+                        font-weight: 600;
+                        font-size: 13px;
+                        height: 17px;
+                        color: Theme.fg;
+                    }
+                    Text {
+                        text: root.mods-path;
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                        overflow: elide;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.mods_open_folder;
+                            kind: 2;
+                            width: 130px;
+                            height: 30px;
+                            clicked => { root.open-folder(); }
+                        }
+                        Btn {
+                            label: T.mods_refresh;
+                            kind: 2;
+                            width: 100px;
+                            height: 30px;
+                            clicked => { root.refresh(); }
+                        }
+                        Btn {
+                            label: T.mods_apply;
+                            kind: 0;
+                            width: 110px;
+                            height: 30px;
+                            enabled: root.apply-enabled;
+                            clicked => { root.apply(); }
+                        }
+                        Btn {
+                            label: T.mods_revert;
+                            kind: 2;
+                            width: 100px;
+                            height: 30px;
+                            enabled: root.revert-enabled;
+                            clicked => { root.revert(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    if root.mods-msg != "" : Text {
+                        text: root.mods-msg;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        height: 18px;
+                        color: root.mods-msg-err ? Theme.bad : Theme.good;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // ===== Список модов =====
+            c-list := Rectangle {
+                x: 0;
+                y: c-act.height + 12px;
+                width: 100%;
+                height: root.mods-list.length == 0
+                    ? 60px
+                    : 16px + root.mods-list.length * 34px;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                clip: true;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                if root.mods-list.length == 0 : Text {
+                    x: 16px;
+                    y: 16px;
+                    width: parent.width - 32px;
+                    height: 30px;
+                    text: T.mods_empty_managed;
+                    font-size: 12px;
+                    color: Theme.fg-dimmer;
+                    wrap: word-wrap;
+                }
+
+                if root.mods-list.length > 0 : VerticalLayout {
+                    x: 0;
+                    y: 8px;
+                    width: 100%;
+                    height: root.mods-list.length * 34px;
+                    spacing: 0px;
+
+                    for m in root.mods-list : Rectangle {
+                        height: 34px;
+                        background: row-touch.has-hover ? #ffffff06 : transparent;
+                        animate background { duration: Theme.t-fast; }
+
+                        // Захват ховера строки — снизу, не перекрывает тумблер.
+                        row-touch := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        // Тумблер вкл/выкл.
+                        Toggle {
+                            x: 10px;
+                            y: 6px;
+                            on: m.enabled;
+                            toggled(v) => { root.toggle-mod(m.id, v); }
+                        }
+
+                        Text {
+                            x: 56px;
+                            y: 0;
+                            width: 200px;
+                            height: 34px;
+                            text: m.id;
+                            font-size: 13px;
+                            color: Theme.fg;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            x: 260px;
+                            y: 0;
+                            width: parent.width - 260px - 116px;
+                            height: 34px;
+                            text: m.meta;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        // Порядок и папка — справа.
+                        GlyphBtn {
+                            x: parent.width - 104px;
+                            y: 4px;
+                            glyph: "↑";
+                            enabled: m.can-up;
+                            tip: T.mods_up;
+                            clicked => { root.move-mod(m.id, -1); }
+                        }
+                        GlyphBtn {
+                            x: parent.width - 72px;
+                            y: 4px;
+                            glyph: "↓";
+                            enabled: m.can-down;
+                            tip: T.mods_down;
+                            clicked => { root.move-mod(m.id, 1); }
+                        }
+                        IconBtn {
+                            x: parent.width - 40px;
+                            y: 2px;
+                            icon: 1;
+                            tip: T.mods_open_folder;
+                            clicked => { root.open-mod-folder(m.id); }
+                        }
+                    }
+                }
+            }
+
+            // ===== Файлы включённых модов =====
+            c-files := Rectangle {
+                x: 0;
+                y: c-list.y + c-list.height + 12px;
+                width: 100%;
+                height: root.mods-list.length == 0 ? 0px : 55px + root.files-h;
+                background: root.mods-list.length == 0 ? transparent : Theme.panel;
+                border-width: root.mods-list.length == 0 ? 0px : 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: root.mods-list.length == 0 ? 0px : 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                if root.mods-list.length > 0 && root.files.length == 0 : Text {
+                    x: 16px;
+                    y: 16px;
+                    width: parent.width - 32px;
+                    height: 26px;
+                    text: T.mods_no_enabled;
+                    font-size: 12px;
+                    color: Theme.fg-dimmer;
+                }
+
+                if root.mods-list.length > 0 && root.files.length > 0 : VerticalLayout {
+                    x: 0;
+                    y: 0;
+                    width: 100%;
+                    height: 100%;
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: root.files-count;
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        letter-spacing: 1.5px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    fflick := Flickable {
+                        height: root.files-h;
+                        content-width: self.width;
+                        content-height: root.files.length * 22px;
+
+                        for f[i] in root.files : Rectangle {
+                            x: 0;
+                            y: i * 22px;
+                            width: fflick.width;
+                            height: 22px;
+
+                            Text {
+                                x: 0;
+                                y: 0;
+                                width: parent.width - 170px;
+                                height: 22px;
+                                text: f.rel;
+                                font-family: Theme.font-mono;
+                                font-size: 12px;
+                                color: Theme.fg;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            Text {
+                                x: parent.width - 166px;
+                                y: 0;
+                                width: 76px;
+                                height: 22px;
+                                text: f.size;
+                                font-family: Theme.font-mono;
+                                font-size: 11px;
+                                color: Theme.fg-dimmer;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                x: parent.width - 86px;
+                                y: 0;
+                                width: 86px;
+                                height: 22px;
+                                text: f.status-kind == 0 ? T.mods_st_applied
+                                    : f.status-kind == 1 ? T.mods_st_missing
+                                    : T.mods_st_clean;
+                                font-family: Theme.font-mono;
+                                font-size: 11px;
+                                color: f.status-kind == 0 ? Theme.good
+                                    : f.status-kind == 1 ? Theme.warn
+                                    : Theme.fg-dimmer;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ===== Профили =====
+            c-prof := Rectangle {
+                x: 0;
+                y: c-files.y + c-files.height + 12px;
+                width: 100%;
+                height: root.profiles-empty ? 148px : 125px;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.mods_profiles;
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        letter-spacing: 1.5px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        combo := Combo {
+                            width: 240px;
+                            dd-id: 200;
+                            items: root.profiles;
+                            selected: root.profile-sel-index;
+                            current-text: root.profile-sel-text;
+                            pick(i) => { root.profile-pick(i); }
+                            open-changed(v) => { root.profile-open = v; }
+                        }
+                        Btn {
+                            label: T.prof_load;
+                            kind: 0;
+                            width: 90px;
+                            height: 30px;
+                            enabled: root.profile-sel-valid;
+                            clicked => { root.profile-load(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.prof_save_as;
+                            kind: 2;
+                            width: 126px;
+                            height: 30px;
+                            clicked => { root.profile-save-as(); }
+                        }
+                        Btn {
+                            label: T.prof_delete;
+                            kind: 2;
+                            width: 90px;
+                            height: 30px;
+                            enabled: root.profile-sel-valid;
+                            clicked => { root.profile-delete(); }
+                        }
+                        Btn {
+                            label: T.prof_export;
+                            kind: 2;
+                            width: 96px;
+                            height: 30px;
+                            enabled: root.profile-sel-valid;
+                            clicked => { root.profile-export(); }
+                        }
+                        Btn {
+                            label: T.prof_import;
+                            kind: 2;
+                            width: 96px;
+                            height: 30px;
+                            clicked => { root.profile-import(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    if root.profiles-empty : Text {
+                        text: T.mods_profiles_empty;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}

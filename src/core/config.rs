@@ -29,6 +29,24 @@ pub struct Config {
     pub discord_rp_brand: bool,
     /// Открывать ссылки roblox:// (друзья, приватки, плейсы) через ByteStrap.
     pub deeplink: bool,
+    /// Звуки интерфейса (клики, тумблеры, переходы).
+    pub sound: bool,
+    /// Громкость звуков интерфейса: 0..100.
+    pub sound_volume: u32,
+    /// Крестик скрывает окно в трей вместо выхода.
+    pub close_to_tray: bool,
+    /// Оверлей «Картинка клиента» поверх окна Roblox.
+    pub overlay_on: bool,
+    /// Яркость оверлея: -50..50.
+    pub overlay_bright: i32,
+    /// Насыщенность: 0..200.
+    pub overlay_sat: i32,
+    /// Контраст: 50..150.
+    pub overlay_contrast: i32,
+    /// Авто-очистка кэша раз в сутки.
+    pub auto_clean: bool,
+    /// Unix-время последней авто-очистки.
+    pub auto_clean_last: u64,
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
@@ -52,6 +70,15 @@ impl Default for Config {
             discord_rp_time: true,
             discord_rp_brand: true,
             deeplink: true,
+            sound: true,
+            sound_volume: 70,
+            close_to_tray: true,
+            overlay_on: false,
+            overlay_bright: 0,
+            overlay_sat: 100,
+            overlay_contrast: 100,
+            auto_clean: false,
+            auto_clean_last: 0,
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,

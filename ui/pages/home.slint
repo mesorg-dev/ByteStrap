@@ -1,0 +1,466 @@
+// Главная: hero-карточка (играть/установить/обновить, прогресс, ссылка),
+// счётчики и топ мест по времени. Данные приходят свойствами из контроллера.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { PageFade, Btn, TextField, ProgressBar, StatusDot } from "../widgets.slint";
+import { PlaceRow } from "../models.slint";
+
+export component HomePage inherits PageFade {
+    in-out property <string> status-text;
+    in-out property <int> status-dot: 0;
+    in-out property <bool> busy: false;
+    in-out property <bool> show-update: false;
+    in-out property <string> primary-label;
+    in-out property <float> progress: 0;
+    in-out property <string> progress-text;
+    in-out property <string> link-msg;
+    in-out property <bool> link-msg-bad: false;
+    /// Текст из буфера обмена (пушит контроллер) + токен вставки.
+    in-out property <string> paste-text;
+    in-out property <int> paste-token: 0;
+
+    changed paste-token => {
+        link-input.text = root.paste-text;
+    }
+    in-out property <string> version-text;
+    in-out property <string> mods-count;
+    in-out property <string> flags-count;
+    in-out property <string> hours-count;
+    in-out property <[PlaceRow]> top-places;
+    /// Минуты игры за последние 14 дней (старые → новые) и подписи DD.MM.
+    in-out property <[int]> play-days: [];
+    in-out property <[string]> play-labels: [];
+    /// Строка живой сессии («в игре … · место …»), "" — скрыто.
+    in-out property <string> session-text;
+    /// Windows-only кнопка «Вставить».
+    in-out property <bool> share: true;
+
+    callback primary();
+    callback update-client();
+    callback cancel();
+    callback link-go(string);
+    callback link-paste();
+    callback link-changed();
+
+    flick := Flickable {
+        width: 100%;
+        height: 100%;
+        content-width: flick.width;
+        content-height: col.preferred-height;
+
+        col := VerticalLayout {
+            width: flick.width;
+            height: flick.content-height;
+            spacing: 0px;
+
+            Text {
+                text: T.home_h1;
+                font-family: Theme.font-display;
+                font-weight: 700;
+                font-size: 22px;
+                letter-spacing: 0.5px;
+                color: Theme.fg;
+            }
+            Rectangle { height: 5px; }
+            Text {
+                text: T.home_sub;
+                font-size: 12.5px;
+                color: Theme.fg-dim;
+            }
+            Rectangle { height: 16px; }
+
+            // ===== Hero-карточка статуса =====
+            Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000066;
+                drop-shadow-offset-y: 4px;
+
+                // Верхняя световая кромка (стекло).
+                Rectangle {
+                    x: 12px;
+                    y: 0;
+                    width: parent.width - 24px;
+                    height: 1px;
+                    background: #ffffff1c;
+                }
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 14px;
+
+                    // Строка: точка + статус + кнопки справа.
+                    Rectangle {
+                        height: 40px;
+
+                        HorizontalLayout {
+                            spacing: 10px;
+
+                            StatusDot {
+                                kind: root.status-dot;
+                                horizontal-stretch: 0;
+                            }
+
+                            Text {
+                                text: root.status-text;
+                                font-family: Theme.font-mono;
+                                font-size: 12px;
+                                color: Theme.fg-dim;
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+
+                            if root.busy : Btn {
+                                label: T.btn_cancel;
+                                kind: 2;
+                                width: 110px;
+                                height: 34px;
+                                horizontal-stretch: 0;
+                                clicked => { root.cancel(); }
+                            }
+
+                            if !root.busy && root.show-update : Btn {
+                                label: T.home_update;
+                                kind: 1;
+                                width: 130px;
+                                height: 40px;
+                                horizontal-stretch: 0;
+                                clicked => { root.update-client(); }
+                            }
+
+                            if !root.busy && root.show-update : Btn {
+                                label: T.home_play;
+                                kind: 0;
+                                width: 150px;
+                                height: 48px;
+                                horizontal-stretch: 0;
+                                clicked => { root.primary(); }
+                            }
+
+                            if !root.busy && !root.show-update : Btn {
+                                label: root.primary-label;
+                                kind: 0;
+                                width: 220px;
+                                height: 48px;
+                                horizontal-stretch: 0;
+                                clicked => { root.primary(); }
+                            }
+                        }
+                    }
+
+                    // Прогресс установки.
+                    if root.busy : Rectangle {
+                        height: root.progress-text == "" ? 4px : 24px;
+                        VerticalLayout {
+                            spacing: 7px;
+                            ProgressBar {
+                                value: root.progress;
+                            }
+                            if root.progress-text != "" : Text {
+                                text: root.progress-text;
+                                font-family: Theme.font-mono;
+                                font-size: 11px;
+                                color: Theme.fg-dim;
+                            }
+                        }
+                    }
+
+                    // Строка «запуск по ссылке».
+                    Rectangle {
+                        height: 28px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            link-input := TextField {
+                                height: 28px;
+                                placeholder: T.home_link_hint;
+                                horizontal-stretch: 1;
+                                accepted => { root.link-go(self.text); }
+                                edited => { root.link-changed(); }
+                            }
+
+                            if root.share : Btn {
+                                label: T.home_link_paste;
+                                kind: 2;
+                                width: 78px;
+                                height: 28px;
+                                horizontal-stretch: 0;
+                                clicked => { root.link-paste(); }
+                            }
+
+                            Btn {
+                                label: T.home_link_go;
+                                kind: 1;
+                                width: 88px;
+                                height: 28px;
+                                horizontal-stretch: 0;
+                                clicked => { root.link-go(link-input.text); }
+                            }
+                        }
+                    }
+
+                    if root.link-msg != "" : Text {
+                        text: root.link-msg;
+                        font-size: 11px;
+                        color: root.link-msg-bad ? Theme.bad : Theme.good;
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #ffffff0d;
+                    }
+
+                    Text {
+                        text: root.version-text;
+                        font-family: Theme.font-mono;
+                        font-size: 11.5px;
+                        color: Theme.fg-dimmer;
+                    }
+                }
+            }
+
+            Rectangle { height: 14px; }
+
+            // ===== Счётчики =====
+            Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 0px;
+
+                    if root.session-text != "" : Text {
+                        text: root.session-text;
+                        font-family: Theme.font-mono;
+                        font-size: 12px;
+                        color: Theme.good;
+                    }
+                    if root.session-text != "" : Rectangle {
+                        height: 14px;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 0px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            width: 140px;
+                            horizontal-stretch: 0;
+                            spacing: 2px;
+                            Text {
+                                text: root.mods-count;
+                                font-family: Theme.font-display;
+                                font-weight: 700;
+                                font-size: 26px;
+                                color: Theme.fg;
+                            }
+                            Text {
+                                text: "MODS";
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                letter-spacing: 2px;
+                                color: Theme.fg-dimmer;
+                            }
+                        }
+
+                        Rectangle {
+                            width: 1px;
+                            height: 46px;
+                            background: #ffffff0d;
+                        }
+
+                        VerticalLayout {
+                            width: 168px;
+                            padding-left: 28px;
+                            horizontal-stretch: 0;
+                            spacing: 2px;
+                            Text {
+                                text: root.flags-count;
+                                font-family: Theme.font-display;
+                                font-weight: 700;
+                                font-size: 26px;
+                                color: Theme.fg;
+                            }
+                            Text {
+                                text: "FLAGS";
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                letter-spacing: 2px;
+                                color: Theme.fg-dimmer;
+                            }
+                        }
+
+                        Rectangle {
+                            width: 1px;
+                            height: 46px;
+                            background: #ffffff0d;
+                        }
+
+                        VerticalLayout {
+                            padding-left: 28px;
+                            horizontal-stretch: 0;
+                            spacing: 2px;
+                            Text {
+                                text: root.hours-count;
+                                font-family: Theme.font-display;
+                                font-weight: 700;
+                                font-size: 26px;
+                                color: Theme.fg;
+                            }
+                            Text {
+                                text: "HOURS";
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                letter-spacing: 2px;
+                                color: Theme.fg-dimmer;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ===== Активность за 14 дней =====
+            if root.play-days.length > 0 : Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 10px;
+
+                    Text {
+                        text: T.home_chart;
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        letter-spacing: 2px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    // 14 колонок: чем выше — тем больше минут; столбик тянется вверх.
+                    Rectangle {
+                        height: 56px;
+
+                        bars := HorizontalLayout {
+                            spacing: 5px;
+
+                            property <int> max-min: 1;
+                            for i in 14 : Rectangle {
+                                property <length> h:
+                                    56px * (root.play-days[i] / (bars.max-min * 1.0));
+                                width: (parent.width - 65px) / 14;
+                                height: 56px;
+
+                                // «Пол» — всегда виден.
+                                Rectangle {
+                                    x: 0;
+                                    y: 54px;
+                                    width: parent.width;
+                                    height: 2px;
+                                    border-radius: 1px;
+                                    background: #ffffff0d;
+                                }
+
+                                Rectangle {
+                                    x: 0;
+                                    y: parent.height - parent.h;
+                                    width: parent.width;
+                                    height: parent.h;
+                                    border-radius: 2px;
+                                    background: Theme.accent;
+                                    opacity: 0.55 + 0.45 * (parent.h / parent.height);
+                                    animate height { duration: Theme.t-mid; easing: ease-out; }
+                                }
+                            }
+                        }
+
+                        // Подписи: первый и последний день.
+                        Text {
+                            x: 0;
+                            y: parent.height + 2px;
+                            font-family: Theme.font-mono;
+                            font-size: 9px;
+                            color: Theme.fg-dimmer;
+                            text: root.play-labels[0];
+                        }
+                        Text {
+                            x: parent.width - 30px;
+                            y: parent.height + 2px;
+                            font-family: Theme.font-mono;
+                            font-size: 9px;
+                            color: Theme.fg-dimmer;
+                            text: root.play-labels[13];
+                        }
+                    }
+                    Rectangle { height: 12px; }
+                }
+            }
+
+            // ===== Топ мест =====
+            if root.top-places.length > 0 : Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 10px;
+
+                    Text {
+                        text: T.home_places;
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        letter-spacing: 2px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    for place in root.top-places : Rectangle {
+                        height: 22px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            Text {
+                                text: place.name;
+                                font-size: 13px;
+                                color: Theme.fg;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: place.duration;
+                                font-family: Theme.font-mono;
+                                font-size: 12px;
+                                color: Theme.fg-dim;
+                                horizontal-stretch: 0;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

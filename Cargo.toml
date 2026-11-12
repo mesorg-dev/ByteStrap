@@ -7,17 +7,6 @@ repository = "https://github.com/mesorg-dev/ByteStrap"
 description = "ByteStrap — кастомный лаунчер Roblox"
 
 [dependencies]
-eframe = { version = "0.37", default-features = false, features = [
-    "clipboard",
-    "default_fonts",
-    "glow",
-    "links",
-    "system_fonts",
-    "x11",
-    "wayland",
-] }
-egui = "0.37"
-egui_extras = "0.37"
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -37,26 +26,41 @@ serde_json = "1"
 zip = "9"
 dirs = "7"
 anyhow = "1"
+# Slint — единственный UI-слой (Фаза 2: egui удалён). Без фич — иначе
+# unstable-winit-030 не собирается под Android (см. секцию Windows ниже).
+slint = "1.18"
 
-# eframe/accesskit на Android требует game-activity (C++, не линкуется
-# в Termux) — поэтому accesskit только для Windows, а Android-бэкенд
-# включаем лишь на самом Android-таргете.
 [target.'cfg(windows)'.dependencies]
-eframe = { version = "0.37", default-features = false, features = ["accesskit"] }
 rfd = "0.17"
 arboard = { version = "3", default-features = false }
 winreg = "0.55"
-
-[target.'cfg(target_os = "android")'.dependencies]
-eframe = { version = "0.37", default-features = false, features = [
-    "android-native-activity",
+# Звуки интерфейса (клики, тумблеры) — WASAPI через rodio.
+rodio = "0.20"
+# Локальное время для launcher.log (GetLocalTime); версия уже есть в дереве.
+windows-sys = { version = "0.61", features = [
+    "Win32_System_SystemInformation",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Magnification",
+    "Win32_UI_WindowsAndMessaging",
 ] }
+# Winit-доступ для frameless-окна (drag/min/max); только Windows —
+# unstable-winit-030 в slint не собирается под android.
+slint = { version = "1.18", features = ["unstable-winit-030"] }
+tray-icon = "0.26"
 
 [build-dependencies]
 winresource = "0.1"
+slint-build = "1.18"
 
 [dev-dependencies]
 tempfile = "3"
+# Скриншоты UI без дисплея (cargo test с BYTESTRAP_SHOTS=1).
+image = "0.25"
+i-slint-backend-testing = { version = "1.18", features = ["renderer-software"] }
 
 [profile.release]
 opt-level = 2

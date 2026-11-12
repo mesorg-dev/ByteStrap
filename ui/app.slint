@@ -1,0 +1,843 @@
+// Корневое окно ByteStrap (Slint): frameless, звёздное небо под всем,
+// кастомный titlebar + сайдбар, переключение страниц, анимированные модалки.
+// Состояние и колбэки — из контроллера src/app_slint.rs.
+
+import "../assets/fonts/Inter-Regular.ttf";
+import "../assets/fonts/Inter-Bold.ttf";
+import "../assets/fonts/JetBrainsMono-Regular.ttf";
+import "../assets/fonts/JetBrainsMono-Bold.ttf";
+import "../assets/fonts/Unbounded-Regular.ttf";
+import "../assets/fonts/Unbounded-Bold.ttf";
+
+import { Theme } from "theme.slint";
+import { Snd } from "snd.slint";
+import { T } from "i18n.slint";
+export { T, Theme, Snd }
+import { TitleBar } from "titlebar.slint";
+import { Btn, TextField, Dd } from "widgets.slint";
+import { SideBar } from "sidebar.slint";
+import { Starfield } from "stars.slint";
+import { HomePage } from "pages/home.slint";
+import { LogsPage } from "pages/logs.slint";
+import { VersionsPage } from "pages/versions.slint";
+import { SettingsPage } from "pages/settings.slint";
+import { ModsPage } from "pages/mods.slint";
+import { FlagsPage } from "pages/flags.slint";
+import { GamesPage } from "pages/games.slint";
+import { AboutPage } from "pages/about.slint";
+import { PlaceRow, GameRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
+
+export component AppWindow inherits Window {
+    title: "ByteStrap";
+    no-frame: true;
+    resize-border-width: 6px;
+    min-width: 940px;
+    min-height: 580px;
+    preferred-width: 1120px;
+    preferred-height: 700px;
+    background: Theme.bg-deep;
+    default-font-family: Theme.font;
+
+    // ===== Состояние (заполняет контроллер) =====
+    in-out property <int> page: 0;
+
+    in-out property <string> status-text: "";
+    in-out property <int> status-dot: 0;
+    in-out property <bool> busy: false;
+    in-out property <bool> show-update: false;
+    in-out property <string> primary-label;
+    in-out property <float> progress: 0;
+    in-out property <string> progress-text: "";
+    in-out property <string> link-msg: "";
+    in-out property <bool> link-msg-bad: false;
+    in-out property <string> link-paste-text: "";
+    in-out property <int> link-paste-token: 0;
+    in-out property <string> version-text: "";
+    in-out property <string> mods-count: "0";
+    in-out property <string> flags-count: "0";
+    in-out property <string> hours-count: "0";
+    in-out property <string> session-text: "";
+    in-out property <[PlaceRow]> top-places: [];
+    /// Минуты по последним 14 дням (старые → новые) + подписи DD.MM.
+    in-out property <[int]> play-days: [];
+    in-out property <[string]> play-labels: [];
+
+    // Games (page 1)
+    in-out property <[GameRow]> games-rows: [];
+    in-out property <string> games-msg: "";
+    in-out property <bool> games-msg-err: false;
+
+    in-out property <[LogLine]> log-lines: [];
+    in-out property <[string]> log-files: [];
+    in-out property <int> log-selected: 0;
+    in-out property <bool> log-follow: true;
+    in-out property <string> log-info: "";
+    in-out property <bool> log-missing: false;
+    in-out property <int> log-jump-token: 0;
+
+    // Versions (page 3)
+    in-out property <string> ver-installed-guid: "";
+    in-out property <string> ver-selected-guid: "";
+    in-out property <[VersionRow]> ver-versions: [];
+    in-out property <string> ver-integrity-text: "";
+    in-out property <int> ver-integrity-kind: 0;
+    in-out property <string> ver-checked-text: "";
+
+    // Mods (page 4)
+    in-out property <string> mods-path: "";
+    in-out property <[ModRow]> mods-list: [];
+    in-out property <string> mods-msg: "";
+    in-out property <bool> mods-msg-err: false;
+    in-out property <bool> mods-apply-enabled: false;
+    in-out property <bool> mods-revert-enabled: false;
+    in-out property <string> mods-files-count: "";
+    in-out property <[ModFileRow]> mods-files: [];
+    in-out property <[string]> mods-profiles: [];
+    in-out property <string> mods-profile-sel-text: "";
+    in-out property <int> mods-profile-sel-index: -1;
+    in-out property <bool> mods-profile-sel-valid: false;
+    in-out property <bool> mods-profiles-empty: false;
+
+    // Flags (page 2)
+    in-out property <bool> flags-has-client: false;
+    /// Windows-only возможности (импорт/буфер/экспорт, «Вставить» на Home).
+    in-out property <bool> win-share: false;
+    in-out property <[FlagRow]> flags-rows: [];
+    in-out property <bool> flags-table-empty: false;
+    in-out property <bool> flags-dirty: false;
+    in-out property <string> flags-msg: "";
+    in-out property <bool> flags-msg-err: false;
+    in-out property <string> flags-sel-detail: "";
+    in-out property <bool> flags-can-delete: false;
+    in-out property <[PresetRow]> flags-presets: [];
+    in-out property <string> flags-search: "";
+    in-out property <[string]> flags-profiles: [];
+    in-out property <string> flags-profile-sel-text: "";
+    in-out property <int> flags-profile-sel-index: -1;
+    in-out property <bool> flags-profile-sel-valid: false;
+    in-out property <bool> flags-profiles-empty: false;
+    /// Очередь конфликтов импорта (модальное окно).
+    in-out property <bool> import-open: false;
+    in-out property <string> import-body: "";
+
+    // Вводной диалог («Сохранить как…» и не только)
+    in-out property <bool> dlg-open: false;
+    in-out property <string> dlg-desc: "";
+    in-out property <string> dlg-hint: "";
+    in-out property <string> dlg-input: "";
+    in-out property <string> dlg-ok-label: "";
+
+    // Settings (page 6)
+    in-out property <int> set-ch-sel: -1;
+    in-out property <bool> set-ch-checking: false;
+    in-out property <int> set-ch-preview-kind: 0;
+    in-out property <string> set-ch-preview-text: "";
+    in-out property <bool> set-ch-changed: false;
+    in-out property <int> set-lang-code: 0;
+    in-out property <int> set-threads: 4;
+    in-out property <bool> set-auto-update: true;
+    in-out property <bool> set-close-launch: false;
+    /// Сворачивать в трей вместо выхода (Windows).
+    in-out property <bool> set-close-tray: true;
+    in-out property <bool> set-auto-clean: false;
+    in-out property <bool> set-discord-rp: true;
+    in-out property <bool> set-rp-place: true;
+    in-out property <bool> set-rp-time: true;
+    in-out property <bool> set-rp-brand: true;
+    in-out property <int> set-discord-status: 0;
+    in-out property <string> set-discord-text: "";
+    in-out property <bool> set-deeplink: true;
+    in-out property <int> set-deeplink-ok: 0;
+    in-out property <string> set-path: "";
+    in-out property <string> set-path-hint: "";
+    in-out property <int> set-path-token: 0;
+    in-out property <bool> set-cleanup-busy: false;
+    in-out property <string> set-cleanup-text: "";
+    in-out property <bool> set-cleanup-err: false;
+    in-out property <string> set-cfg-msg: "";
+    in-out property <bool> set-cfg-msg-err: false;
+    in-out property <bool> set-sound: true;
+    in-out property <int> set-sound-vol: 70;
+    in-out property <bool> set-overlay-on: false;
+    in-out property <int> set-overlay-bright: 0;
+    in-out property <int> set-overlay-sat: 100;
+    in-out property <int> set-overlay-contrast: 100;
+    /// Тело модального подтверждения ("" — закрыто).
+    in-out property <string> confirm-body: "";
+
+    // About (page 7)
+    in-out property <string> about-version: "";
+    in-out property <int> update-kind: 0;
+    in-out property <string> update-text: "";
+    in-out property <string> update-notes: "";
+    in-out property <float> update-pct: 0;
+
+    // ===== Колбэки контроллеру =====
+    callback close-request();
+    callback link-changed();
+    callback win-min();
+    callback win-max();
+    callback titlebar-drag();
+    callback primary();
+    callback update-client();
+    callback cancel-install();
+    callback link-go(string);
+    callback link-paste();
+    callback games-add(string);
+    callback games-launch(string);
+    callback games-fav(string);
+    callback games-remove(string);
+    callback log-select(int);
+    callback log-refresh();
+    callback log-copy();
+    callback log-folder();
+    callback log-follow-toggle();
+    callback log-search(string);
+    callback ver-select(string);
+    callback ver-activate();
+    callback ver-delete();
+    callback ver-check();
+    callback ver-repair();
+    callback about-check();
+    callback about-download();
+    callback about-open-repo();
+    callback ch-pick(string);
+    callback ch-apply();
+    callback lang-pick(int);
+    callback threads-set(int);
+    callback auto-update-set(bool);
+    callback close-launch-set(bool);
+    callback close-tray-set(bool);
+    callback auto-clean-set(bool);
+    callback cfg-export();
+    callback cfg-import();
+    callback discord-rp-set(bool);
+    callback rp-opt-set(int, bool);
+    callback deeplink-set(bool);
+    callback path-edited(string);
+    callback path-reset();
+    callback cleanup-run();
+    callback sound-set(bool);
+    callback sound-vol-set(int);
+    callback overlay-set(bool);
+    callback overlay-bright-set(int);
+    callback overlay-sat-set(int);
+    callback overlay-contrast-set(int);
+    callback confirm-yes();
+    callback confirm-no();
+    callback mods-open-folder();
+    callback mods-refresh();
+    callback mods-apply();
+    callback mods-revert();
+    callback mods-toggle-mod(string, bool);
+    callback mods-move-mod(string, int);
+    callback mods-open-mod-folder(string);
+    callback mods-profile-pick(int);
+    callback mods-profile-load();
+    callback mods-profile-save-as();
+    callback mods-profile-delete();
+    callback mods-profile-export();
+    callback mods-profile-import();
+    callback dlg-edited(string);
+    callback dlg-ok(string);
+    callback dlg-cancel();
+    callback flags-search-edited(string);
+    callback flags-add();
+    callback flags-save();
+    callback flags-import();
+    callback flags-paste();
+    callback flags-export();
+    callback flags-delete();
+    callback flags-clear();
+    callback flags-row-select(int);
+    callback flags-cell-edited(int, int, string);
+    callback preset-pick(int, int);
+    callback preset-toggle(int, bool);
+    callback flags-profile-pick(int);
+    callback flags-profile-load();
+    callback flags-profile-save-as();
+    callback flags-profile-delete();
+    callback flags-profile-export();
+    callback flags-profile-import();
+    /// 0 — оставить, 1 — заменить, 2 — заменить все, 3 — отмена.
+    callback import-decision(int);
+
+    // ===== Звёздное небо под всем =====
+    Starfield {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    // ===== Контент =====
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+
+        TitleBar {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: Theme.titlebar-h;
+            status: root.status-text;
+            win-min => { root.win-min(); }
+            win-max => { root.win-max(); }
+            drag => { root.titlebar-drag(); }
+            close-request => { root.close-request(); }
+        }
+
+        SideBar {
+            x: 0;
+            y: Theme.titlebar-h;
+            width: Theme.sidebar-w;
+            height: parent.height - Theme.titlebar-h;
+            page: root.page;
+            navigate(p) => { root.page = p; Dd.open = false; }
+        }
+
+        Rectangle {
+            x: Theme.sidebar-w;
+            y: Theme.titlebar-h;
+            width: parent.width - Theme.sidebar-w;
+            height: parent.height - Theme.titlebar-h;
+            background: transparent;
+
+            Rectangle {
+                x: 32px;
+                y: 26px;
+                width: parent.width - 64px;
+                height: parent.height - 52px;
+
+                if root.page == 0 : HomePage {
+                    width: 100%;
+                    height: 100%;
+                    status-text: root.status-text;
+                    status-dot: root.status-dot;
+                    busy: root.busy;
+                    show-update: root.show-update;
+                    primary-label: root.primary-label;
+                    progress: root.progress;
+                    progress-text: root.progress-text;
+                    link-msg: root.link-msg;
+                    link-msg-bad: root.link-msg-bad;
+                    paste-text: root.link-paste-text;
+                    paste-token: root.link-paste-token;
+                    version-text: root.version-text;
+                    mods-count: root.mods-count;
+                    flags-count: root.flags-count;
+                    hours-count: root.hours-count;
+                    session-text: root.session-text;
+                    top-places: root.top-places;
+                    play-days: root.play-days;
+                    play-labels: root.play-labels;
+                    share: root.win-share;
+                    primary => { root.primary(); }
+                    update-client => { root.update-client(); }
+                    cancel => { root.cancel-install(); }
+                    link-go(url) => { root.link-go(url); }
+                    link-changed => { root.link-changed(); }
+                    link-paste => { root.link-paste(); }
+                }
+
+                if root.page == 1 : GamesPage {
+                    width: 100%;
+                    height: 100%;
+                    rows: root.games-rows;
+                    msg: root.games-msg;
+                    msg-err: root.games-msg-err;
+                    add(t) => { root.games-add(t); }
+                    launch(id) => { root.games-launch(id); }
+                    fav(id) => { root.games-fav(id); }
+                    remove(id) => { root.games-remove(id); }
+                }
+
+                if root.page == 5 : LogsPage {
+                    width: 100%;
+                    height: 100%;
+                    lines: root.log-lines;
+                    files: root.log-files;
+                    selected: root.log-selected;
+                    follow: root.log-follow;
+                    info-text: root.log-info;
+                    missing: root.log-missing;
+                    jump-token: root.log-jump-token;
+                    select-file(i) => { root.log-select(i); }
+                    refresh => { root.log-refresh(); }
+                    copy => { root.log-copy(); }
+                    open-folder => { root.log-folder(); }
+                    follow-toggle => { root.log-follow-toggle(); }
+                    search-edited(q) => { root.log-search(q); }
+                }
+
+                if root.page == 2 : FlagsPage {
+                    width: 100%;
+                    height: 100%;
+                    has-client: root.flags-has-client;
+                    share: root.win-share;
+                    rows: root.flags-rows;
+                    table-empty: root.flags-table-empty;
+                    dirty: root.flags-dirty;
+                    msg: root.flags-msg;
+                    msg-err: root.flags-msg-err;
+                    sel-detail: root.flags-sel-detail;
+                    can-delete: root.flags-can-delete;
+                    presets: root.flags-presets;
+                    search: root.flags-search;
+                    profiles: root.flags-profiles;
+                    profile-sel-text: root.flags-profile-sel-text;
+                    profile-sel-index: root.flags-profile-sel-index;
+                    profile-sel-valid: root.flags-profile-sel-valid;
+                    profiles-empty: root.flags-profiles-empty;
+                    search-edited(q) => { root.flags-search-edited(q); }
+                    add => { root.flags-add(); }
+                    save => { root.flags-save(); }
+                    import-file => { root.flags-import(); }
+                    paste => { root.flags-paste(); }
+                    export-file => { root.flags-export(); }
+                    delete-sel => { root.flags-delete(); }
+                    clear-all => { root.flags-clear(); }
+                    row-select(i) => { root.flags-row-select(i); }
+                    cell-edited(idx, col, t) => { root.flags-cell-edited(idx, col, t); }
+                    preset-pick(pi, oi) => { root.preset-pick(pi, oi); }
+                    preset-toggle(pi, on) => { root.preset-toggle(pi, on); }
+                    profile-pick(i) => { root.flags-profile-pick(i); }
+                    profile-load => { root.flags-profile-load(); }
+                    profile-save-as => { root.flags-profile-save-as(); }
+                    profile-delete => { root.flags-profile-delete(); }
+                    profile-export => { root.flags-profile-export(); }
+                    profile-import => { root.flags-profile-import(); }
+                }
+                if root.page == 3 : VersionsPage {
+                    width: 100%;
+                    height: 100%;
+                    busy: root.busy;
+                    installed-guid: root.ver-installed-guid;
+                    selected-guid: root.ver-selected-guid;
+                    versions: root.ver-versions;
+                    integrity-text: root.ver-integrity-text;
+                    integrity-kind: root.ver-integrity-kind;
+                    checked-text: root.ver-checked-text;
+                    select(g) => { root.ver-select(g); }
+                    activate => { root.ver-activate(); }
+                    delete-version => { root.ver-delete(); }
+                    check-integrity => { root.ver-check(); }
+                    repair => { root.ver-repair(); }
+                }
+                if root.page == 4 : ModsPage {
+                    width: 100%;
+                    height: 100%;
+                    mods-path: root.mods-path;
+                    mods-list: root.mods-list;
+                    mods-msg: root.mods-msg;
+                    mods-msg-err: root.mods-msg-err;
+                    apply-enabled: root.mods-apply-enabled;
+                    revert-enabled: root.mods-revert-enabled;
+                    files-count: root.mods-files-count;
+                    files: root.mods-files;
+                    profiles: root.mods-profiles;
+                    profile-sel-text: root.mods-profile-sel-text;
+                    profile-sel-index: root.mods-profile-sel-index;
+                    profile-sel-valid: root.mods-profile-sel-valid;
+                    profiles-empty: root.mods-profiles-empty;
+                    open-folder => { root.mods-open-folder(); }
+                    refresh => { root.mods-refresh(); }
+                    apply => { root.mods-apply(); }
+                    revert => { root.mods-revert(); }
+                    toggle-mod(id, on) => { root.mods-toggle-mod(id, on); }
+                    move-mod(id, d) => { root.mods-move-mod(id, d); }
+                    open-mod-folder(id) => { root.mods-open-mod-folder(id); }
+                    profile-pick(i) => { root.mods-profile-pick(i); }
+                    profile-load => { root.mods-profile-load(); }
+                    profile-save-as => { root.mods-profile-save-as(); }
+                    profile-delete => { root.mods-profile-delete(); }
+                    profile-export => { root.mods-profile-export(); }
+                    profile-import => { root.mods-profile-import(); }
+                }
+                if root.page == 6 : SettingsPage {
+                    width: 100%;
+                    height: 100%;
+                    busy: root.busy;
+                    channel-sel: root.set-ch-sel;
+                    channel-checking: root.set-ch-checking;
+                    channel-preview-kind: root.set-ch-preview-kind;
+                    channel-preview-text: root.set-ch-preview-text;
+                    channel-changed: root.set-ch-changed;
+                    lang-code: root.set-lang-code;
+                    threads: root.set-threads;
+                    auto-update: root.set-auto-update;
+                    close-launch: root.set-close-launch;
+                    close-tray: root.set-close-tray;
+                    auto-clean: root.set-auto-clean;
+                    discord-rp: root.set-discord-rp;
+                    rp-place: root.set-rp-place;
+                    rp-time: root.set-rp-time;
+                    rp-brand: root.set-rp-brand;
+                    discord-status: root.set-discord-status;
+                    discord-text: root.set-discord-text;
+                    deeplink: root.set-deeplink;
+                    deeplink-ok: root.set-deeplink-ok;
+                    path: root.set-path;
+                    path-hint: root.set-path-hint;
+                    path-token: root.set-path-token;
+                    cleanup-busy: root.set-cleanup-busy;
+                    cleanup-text: root.set-cleanup-text;
+                    cleanup-err: root.set-cleanup-err;
+                    cfg-msg: root.set-cfg-msg;
+                    cfg-msg-err: root.set-cfg-msg-err;
+                    sound: root.set-sound;
+                    sound-vol: root.set-sound-vol;
+                    overlay-on: root.set-overlay-on;
+                    overlay-bright: root.set-overlay-bright;
+                    overlay-sat: root.set-overlay-sat;
+                    overlay-contrast: root.set-overlay-contrast;
+                    channel-pick(c) => { root.ch-pick(c); }
+                    channel-apply => { root.ch-apply(); }
+                    lang-pick(i) => { root.lang-pick(i); }
+                    threads-set(t) => { root.threads-set(t); }
+                    auto-update-set(v) => { root.auto-update-set(v); }
+                    close-launch-set(v) => { root.close-launch-set(v); }
+                    close-tray-set(v) => { root.close-tray-set(v); }
+                    auto-clean-set(v) => { root.auto-clean-set(v); }
+                    cfg-export => { root.cfg-export(); }
+                    cfg-import => { root.cfg-import(); }
+                    discord-rp-set(v) => { root.discord-rp-set(v); }
+                    rp-opt-set(k, v) => { root.rp-opt-set(k, v); }
+                    deeplink-set(v) => { root.deeplink-set(v); }
+                    path-edited(t) => { root.path-edited(t); }
+                    path-reset => { root.path-reset(); }
+                    cleanup-run => { root.cleanup-run(); }
+                    sound-set(v) => { root.sound-set(v); }
+                    sound-vol-set(v) => { root.sound-vol-set(v); }
+                    overlay-set(v) => { root.overlay-set(v); }
+                    overlay-bright-set(v) => { root.overlay-bright-set(v); }
+                    overlay-sat-set(v) => { root.overlay-sat-set(v); }
+                    overlay-contrast-set(v) => { root.overlay-contrast-set(v); }
+                }
+                if root.page == 7 : AboutPage {
+                    width: 100%;
+                    height: 100%;
+                    app-version: root.about-version;
+                    update-kind: root.update-kind;
+                    update-text: root.update-text;
+                    update-notes: root.update-notes;
+                    update-pct: root.update-pct;
+                    check-updates => { root.about-check(); }
+                    download => { root.about-download(); }
+                    open-repo => { root.about-open-repo(); }
+                }
+            }
+        }
+    }
+
+    // ===== Модальное подтверждение =====
+    if root.confirm-body != "" : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.confirm-no(); }
+        }
+
+        modal-confirm := Rectangle {
+            property <bool> shown: false;
+            width: 400px;
+            height: 140px;
+            x: (parent.width - self.width) / 2;
+            y: root.confirm-body != ""
+                ? ((parent.height - self.height) / 2
+                    + (modal-confirm.shown ? 0px : 14px))
+                : 0px;
+            animate y { duration: Theme.t-mid; easing: ease-out; }
+            opacity: modal-confirm.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-mid; }
+            init => { modal-confirm.shown = true; }
+
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff22;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000cc;
+            drop-shadow-offset-y: 8px;
+
+            VerticalLayout {
+                padding: 22px;
+                spacing: 14px;
+
+                Text {
+                    text: root.confirm-body;
+                    font-size: 13px;
+                    color: Theme.fg;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn {
+                        label: T.btn_yes;
+                        kind: 0;
+                        width: 90px;
+                        height: 34px;
+                        clicked => { root.confirm-yes(); }
+                    }
+                    Rectangle { width: 8px; horizontal-stretch: 0; }
+                    Btn {
+                        label: T.btn_no;
+                        kind: 2;
+                        width: 90px;
+                        height: 34px;
+                        clicked => { root.confirm-no(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== Вводной диалог =====
+    if root.dlg-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.dlg-cancel(); }
+        }
+
+        modal-dlg := Rectangle {
+            property <bool> shown: false;
+            width: 420px;
+            height: 172px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 + (modal-dlg.shown ? 0px : 14px);
+            animate y { duration: Theme.t-mid; easing: ease-out; }
+            opacity: modal-dlg.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-mid; }
+            init => { modal-dlg.shown = true; }
+
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff22;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000cc;
+            drop-shadow-offset-y: 8px;
+
+            VerticalLayout {
+                padding: 22px;
+                spacing: 10px;
+
+                Text {
+                    text: root.dlg-desc;
+                    font-size: 13px;
+                    height: 17px;
+                    color: Theme.fg;
+                    overflow: elide;
+                }
+
+                dlg-field := TextField {
+                    text: root.dlg-input;
+                    placeholder: root.dlg-hint;
+                    edited => { root.dlg-edited(dlg-field.text); }
+                    accepted => { root.dlg-ok(dlg-field.text); }
+                    init => {
+                        dlg-field.focus-select-all();
+                    }
+                }
+
+                HorizontalLayout {
+                    Rectangle { horizontal-stretch: 1; }
+                    Btn {
+                        label: T.btn_cancel;
+                        kind: 2;
+                        width: 100px;
+                        height: 34px;
+                        clicked => { root.dlg-cancel(); }
+                    }
+                    Rectangle { width: 8px; horizontal-stretch: 0; }
+                    Btn {
+                        label: root.dlg-ok-label;
+                        kind: 0;
+                        width: 120px;
+                        height: 34px;
+                        clicked => { root.dlg-ok(dlg-field.text); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== Конфликт импорта (страница Flags) =====
+    if root.import-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #00000099;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.import-decision(3); }
+        }
+
+        modal-import := Rectangle {
+            property <bool> shown: false;
+            width: 480px;
+            height: 170px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2 - 40px + (modal-import.shown ? 0px : 14px);
+            animate y { duration: Theme.t-mid; easing: ease-out; }
+            opacity: modal-import.shown ? 1.0 : 0.0;
+            animate opacity { duration: Theme.t-mid; }
+            init => { modal-import.shown = true; }
+
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff22;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000cc;
+            drop-shadow-offset-y: 8px;
+
+            VerticalLayout {
+                padding: 22px;
+                spacing: 12px;
+
+                Text {
+                    text: T.flags_conflict_title;
+                    font-weight: 600;
+                    font-size: 13px;
+                    height: 17px;
+                    color: Theme.fg;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.import-body;
+                    font-size: 13px;
+                    height: 36px;
+                    color: Theme.fg;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Btn {
+                        label: T.flags_conflict_replace_all;
+                        kind: 0;
+                        width: 124px;
+                        height: 34px;
+                        clicked => { root.import-decision(2); }
+                    }
+                    Btn {
+                        label: T.flags_conflict_replace;
+                        kind: 0;
+                        width: 106px;
+                        height: 34px;
+                        clicked => { root.import-decision(1); }
+                    }
+                    Btn {
+                        label: T.flags_conflict_keep;
+                        kind: 2;
+                        width: 96px;
+                        height: 34px;
+                        clicked => { root.import-decision(0); }
+                    }
+                    Btn {
+                        label: T.btn_cancel;
+                        kind: 2;
+                        width: 96px;
+                        height: 34px;
+                        clicked => { root.import-decision(3); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== Оверлей дропдаунов (Combo) — поверх всего содержимого =====
+    // Клик-вне закрывает список.
+    if Dd.open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { Dd.open = false; }
+        }
+    }
+    // Список: у комбо, при нехватке места снизу — раскрывается вверх.
+    if Dd.open : Rectangle {
+        property <length> list-h: min(Dd.items.length * 27px + 10px, 214px);
+        x: Dd.x - 1px;
+        y: Dd.y + 4px + list-h > root.height - 8px
+            ? max(8px, Dd.y - list-h - 4px - 36px)
+            : Dd.y + 4px;
+        width: Dd.w + 2px;
+        height: list-h;
+
+        property <bool> shown: false;
+        opacity: shown ? 1.0 : 0.0;
+        animate opacity { duration: Theme.t-fast; }
+        init => { shown = true; }
+
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: #ffffff30;
+        border-radius: Theme.r-soft;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+
+        for it[i] in Dd.items : Rectangle {
+            x: 0;
+            y: 5px + i * 27px;
+            width: parent.width;
+            height: 27px;
+            background: i == Dd.selected ? Theme.glass
+                : row-touch.has-hover ? Theme.glass-hover
+                : transparent;
+            animate background { duration: Theme.t-fast; }
+
+            Text {
+                x: 11px;
+                y: 0;
+                width: parent.width - 22px;
+                height: parent.height;
+                text: it;
+                font-size: 12px;
+                color: i == Dd.selected ? Theme.fg : Theme.fg-dim;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            row-touch := TouchArea {
+                width: 100%;
+                height: 100%;
+                clicked => {
+                    Snd.play(2);
+                    Dd.open = false;
+                    if Dd.owner >= 0 && Dd.owner < 100 { root.preset-pick(Dd.owner, i); }
+                    else if Dd.owner == 100 { root.flags-profile-pick(i); }
+                    else if Dd.owner == 200 { root.mods-profile-pick(i); }
+                }
+            }
+        }
+    }
+}

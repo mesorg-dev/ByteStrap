@@ -1,0 +1,203 @@
+// Строки интерфейса (RU по умолчанию; контроллер перезаписывает при старте
+// из src/i18n.rs по выбранному языку). Динамические строки (статус, версия)
+// приходят в корневые свойства AppWindow — сюда они не входят.
+
+export global T {
+    // Навигация
+    in-out property <string> nav_home: "Главная";
+    in-out property <string> nav_games: "Игры";
+    in-out property <string> nav_flags: "FastFlags";
+    in-out property <string> nav_versions: "Версии";
+    in-out property <string> nav_mods: "Моды";
+    in-out property <string> nav_logs: "Логи";
+    in-out property <string> nav_settings: "Настройки";
+    in-out property <string> nav_about: "О программе";
+
+    // Titlebar
+    in-out property <string> app_sub: "R O B L O X";
+    in-out property <string> win_min: "Свернуть";
+    in-out property <string> win_max: "Развернуть";
+    in-out property <string> win_close: "Закрыть";
+    in-out property <string> footer_ready: "готов";
+
+    // Кнопки
+    in-out property <string> btn_cancel: "Отмена";
+    in-out property <string> btn_copy: "Копировать";
+
+    // Home
+    in-out property <string> home_h1: "Главная";
+    in-out property <string> home_sub: "Установка и запуск клиента";
+    in-out property <string> home_play: "Играть";
+    in-out property <string> home_install: "Установить";
+    in-out property <string> home_update: "Обновить";
+    in-out property <string> home_link_hint: "ссылка на место / приватку / сервер…";
+    in-out property <string> home_link_go: "Запустить";
+    in-out property <string> home_link_paste: "Вставить";
+    in-out property <string> home_chart: "ИГРЫ ЗА 14 ДНЕЙ · МИНУТЫ";
+    in-out property <string> home_places: "ВРЕМЯ ПО МЕСТАМ";
+
+    // Games
+    in-out property <string> games_h1: "Игры";
+    in-out property <string> games_sub: "Запуск места по placeId или ссылке roblox.com/games/…";
+    in-out property <string> games_hint: "placeId или ссылка на место…";
+    in-out property <string> games_add: "Играть";
+    in-out property <string> games_col_name: "МЕСТО";
+    in-out property <string> games_col_visits: "ЗАПУСКОВ";
+    in-out property <string> games_col_last: "ДАТА";
+    in-out property <string> games_empty: "Пока пусто — добавьте место по placeId.";
+    in-out property <string> games_fav: "Избранное";
+    in-out property <string> games_remove: "Убрать";
+
+    // Логи
+    in-out property <string> logs_h1: "Логи";
+    in-out property <string> logs_sub: "Журнал лаунчера и клиента Roblox";
+    in-out property <string> logs_launcher: "Лаунчер";
+    in-out property <string> logs_follow: "Вниз";
+    in-out property <string> logs_copied: "Скопировано в буфер";
+    in-out property <string> logs_copy_fail: "Не удалось скопировать";
+    in-out property <string> logs_folder: "Открыть папку";
+    in-out property <string> logs_refresh: "Обновить";
+    in-out property <string> logs_search: "поиск…";
+    in-out property <string> logs_empty: "Пусто — запустите игру, строки появятся здесь";
+    in-out property <string> logs_missing: "Файл лога не найден";
+    in-out property <string> logs_no_files: "Логов Roblox пока нет — запустите игру";
+
+    // Версии
+    in-out property <string> ver_h1: "Версии";
+    in-out property <string> ver_sub: "Установленные сборки клиента";
+    in-out property <string> ver_activate: "Активировать";
+    in-out property <string> ver_delete: "Удалить";
+    in-out property <string> ver_empty: "Версий нет — установите клиент на Главной";
+    in-out property <string> ver_col_guid: "ВЕРСИЯ (GUID)";
+    in-out property <string> ver_col_size: "РАЗМЕР";
+    in-out property <string> ver_col_status: "СТАТУС";
+    in-out property <string> ver_active: "активна";
+    in-out property <string> ver_check: "Проверить целостность";
+    in-out property <string> ver_integrity_ok: "Файлы в порядке";
+    in-out property <string> ver_integrity_issues: "Проблем: {0}";
+    in-out property <string> ver_repair: "Починить";
+
+    // О программе
+    in-out property <string> about_h1: "О программе";
+    in-out property <string> about_sub: "Лаунчер и обновления";
+    in-out property <string> about_version: "Версия лаунчера";
+    in-out property <string> about_repo: "Репозиторий";
+    in-out property <string> about_license: "Лицензия";
+    in-out property <string> about_check_updates: "Проверить обновления";
+    in-out property <string> about_checking: "Проверяем…";
+    in-out property <string> about_up_to_date: "У вас последняя версия";
+    in-out property <string> about_update_avail: "Доступна версия {0}";
+    in-out property <string> about_download: "Скачать и обновиться";
+    in-out property <string> about_downloading: "Загрузка {0}%";
+    in-out property <string> about_update_err: "Ошибка: {0}";
+
+    // Прочее
+    in-out property <string> common_soon: "Раздел в разработке";
+
+    // Настройки
+    in-out property <string> settings_h1: "Настройки";
+    in-out property <string> settings_sub: "Канал Roblox, язык и поведение лаунчера";
+    in-out property <string> settings_channel: "Канал Roblox";
+    in-out property <string> settings_channel_desc: "LIVE — стабильный, BETA и ZNext — ранние сборки";
+    in-out property <string> settings_channel_check: "Проверяем версию канала…";
+    in-out property <string> settings_channel_ver: "Версия канала: {0}";
+    in-out property <string> settings_channel_err: "Канал недоступен: {0}";
+    in-out property <string> settings_channel_apply: "Применить канал и переустановить";
+    in-out property <string> settings_channel_confirm: "Сменить канал на {0}? Текущий клиент будет переустановлен.";
+    in-out property <string> settings_lang: "Язык";
+    in-out property <string> settings_threads: "Потоки загрузки";
+    in-out property <string> settings_threads_desc: "Сколько файлов качать одновременно (1–8)";
+    in-out property <string> settings_auto_update: "Автообновление лаунчера";
+    in-out property <string> settings_auto_update_desc: "Проверять новые версии ByteStrap при запуске";
+    in-out property <string> settings_close_on_launch: "Закрывать при запуске игры";
+    in-out property <string> settings_close_on_launch_desc: "Лаунчер свернётся, когда Roblox откроется";
+    in-out property <string> settings_discord_rp: "Discord Rich Presence";
+    in-out property <string> settings_discord_rp_desc: "Показывать статус игровой сессии в Discord";
+    in-out property <string> settings_rp_place: "Название места";
+    in-out property <string> settings_rp_time: "Время сессии";
+    in-out property <string> settings_rp_brand: "Надпись ByteStrap";
+    in-out property <string> settings_discord_wait: "Ожидание сессии…";
+    in-out property <string> settings_discord_connected: "Подключено к Discord";
+    in-out property <string> settings_discord_no_discord: "Не подключено";
+    in-out property <string> settings_deeplink: "Ссылки Roblox";
+    in-out property <string> settings_deeplink_desc: "Друзья, приватные серверы и плейсы — открывать через ByteStrap";
+    in-out property <string> settings_deeplink_on: "Активно — roblox:// открывается через ByteStrap";
+    in-out property <string> settings_deeplink_fail: "Не удалось зарегистрировать протокол roblox://";
+    in-out property <string> settings_close_tray: "Сворачивать в трей";
+    in-out property <string> settings_close_tray_desc: "Закрытие окна оставляет лаунчер в трее";
+    in-out property <string> settings_auto_clean: "Авто-очистка раз в сутки";
+    in-out property <string> settings_auto_clean_desc: "Чистить кэш при запуске, если прошло больше 20 часов";
+    in-out property <string> settings_profile: "Профиль конфигурации";
+    in-out property <string> settings_profile_desc: "Настройки, профили флагов и места — одним JSON-файлом";
+    in-out property <string> settings_profile_export: "Экспорт…";
+    in-out property <string> settings_profile_import: "Импорт…";
+    in-out property <string> settings_path: "Папка установки";
+    in-out property <string> settings_path_desc: "Пусто — стандартная папка ByteStrap";
+    in-out property <string> settings_path_reset: "Сбросить";
+    in-out property <string> settings_cleanup: "Очистка";
+    in-out property <string> settings_cleanup_desc: "Оборванные загрузки, логи Roblox и временные файлы";
+    in-out property <string> settings_cleanup_btn: "Очистить";
+    in-out property <string> settings_cleanup_busy: "Чистим…";
+    in-out property <string> settings_sound: "Звук интерфейса";
+    in-out property <string> settings_sound_desc: "Клики, тумблеры и переходы между страницами";
+    in-out property <string> settings_sound_on: "Звуковые эффекты";
+    in-out property <string> settings_sound_volume: "Громкость";
+    in-out property <string> settings_picture: "Картинка клиента";
+    in-out property <string> settings_picture_desc: "Оверлей поверх окна Roblox — работает во время игры";
+    in-out property <string> settings_picture_on: "Цветовая коррекция";
+    in-out property <string> settings_pic_bright: "Яркость";
+    in-out property <string> settings_pic_sat: "Насыщенность";
+    in-out property <string> settings_pic_contrast: "Контраст";
+    in-out property <string> btn_yes: "Да";
+    in-out property <string> btn_no: "Нет";
+
+    // Моды и профили
+    in-out property <string> mods_h1: "Моды";
+    in-out property <string> mods_sub: "Каждая папка в Mods/ — мод: включай, меняй порядок, применяй";
+    in-out property <string> mods_where: "Папка модов";
+    in-out property <string> mods_open_folder: "Открыть папку";
+    in-out property <string> mods_refresh: "Обновить";
+    in-out property <string> mods_apply: "Применить";
+    in-out property <string> mods_revert: "Откатить";
+    in-out property <string> mods_empty_managed: "Нет модов — создай папку в Mods/ (каждая папка = мод) или перетащи её в окно.";
+    in-out property <string> mods_no_enabled: "Все моды выключены";
+    in-out property <string> mods_up: "Поднять";
+    in-out property <string> mods_down: "Опустить";
+    in-out property <string> mods_st_applied: "применён";
+    in-out property <string> mods_st_missing: "не применён";
+    in-out property <string> mods_st_clean: "файл клиента";
+    in-out property <string> mods_profiles: "Профили";
+    in-out property <string> mods_profiles_empty: "Пока пусто — создай мод и сохрани профиль.";
+    in-out property <string> prof_select: "— выбери профиль —";
+    in-out property <string> prof_load: "Загрузить";
+    in-out property <string> prof_save_as: "Сохранить как…";
+    in-out property <string> prof_delete: "Удалить";
+    in-out property <string> prof_export: "Экспорт";
+    in-out property <string> prof_import: "Импорт";
+    in-out property <string> profile_name_hint: "Имя профиля…";
+
+    // FastFlags
+    in-out property <string> flags_h1: "FastFlags";
+    in-out property <string> flags_sub: "Флаги клиентской настройки";
+    in-out property <string> flags_search: "Поиск по имени…";
+    in-out property <string> flags_add: "Добавить";
+    in-out property <string> flags_save: "Сохранить";
+    in-out property <string> flags_import: "Импорт";
+    in-out property <string> flags_paste: "Из буфера";
+    in-out property <string> flags_export: "Экспорт";
+    in-out property <string> flags_delete: "Удалить";
+    in-out property <string> flags_clear: "Удалить всё";
+    in-out property <string> flags_presets: "Пресеты";
+    in-out property <string> flags_col_name: "Имя";
+    in-out property <string> flags_col_value: "Значение";
+    in-out property <string> flags_col_desc: "Описание";
+    in-out property <string> flags_conflict_title: "Конфликт значения";
+    in-out property <string> flags_conflict_keep: "Оставить";
+    in-out property <string> flags_conflict_replace: "Заменить";
+    in-out property <string> flags_conflict_replace_all: "Заменить все";
+    in-out property <string> flags_profiles: "Профили";
+    in-out property <string> flags_profiles_empty: "Пока пусто — собери флаги выше и сохрани как профиль.";
+    in-out property <string> flags_empty: "Флагов нет — добавьте первый.";
+    in-out property <string> flags_search_empty: "Ничего не нашлось. Попробуй иначе.";
+    in-out property <string> flags_no_client: "Клиент не установлен";
+}
