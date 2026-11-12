@@ -47,7 +47,7 @@ mod imp {
         let _ = menu.append_items(&[&open, &play, &sep1, &quit]);
 
         let icon = Icon::from_rgba(render_star(32), 32, 32).ok();
-        let builder = TrayIconBuilder::with_id("bytestrap")
+        let builder = TrayIconBuilder::new()
             .with_tooltip("ByteStrap")
             .with_menu(Box::new(menu));
         let tray = match icon {

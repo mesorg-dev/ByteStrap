@@ -807,9 +807,8 @@ impl Ctx {
                     }
                     tray::Action::Play => {
                         self.play(None);
-                        if let Ok(ui) = self.weak.clone().upgrade() {
-                            let _ = ui.show();
-                        }
+                        let ui = self.weak.clone().unwrap();
+                        let _ = ui.show();
                     }
                     tray::Action::Quit => {
                         self.quit = true;
