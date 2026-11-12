@@ -17,7 +17,7 @@ pub use stub::*;
 mod imp {
     use std::sync::mpsc::Sender;
 
-    use tray_icon::menu::{Accelerator, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+    use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
     use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
     thread_local! {
@@ -40,10 +40,10 @@ mod imp {
     /// Создать иконку с меню. Один раз на процесс; ошибки — тихо.
     pub fn spawn(tx: Sender<super::super::app_slint::AsyncEvent>) {
         let menu = Menu::new();
-        let open = MenuItem::with_id(ID_SHOW, "Открыть ByteStrap", true, None::<Accelerator>);
-        let play = MenuItem::with_id(ID_PLAY, "Запустить Roblox", true, None::<Accelerator>);
+        let open = MenuItem::with_id(ID_SHOW, "Открыть ByteStrap", true, None::<tray_icon::menu::accelerator::Accelerator>);
+        let play = MenuItem::with_id(ID_PLAY, "Запустить Roblox", true, None::<tray_icon::menu::accelerator::Accelerator>);
         let sep1 = PredefinedMenuItem::separator();
-        let quit = MenuItem::with_id(ID_QUIT, "Выход", true, None::<Accelerator>);
+        let quit = MenuItem::with_id(ID_QUIT, "Выход", true, None::<tray_icon::menu::accelerator::Accelerator>);
         let _ = menu.append_items(&[&open, &play, &sep1, &quit]);
 
         let icon = Icon::from_rgba(render_star(32), 32, 32).ok();
