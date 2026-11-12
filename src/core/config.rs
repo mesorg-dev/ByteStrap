@@ -35,6 +35,14 @@ pub struct Config {
     pub sound_volume: u32,
     /// Крестик скрывает окно в трей вместо выхода.
     pub close_to_tray: bool,
+    /// Оверлей «Картинка клиента» поверх окна Roblox.
+    pub overlay_on: bool,
+    /// Яркость оверлея: -50..50.
+    pub overlay_bright: i32,
+    /// Насыщенность: 0..200.
+    pub overlay_sat: i32,
+    /// Контраст: 50..150.
+    pub overlay_contrast: i32,
     /// Авто-очистка кэша раз в сутки.
     pub auto_clean: bool,
     /// Unix-время последней авто-очистки.
@@ -65,6 +73,10 @@ impl Default for Config {
             sound: true,
             sound_volume: 70,
             close_to_tray: true,
+            overlay_on: false,
+            overlay_bright: 0,
+            overlay_sat: 100,
+            overlay_contrast: 100,
             auto_clean: false,
             auto_clean_last: 0,
             window_max: false,

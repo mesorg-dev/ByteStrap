@@ -47,6 +47,14 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> sound: true;
     /// 0..100.
     in-out property <int> sound-vol: 70;
+    // ===== Картинка клиента (оверлей) =====
+    in-out property <bool> overlay-on: false;
+    /// Яркость: -50..50.
+    in-out property <int> overlay-bright: 0;
+    /// Насыщенность: 0..200.
+    in-out property <int> overlay-sat: 100;
+    /// Контраст: 50..150.
+    in-out property <int> overlay-contrast: 100;
 
     callback channel-pick(string);
     callback channel-apply();
@@ -66,6 +74,10 @@ export component SettingsPage inherits PageFade {
     callback cfg-import();
     callback sound-set(bool);
     callback sound-vol-set(int);
+    callback overlay-set(bool);
+    callback overlay-bright-set(int);
+    callback overlay-sat-set(int);
+    callback overlay-contrast-set(int);
 
     changed path-token => {
         path-field.text = root.path;
@@ -81,6 +93,7 @@ export component SettingsPage inherits PageFade {
         + (root.deeplink-ok != 0 ? 26px : 0px);
     animate h-behavior { duration: Theme.t-mid; easing: ease-out; }
     property <length> h-sound: 142px;
+    property <length> h-picture: 206px;
     property <length> h-path: 110px;
     property <length> h-cleanup: 162px;
     property <length> h-profile: 112px;
@@ -109,7 +122,7 @@ export component SettingsPage inherits PageFade {
             content-width: self.width;
             content-height: c-channel.height + 12px + c-lang.height + 12px
                 + c-behavior.height + 12px + c-sound.height + 12px
-                + c-path.height + 12px + c-cleanup.height + 12px
+                + c-picture.height + 12px + c-path.height + 12px + c-cleanup.height + 12px
                 + c-profile.height + 16px;
 
             // ===== Канал Roblox =====
@@ -524,10 +537,112 @@ export component SettingsPage inherits PageFade {
                 }
             }
 
+            // ===== Картинка клиента (оверлей) =====
+            c-picture := Rectangle {
+                x: 0;
+                y: c-sound.y + c-sound.height + 12px;
+                width: 100%;
+                height: root.h-picture;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.settings_picture;
+                        font-weight: 600;
+                        font-size: 13px;
+                        height: 17px;
+                        color: Theme.fg;
+                    }
+                    Text {
+                        text: T.settings_picture_desc;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    OptionRow {
+                        title: T.settings_picture_on;
+                        checked: root.overlay-on;
+                        toggled(v) => { root.overlay-set(v); }
+                    }
+
+                    // Три слайдера: подпись + слайдер + значение.
+                    property <[int]> pic-kinds: [0, 1, 2];
+                    for pk in pic-kinds : Rectangle {
+                        height: 26px;
+
+                        Text {
+                            x: 0;
+                            y: 0;
+                            width: 80px;
+                            height: 26px;
+                            text: pk == 0 ? T.settings_pic_bright
+                                : pk == 1 ? T.settings_pic_sat
+                                : T.settings_pic_contrast;
+                            font-size: 12px;
+                            color: Theme.fg;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        pic-slider := Slider {
+                            x: 88px;
+                            y: 0;
+                            width: parent.width - 130px;
+                            height: 26px;
+                            enabled: root.overlay-on;
+                            value: pk == 0
+                                ? (root.overlay-bright + 50) / 100
+                                : pk == 1
+                                    ? root.overlay-sat / 200
+                                    : (root.overlay-contrast - 50) / 100;
+                            changed => {
+                                if pk == 0 {
+                                    root.overlay-bright-set(
+                                        Math.round(pic-slider.value * 100) - 50);
+                                } else if pk == 1 {
+                                    root.overlay-sat-set(
+                                        Math.round(pic-slider.value * 200));
+                                } else {
+                                    root.overlay-contrast-set(
+                                        Math.round(pic-slider.value * 100) + 50);
+                                }
+                            }
+                            opacity: root.overlay-on ? 1.0 : 0.4;
+                        }
+
+                        Text {
+                            x: parent.width - 44px;
+                            y: 0;
+                            width: 44px;
+                            height: 26px;
+                            text: pk == 0
+                                ? (root.overlay-bright > 0 ? "+" : "")
+                                    + root.overlay-bright
+                                : (pk == 1 ? root.overlay-sat : root.overlay-contrast) + "%";
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dim;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
             // ===== Путь установки =====
             c-path := Rectangle {
                 x: 0;
-                y: c-sound.y + c-sound.height + 12px;
+                y: c-picture.y + c-picture.height + 12px;
                 width: 100%;
                 height: root.h-path;
                 background: Theme.panel;

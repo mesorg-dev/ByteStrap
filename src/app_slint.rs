@@ -24,6 +24,7 @@ use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::places::{Places};
 use crate::core::flags::FlagError;
+use crate::core::overlay;
 use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
 #[cfg(windows)]
 use crate::tray;
@@ -215,6 +216,8 @@ struct Ctx {
     games_msg: Option<(String, bool)>,
     /// (текст, ошибка) — статус экспорта/импорта конфигурации.
     cfg_msg: Option<(String, bool)>,
+    /// Оверлей «Картинка клиента» поверх окна Roblox.
+    overlay: overlay::Handle,
 
     // — Сессия игры (Tick/End из playtime::watch_session) —
     session_active: bool,
@@ -2166,6 +2169,11 @@ impl Ctx {
         ui.set_set_sound(self.config.sound);
         ui.set_set_sound_vol(self.config.sound_volume.min(100) as i32);
 
+        ui.set_set_overlay_on(self.config.overlay_on);
+        ui.set_set_overlay_bright(self.config.overlay_bright);
+        ui.set_set_overlay_sat(self.config.overlay_sat);
+        ui.set_set_overlay_contrast(self.config.overlay_contrast);
+
         ui.set_set_cleanup_busy(self.cleanup_busy);
         match &self.cleanup_msg {
             Some((text, err)) => {
@@ -2847,6 +2855,12 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_sound_desc(tr(lang, "Settings_SoundDesc").into());
     t.set_settings_sound_on(tr(lang, "Settings_SoundOn").into());
     t.set_settings_sound_volume(tr(lang, "Settings_SoundVolume").into());
+    t.set_settings_picture(tr(lang, "Settings_Picture").into());
+    t.set_settings_picture_desc(tr(lang, "Settings_PictureDesc").into());
+    t.set_settings_picture_on(tr(lang, "Settings_PictureOn").into());
+    t.set_settings_pic_bright(tr(lang, "Settings_PicBright").into());
+    t.set_settings_pic_sat(tr(lang, "Settings_PicSat").into());
+    t.set_settings_pic_contrast(tr(lang, "Settings_PicContrast").into());
     t.set_settings_close_tray(tr(lang, "Settings_CloseTray").into());
     t.set_settings_close_tray_desc(tr(lang, "Settings_CloseTrayDesc").into());
     t.set_settings_auto_clean(tr(lang, "Settings_AutoClean").into());
@@ -3391,6 +3405,71 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 let mut c = ctx.borrow_mut();
                 c.config.sound = v;
                 c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    // — Оверлей «Картинка клиента» —
+    fn push_overlay(c: &Ctx) -> overlay::Params {
+        overlay::Params {
+            enabled: c.config.overlay_on,
+            bright: c.config.overlay_bright,
+            satur: c.config.overlay_sat,
+            contrast: c.config.overlay_contrast,
+        }
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_overlay_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.overlay_on = v;
+                c.config.save();
+                c.overlay.update(push_overlay(&c));
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_overlay_bright_set(move |v: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.overlay_bright = v.clamp(-50, 50);
+                c.config.save();
+                c.overlay.update(push_overlay(&c));
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_overlay_sat_set(move |v: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.overlay_sat = v.clamp(0, 200);
+                c.config.save();
+                c.overlay.update(push_overlay(&c));
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_overlay_contrast_set(move |v: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.overlay_contrast = v.clamp(50, 150);
+                c.config.save();
+                c.overlay.update(push_overlay(&c));
             }
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
@@ -3968,6 +4047,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
     tray::spawn(tx.clone());
 
     let weak = ui.as_weak();
+    let overlay = overlay::spawn(overlay::Params {
+        enabled: config.overlay_on,
+        bright: config.overlay_bright,
+        satur: config.overlay_sat,
+        contrast: config.overlay_contrast,
+    });
     let ctx = Rc::new(RefCell::new(Ctx {
         weak: weak.clone(),
         lang,
@@ -3997,6 +4082,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         link_msg: None,
         games_msg: None,
         cfg_msg: None,
+        overlay,
         session_active: false,
         session_secs: 0,
         session_place: None,

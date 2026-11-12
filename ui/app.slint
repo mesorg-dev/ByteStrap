@@ -158,6 +158,10 @@ export component AppWindow inherits Window {
     in-out property <bool> set-cfg-msg-err: false;
     in-out property <bool> set-sound: true;
     in-out property <int> set-sound-vol: 70;
+    in-out property <bool> set-overlay-on: false;
+    in-out property <int> set-overlay-bright: 0;
+    in-out property <int> set-overlay-sat: 100;
+    in-out property <int> set-overlay-contrast: 100;
     /// Тело модального подтверждения ("" — закрыто).
     in-out property <string> confirm-body: "";
 
@@ -215,6 +219,10 @@ export component AppWindow inherits Window {
     callback cleanup-run();
     callback sound-set(bool);
     callback sound-vol-set(int);
+    callback overlay-set(bool);
+    callback overlay-bright-set(int);
+    callback overlay-sat-set(int);
+    callback overlay-contrast-set(int);
     callback confirm-yes();
     callback confirm-no();
     callback mods-open-folder();
@@ -482,6 +490,10 @@ export component AppWindow inherits Window {
                     cfg-msg-err: root.set-cfg-msg-err;
                     sound: root.set-sound;
                     sound-vol: root.set-sound-vol;
+                    overlay-on: root.set-overlay-on;
+                    overlay-bright: root.set-overlay-bright;
+                    overlay-sat: root.set-overlay-sat;
+                    overlay-contrast: root.set-overlay-contrast;
                     channel-pick(c) => { root.ch-pick(c); }
                     channel-apply => { root.ch-apply(); }
                     lang-pick(i) => { root.lang-pick(i); }
@@ -500,6 +512,10 @@ export component AppWindow inherits Window {
                     cleanup-run => { root.cleanup-run(); }
                     sound-set(v) => { root.sound-set(v); }
                     sound-vol-set(v) => { root.sound-vol-set(v); }
+                    overlay-set(v) => { root.overlay-set(v); }
+                    overlay-bright-set(v) => { root.overlay-bright-set(v); }
+                    overlay-sat-set(v) => { root.overlay-sat-set(v); }
+                    overlay-contrast-set(v) => { root.overlay-contrast-set(v); }
                 }
                 if root.page == 7 : AboutPage {
                     width: 100%;
