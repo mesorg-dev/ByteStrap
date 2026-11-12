@@ -1,0 +1,239 @@
+// Games: запуск Roblox по placeId/ссылке, избранные и недавние места.
+// Список даёт контроллер (places.json), запуск — через roblox://deep link.
+
+import { Theme } from "../theme.slint";
+import { T } from "../i18n.slint";
+import { Snd } from "../snd.slint";
+import { PageFade, Btn, TextField, GlyphBtn } from "../widgets.slint";
+import { GameRow } from "../models.slint";
+
+export component GamesPage inherits PageFade {
+    in-out property <[GameRow]> rows;
+    in-out property <string> msg;
+    in-out property <bool> msg-err: false;
+
+    callback add(string);
+    callback launch(string);
+    callback fav(string);
+    callback remove(string);
+
+    flick := Flickable {
+        width: 100%;
+        height: 100%;
+        content-width: flick.width;
+        content-height: col.preferred-height;
+
+        col := VerticalLayout {
+            width: flick.width;
+            height: flick.content-height;
+            spacing: 0px;
+
+            Text {
+                text: T.games_h1;
+                font-family: Theme.font-display;
+                font-weight: 700;
+                font-size: 22px;
+                letter-spacing: 0.5px;
+                color: Theme.fg;
+            }
+            Rectangle { height: 5px; }
+            Text {
+                text: T.games_sub;
+                font-size: 12.5px;
+                color: Theme.fg-dim;
+            }
+            Rectangle { height: 16px; }
+
+            // ===== Ввод: placeId или ссылка roblox.com/games/… =====
+            Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 12px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        go-input := TextField {
+                            height: 30px;
+                            placeholder: T.games_hint;
+                            horizontal-stretch: 1;
+                            accepted => { root.add(go-input.text); }
+                        }
+
+                        Btn {
+                            label: T.games_add;
+                            kind: 0;
+                            width: 120px;
+                            height: 30px;
+                            horizontal-stretch: 0;
+                            clicked => { root.add(go-input.text); }
+                        }
+                    }
+
+                    if root.msg != "" : Text {
+                        text: root.msg;
+                        font-size: 11px;
+                        color: root.msg-err ? Theme.bad : Theme.good;
+                    }
+                }
+            }
+
+            // ===== Список мест =====
+            Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+                clip: true;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 10px;
+
+                    // Шапка таблицы.
+                    Rectangle {
+                        height: 16px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: T.games_col_name;
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                letter-spacing: 2px;
+                                color: Theme.fg-dimmer;
+                                horizontal-stretch: 1;
+                            }
+                            Text {
+                                text: T.games_col_visits;
+                                width: 70px;
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                letter-spacing: 2px;
+                                color: Theme.fg-dimmer;
+                                horizontal-alignment: right;
+                            }
+                            Text {
+                                text: T.games_col_last;
+                                width: 46px;
+                                font-family: Theme.font-mono;
+                                font-size: 10px;
+                                letter-spacing: 2px;
+                                color: Theme.fg-dimmer;
+                                horizontal-alignment: right;
+                            }
+                            Rectangle { width: 58px; }
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: #ffffff0d;
+                    }
+
+                    if root.rows.length == 0 : Text {
+                        height: 40px;
+                        text: T.games_empty;
+                        font-size: 12.5px;
+                        color: Theme.fg-dimmer;
+                        vertical-alignment: center;
+                    }
+
+                    for game in root.rows : Rectangle {
+                        height: 34px;
+                        border-radius: Theme.r-soft;
+                        background: row-touch.has-hover ? Theme.glass-hover : transparent;
+                        animate background { duration: Theme.t-fast; }
+
+                        row-touch := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            clicked => {
+                                Snd.play(3);
+                                root.launch(game.id);
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            // Избранное.
+                            GlyphBtn {
+                                width: 24px;
+                                height: 24px;
+                                vertical-stretch: 0;
+                                glyph: game.fav ? "★" : "☆";
+                                tip: T.games_fav;
+                                clicked => { root.fav(game.id); }
+                            }
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                vertical-stretch: 0;
+                                spacing: 1px;
+                                Text {
+                                    height: 16px;
+                                    text: game.name;
+                                    font-size: 13px;
+                                    font-weight: 500;
+                                    color: Theme.fg;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    height: 11px;
+                                    text: game.bad ? game.id : ("place " + game.id);
+                                    font-family: Theme.font-mono;
+                                    font-size: 9.5px;
+                                    color: Theme.fg-dimmer;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+
+                            Text {
+                                width: 70px;
+                                text: game.visits;
+                                font-family: Theme.font-mono;
+                                font-size: 11.5px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+
+                            Text {
+                                width: 46px;
+                                text: game.last;
+                                font-family: Theme.font-mono;
+                                font-size: 11.5px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+
+                            Rectangle { width: 8px; }
+                            GlyphBtn {
+                                width: 24px;
+                                height: 24px;
+                                vertical-stretch: 0;
+                                glyph: "✕";
+                                tip: T.games_remove;
+                                clicked => { root.remove(game.id); }
+                            }
+                            Rectangle { width: 8px; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

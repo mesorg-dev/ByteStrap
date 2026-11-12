@@ -22,8 +22,11 @@ use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, 
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime, SessionEvent};
+use crate::core::places::{Places};
 use crate::core::flags::FlagError;
 use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
+#[cfg(windows)]
+use crate::tray;
 use crate::i18n::{fmt, tr, Lang};
 
 // ===== Общие типы (перенесены из src/app.rs в Фазе 2) =====
@@ -40,6 +43,11 @@ pub enum AsyncEvent {
     ProfileLoaded(Result<(String, Option<mods::ApplyStats>), String>),
     /// Очистка мусора завершена: (байт, файлов).
     CleanupDone(u64, usize),
+    /// Действие пользователя в трее (Windows).
+    #[cfg(windows)]
+    Tray(tray::Action),
+    /// Имя места получено: (id, Some(имя) | None).
+    PlaceName((u64, Option<String>)),
     Session(SessionEvent),
 }
 
@@ -199,8 +207,14 @@ struct Ctx {
     mods_count: usize,
     flags_count: usize,
     playtime: Playtime,
+    /// Избранное/недавние места (страница Games).
+    places: Places,
     /// (текст, ошибка) — строка под полем ссылки на Home.
     link_msg: Option<(String, bool)>,
+    /// (текст, ошибка) — строка под полем placeId на Games.
+    games_msg: Option<(String, bool)>,
+    /// (текст, ошибка) — статус экспорта/импорта конфигурации.
+    cfg_msg: Option<(String, bool)>,
 
     // — Сессия игры (Tick/End из playtime::watch_session) —
     session_active: bool,
@@ -404,6 +418,243 @@ impl Ctx {
         }
     }
 
+    /// placeId из ввода: число, roblox://…placeId=N или ссылка roblox.com/games/N/…
+    fn parse_place(input: &str) -> Option<u64> {
+        let t = input.trim();
+        if t.bytes().all(|b| b.is_ascii_digit()) && !t.is_empty() {
+            return t.parse().ok();
+        }
+        if let Some(url) = roblox_link::parse_arg(t) {
+            // roblox://placeId=N | roblox://experiences/start?placeId=N&…
+            let after = url.rsplit("placeId=").next()?;
+            let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            return digits.parse().ok();
+        }
+        None
+    }
+
+    /// Кнопка «Играть» на Games: разобрать ввод, запомнить место и запустить.
+    fn games_go(&mut self, input: &str) {
+        let Some(id) = Self::parse_place(input) else {
+            self.games_msg = Some((tr(self.lang, "Games_BadId").to_string(), true));
+            return;
+        };
+        self.launch_place(id);
+    }
+
+    /// Запуск по placeId из списка: регистрация + roblox://.
+    fn launch_place(&mut self, id: u64) {
+        self.places.launch(id, &self.config.base());
+        self.places.save(&self.config.base());
+        let url = format!("roblox://placeId={id}");
+        self.play(Some(&url));
+        let ok = self.install.error.is_none();
+        let text = if ok {
+            fmt(self.lang, "Games_AddedFmt", &[&id.to_string()])
+        } else {
+            tr(self.lang, "Games_StartErr").to_string()
+        };
+        self.games_msg = Some((text, !ok));
+        // Имя места — в фоне (Roblox API).
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            let name = match rt {
+                Ok(rt) => rt.block_on(playtime::fetch_place_name(&id.to_string())),
+                Err(_) => None,
+            };
+            let _ = tx.send(AsyncEvent::PlaceName((id, name)));
+        });
+    }
+
+    fn games_fav(&mut self, id: &str) {
+        let Ok(id) = id.parse::<u64>() else { return };
+        self.places.toggle_fav(id, &self.config.base());
+    }
+
+    fn games_remove(&mut self, id: &str) {
+        let Ok(id) = id.parse::<u64>() else { return };
+        let name = self
+            .places
+            .sorted()
+            .into_iter()
+            .find(|e| e.id == id)
+            .map(|e| e.name.clone())
+            .unwrap_or_default();
+        self.places.remove(id, &self.config.base());
+        self.games_msg = Some((
+            fmt(self.lang, "Games_RemovedFmt", &[&if name.is_empty() { id.to_string() } else { name }]),
+            false,
+        ));
+    }
+
+    fn push_games(&self, ui: &AppWindow) {
+        ui.set_games_msg(
+            self.games_msg
+                .as_ref()
+                .map(|(t, _)| t.clone())
+                .unwrap_or_default()
+                .into(),
+        );
+        ui.set_games_msg_err(self.games_msg.as_ref().map(|(_, e)| *e).unwrap_or(false));
+
+        let rows: Vec<GameRow> = self
+            .places
+            .sorted()
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                let day = playtime::day_key(e.unix);
+                let ddmm = if day.len() >= 10 {
+                    format!("{}.{}", &day[8..10], &day[5..7])
+                } else {
+                    String::new()
+                };
+                GameRow {
+                    id: e.id.to_string().into(),
+                    name: if e.name.is_empty() {
+                        e.id.to_string()
+                    } else {
+                        e.name.clone()
+                    }
+                    .into(),
+                    visits: e.visits.to_string().into(),
+                    last: ddmm.into(),
+                    fav: e.fav,
+                    alt: i % 2 == 1,
+                    bad: e.name.is_empty(),
+                }
+            })
+            .collect();
+        ui.set_games_rows(ModelRc::new(VecModel::from(rows)));
+    }
+
+    /// Тултип трея (главный поток): сессия или просто имя.
+    fn tray_tooltip(&self) {
+        #[cfg(windows)]
+        {
+            let text = if self.session_active {
+                format!("ByteStrap — {}", tr(self.lang, "Home_Status_Ready"))
+            } else {
+                "ByteStrap".to_string()
+            };
+            tray::set_tooltip(&text);
+        }
+    }
+
+    /// Экспорт конфигурации (настройки + флаги + места) одним JSON.
+    #[cfg(not(windows))]
+    fn cfg_export(&mut self) {}
+
+    #[cfg(windows)]
+    fn cfg_export(&mut self) {
+        let lang = self.lang;
+        let base = self.config.base();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_CfgExport"))
+            .add_filter("JSON", &["json"])
+            .set_file_name("bytestrap-config.json")
+            .save_file()
+        {
+            let res = (|| -> anyhow::Result<()> {
+                use anyhow::Context;
+                let flags_profiles = flags::load_profiles(&base);
+                let cfg = serde_json::json!({
+                    "app": "ByteStrap",
+                    "version": 1,
+                    "config": self.config,
+                    "flag_profiles": flags_profiles,
+                    "places": self.places,
+                });
+                let text = serde_json::to_string_pretty(&cfg).context("serialize")?;
+                std::fs::write(&path, text).context("write")?;
+                Ok(())
+            })();
+            match res {
+                Ok(()) => {
+                    self.cfg_msg = Some((tr(lang, "Cfg_Exported").to_string(), false));
+                    logger::info("Конфигурация экспортирована");
+                }
+                Err(e) => {
+                    self.cfg_msg = Some((fmt(lang, "Cfg_Err", &[&e.to_string()]), true));
+                }
+            }
+        }
+    }
+
+    /// Импорт конфигурации: JSON → config.json + flag_profiles.json + places.json.
+    #[cfg(not(windows))]
+    fn cfg_import(&mut self) {}
+
+    #[cfg(windows)]
+    fn cfg_import(&mut self) {
+        let lang = self.lang;
+        let base = self.config.base();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title(tr(lang, "Dlg_CfgImport"))
+            .add_filter("JSON", &["json"])
+            .add_filter(tr(lang, "Dlg_AllFiles"), &["*"])
+            .pick_file()
+        {
+            let res = (|| -> anyhow::Result<()> {
+                use anyhow::Context;
+                let text = std::fs::read_to_string(&path).context("read")?;
+                let v: serde_json::Value = serde_json::from_str(&text).context("parse")?;
+                if v["app"].as_str() != Some("ByteStrap") {
+                    anyhow::bail!("not a ByteStrap config");
+                }
+                // Настройки.
+                if let Some(cfg) = v["config"].as_object() {
+                    let mut cfg = cfg.clone();
+                    if cfg["bytestrap_path"].as_str().is_none_or(|p| p.is_empty()) {
+                        cfg.remove("bytestrap_path");
+                    }
+                    let new_config: Config = serde_json::from_value(serde_json::Value::Object(cfg))
+                        .context("config shape")?;
+                    self.apply_config(new_config);
+                }
+                // Профили флагов.
+                if let Ok(profiles) =
+                    serde_json::from_value::<flags::Profiles>(v["flag_profiles"].clone())
+                {
+                    let _ = flags::save_profiles(&base, &profiles);
+                }
+                // Места.
+                if let Ok(pl) = serde_json::from_value::<Places>(v["places"].clone()) {
+                    pl.save(&base);
+                    self.places = pl;
+                }
+                Ok(())
+            })();
+            match res {
+                Ok(()) => {
+                    self.cfg_msg = Some((tr(lang, "Cfg_Imported").to_string(), false));
+                    logger::info("Конфигурация импортирована");
+                    // Язык мог смениться.
+                    let ui = self.weak.clone().unwrap();
+                    apply_i18n(&ui, self.lang);
+                    self.refresh_counters();
+                    self.push_settings(&ui);
+                }
+                Err(e) => {
+                    self.cfg_msg = Some((fmt(lang, "Cfg_Err", &[&e.to_string()]), true));
+                }
+            }
+        }
+    }
+
+    /// Применить загруженный конфиг поверх текущего состояния.
+    #[cfg(windows)]
+    fn apply_config(&mut self, cfg: Config) {
+        self.lang = Lang::resolve(&cfg.language);
+        self.config = cfg;
+        self.config.save();
+        self.channel_draft = self.config.channel.clone();
+        self.refresh_counters();
+    }
+
     /// Фоновый watcher сессии: Tick/End из playtime::watch_session.
     fn start_session_watch(&mut self) {
         if self.session_active {
@@ -548,6 +799,29 @@ impl Ctx {
                     logger::info(format!("Очистка: {text}"));
                     self.cleanup_msg = Some((text, false));
                 }
+                #[cfg(windows)]
+                AsyncEvent::Tray(action) => match action {
+                    tray::Action::Show => {
+                        let ui = self.weak.clone().unwrap();
+                        ui.show().expect("show window");
+                    }
+                    tray::Action::Play => {
+                        self.play(None);
+                        if let Ok(ui) = self.weak.clone().upgrade() {
+                            let _ = ui.show();
+                        }
+                    }
+                    tray::Action::Quit => {
+                        self.quit = true;
+                    }
+                },
+                AsyncEvent::PlaceName((id, name)) => {
+                    if let Some(name) = name {
+                        if !name.is_empty() {
+                            self.places.set_name(id, &name, &self.config.base());
+                        }
+                    }
+                }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
@@ -555,6 +829,7 @@ impl Ctx {
                         place_name,
                     } => {
                         self.session_secs = secs;
+                        self.tray_tooltip();
                         // Discord RP: state = имя места (fallback — id).
                         self.session_display = place_name.or_else(|| place.clone());
                         if self.config.discord_rp {
@@ -1721,6 +1996,22 @@ impl Ctx {
         };
         ui.set_session_text(session_text.as_str().into());
 
+        // 14 дней активности: минуты (старые → новые) + подписи DD.MM.
+        let mut days: Vec<i32> = Vec::with_capacity(14);
+        let mut labels: Vec<SharedString> = Vec::with_capacity(14);
+        let now = playtime::now_unix();
+        for i in (0..14).rev() {
+            let key = playtime::day_key(now - (i as u64) * 86_400);
+            days.push((*self.playtime.days.get(&key).unwrap_or(&0) / 60) as i32);
+            if i == 0 || i == 13 {
+                labels.push(format!("{}.{}", &key[8..10], &key[5..7]).into());
+            } else {
+                labels.push("".into());
+            }
+        }
+        ui.set_play_days(ModelRc::new(VecModel::from(days)));
+        ui.set_play_labels(ModelRc::new(VecModel::from(labels)));
+
         let rows: Vec<PlaceRow> = self
             .playtime
             .top(5)
@@ -1846,6 +2137,8 @@ impl Ctx {
         ui.set_set_threads(self.config.download_threads as i32);
         ui.set_set_auto_update(self.config.auto_update);
         ui.set_set_close_launch(self.config.close_on_launch);
+        ui.set_set_close_tray(self.config.close_to_tray);
+        ui.set_set_auto_clean(self.config.auto_clean);
         ui.set_set_discord_rp(self.config.discord_rp);
         ui.set_set_rp_place(self.config.discord_rp_place);
         ui.set_set_rp_time(self.config.discord_rp_time);
@@ -1886,6 +2179,16 @@ impl Ctx {
             }
         }
 
+        match &self.cfg_msg {
+            Some((text, err)) => {
+                ui.set_set_cfg_msg(text.as_str().into());
+                ui.set_set_cfg_msg_err(*err);
+            }
+            None => {
+                ui.set_set_cfg_msg("".into());
+                ui.set_set_cfg_msg_err(false);
+            }
+        }
     }
 
     fn push_confirm(&self, ui: &AppWindow) {
@@ -2435,6 +2738,7 @@ fn winit_drag(_ui: &AppWindow) {}
 fn apply_i18n(ui: &AppWindow, lang: Lang) {
     let t = ui.global::<T>();
     t.set_nav_home(tr(lang, "Nav_Home").into());
+    t.set_nav_games(tr(lang, "Nav_Games").into());
     t.set_nav_flags(tr(lang, "Nav_Flags").into());
     t.set_nav_versions(tr(lang, "Nav_Versions").into());
     t.set_nav_mods(tr(lang, "Nav_Mods").into());
@@ -2456,7 +2760,18 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_home_link_hint(tr(lang, "Home_LinkHint").into());
     t.set_home_link_go(tr(lang, "Home_LinkGo").into());
     t.set_home_link_paste(tr(lang, "Home_LinkPaste").into());
+    t.set_home_chart(tr(lang, "Home_Chart").into());
     t.set_home_places(tr(lang, "Home_Places").into());
+    t.set_games_h1(tr(lang, "Games_H1").into());
+    t.set_games_sub(tr(lang, "Games_Sub").into());
+    t.set_games_hint(tr(lang, "Games_Hint").into());
+    t.set_games_add(tr(lang, "Games_Add").into());
+    t.set_games_col_name(tr(lang, "Games_ColName").into());
+    t.set_games_col_visits(tr(lang, "Games_ColVisits").into());
+    t.set_games_col_last(tr(lang, "Games_ColLast").into());
+    t.set_games_empty(tr(lang, "Games_Empty").into());
+    t.set_games_fav(tr(lang, "Games_Fav").into());
+    t.set_games_remove(tr(lang, "Games_Remove").into());
     t.set_logs_h1(tr(lang, "Logs_H1").into());
     t.set_logs_sub(tr(lang, "Logs_Sub").into());
     t.set_logs_launcher(tr(lang, "Logs_Launcher").into());
@@ -2533,6 +2848,14 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_sound_desc(tr(lang, "Settings_SoundDesc").into());
     t.set_settings_sound_on(tr(lang, "Settings_SoundOn").into());
     t.set_settings_sound_volume(tr(lang, "Settings_SoundVolume").into());
+    t.set_settings_close_tray(tr(lang, "Settings_CloseTray").into());
+    t.set_settings_close_tray_desc(tr(lang, "Settings_CloseTrayDesc").into());
+    t.set_settings_auto_clean(tr(lang, "Settings_AutoClean").into());
+    t.set_settings_auto_clean_desc(tr(lang, "Settings_AutoCleanDesc").into());
+    t.set_settings_profile(tr(lang, "Settings_Profile").into());
+    t.set_settings_profile_desc(tr(lang, "Settings_ProfileDesc").into());
+    t.set_settings_profile_export(tr(lang, "Settings_ProfileExport").into());
+    t.set_settings_profile_import(tr(lang, "Settings_ProfileImport").into());
     t.set_btn_yes(tr(lang, "Btn_Yes").into());
     t.set_btn_no(tr(lang, "Btn_No").into());
     t.set_mods_h1(tr(lang, "Mods_H1").into());
@@ -2605,9 +2928,66 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     {
         let ctx = Rc::clone(ctx);
         ui.on_close_request(move || {
-            ctx.borrow().config.save();
-            logger::info("Окно закрыто — конфиг сохранён");
-            let _ = slint::quit_event_loop();
+            let mut c = ctx.borrow_mut();
+            c.config.save();
+            #[cfg(windows)]
+            let to_tray = c.config.close_to_tray;
+            #[cfg(not(windows))]
+            let to_tray = false;
+            if to_tray {
+                // Окно скрывается, лаунчер остаётся в трее.
+                let ui = c.weak.clone().unwrap();
+                let _ = ui.hide();
+                logger::info("Окно скрыто — работа в трее");
+            } else {
+                c.quit = true;
+                logger::info("Окно закрыто — конфиг сохранён");
+                let _ = slint::quit_event_loop();
+            }
+        });
+    }
+
+    // — Games —
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_add(move |t: SharedString| {
+            ctx.borrow_mut().games_go(&t);
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            c.push_games(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_launch(move |id: SharedString| {
+            if let Ok(id) = id.parse::<u64>() {
+                ctx.borrow_mut().launch_place(id);
+                let c = ctx.borrow();
+                let ui = weak.unwrap();
+                c.push_games(&ui);
+            }
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_fav(move |id: SharedString| {
+            ctx.borrow_mut().games_fav(&id);
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            c.push_games(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_remove(move |id: SharedString| {
+            ctx.borrow_mut().games_remove(&id);
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            c.push_games(&ui);
         });
     }
 
@@ -3030,6 +3410,38 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             }
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
+        });
+    }
+    // — Трей и профиль конфигурации —
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_close_tray_set(move |v: bool| {
+            let mut c = ctx.borrow_mut();
+            c.config.close_to_tray = v;
+            c.config.save();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_auto_clean_set(move |v: bool| {
+            let mut c = ctx.borrow_mut();
+            c.config.auto_clean = v;
+            c.config.save();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_cfg_export(move || {
+            ctx.borrow_mut().cfg_export();
+            let c = ctx.borrow();
+            let ui = c.weak.clone().unwrap();
+            c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_cfg_import(move || {
+            ctx.borrow_mut().cfg_import();
         });
     }
     {
@@ -3520,6 +3932,23 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let (discord, discord_rx) = discord::spawn();
 
     let (tx, rx) = mpsc::channel();
+    let places = Places::load(&config.base());
+    // Авто-очистка: раз в сутки при старте (если включена).
+    if config.auto_clean && playtime::now_unix() - config.auto_clean_last > 20 * 3600 {
+        let mut cfg = config.clone();
+        cfg.auto_clean_last = playtime::now_unix();
+        cfg.save();
+        let base_clean = config.base().clone();
+        let tx = tx.clone();
+        std::thread::Builder::new()
+            .name("auto-clean".into())
+            .spawn(move || {
+                let rep = crate::core::cleanup::clean(&base_clean);
+                let _ = tx.send(AsyncEvent::CleanupDone(rep.freed, rep.files));
+            })
+            .ok();
+    }
+
     {
         let tx = tx.clone();
         let channel = config.channel.clone();
@@ -3534,6 +3963,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
             let _ = tx.send(AsyncEvent::Latest(res));
         });
     }
+
+    // Трей строится на главном потоке (win32-цикл качает winit).
+    #[cfg(windows)]
+    tray::spawn(tx.clone());
 
     let weak = ui.as_weak();
     let ctx = Rc::new(RefCell::new(Ctx {
@@ -3561,7 +3994,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
         mods_count,
         flags_count,
         playtime,
+        places,
         link_msg: None,
+        games_msg: None,
+        cfg_msg: None,
         session_active: false,
         session_secs: 0,
         session_place: None,
@@ -3621,7 +4057,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
                 let Some(page_ui) = drop_weak.upgrade() else {
                     return EventResult::Propagate;
                 };
-                if page_ui.get_page() == 3 {
+                if page_ui.get_page() == 4 {
                     let mut c = drop_ctx.borrow_mut();
                     match mods::import_paths(&c.config.base(), std::slice::from_ref(path)) {
                         Ok(n) => {
@@ -3656,37 +4092,44 @@ pub fn run() -> Result<(), slint::PlatformError> {
             let page = ui.get_page();
             if page != c.last_page {
                 if page == 1 {
+                    c.push_games(&ui);
+                }
+                if page == 2 {
                     // Полный пуш только при входе: пересборка строк каждые
                     // 100 мс съедала бы фокус редактируемых ячеек.
                     c.push_flags(&ui);
                 }
-                if page == 2 {
+                if page == 3 {
                     c.push_versions(&ui);
                 }
-                if page == 3 {
+                if page == 4 {
                     if !c.mods_scanned {
                         c.refresh_mods();
                     }
                     c.push_mods(&ui);
                     c.push_dlg(&ui);
                 }
-                if page == 4 {
+                if page == 5 {
                     c.logs_tick(&ui);
                 }
-                if page == 5 {
+                if page == 6 {
                     c.push_settings(&ui);
                     c.push_path(&ui);
                 }
             }
-            if page == 3 && c.mods_dirty {
+            if page == 1 {
+                // Места могли смениться фоновым фетчем имени.
+                c.push_games(&ui);
+            }
+            if page == 4 && c.mods_dirty {
                 c.mods_dirty = false;
                 c.push_mods(&ui);
                 c.push_dlg(&ui);
             }
-            if page == 5 {
+            if page == 6 {
                 c.push_settings(&ui);
             }
-            if page == 6 {
+            if page == 7 {
                 c.push_about(&ui);
             }
             c.push_confirm(&ui);
@@ -3701,7 +4144,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         logs_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
             let mut c = ctx.borrow_mut();
             let ui = c.weak.clone().unwrap();
-            if ui.get_page() == 4 {
+            if ui.get_page() == 5 {
                 c.logs_tick(&ui);
             }
         });
@@ -3777,6 +4220,25 @@ mod shots {
         ui.set_link_paste_text("roblox://experiences/start?placeId=920587237".into());
         ui.set_link_msg("Ссылка скопирована".into());
         ui.set_link_msg_bad(false);
+
+        // ---- Активность за 14 дней ----
+        ui.set_play_days(rows(vec![
+            0, 12, 34, 5, 0, 51, 63, 22, 0, 8, 41, 76, 18, 30,
+        ]));
+        ui.set_play_labels(strings(&[
+            "12.11", "", "", "", "", "", "", "", "", "", "", "", "", "30.10",
+        ]));
+
+        // ---- Games ----
+        ui.set_games_rows(rows(vec![
+            GameRow { id: "920587237".into(), name: "Welcome to Bloxburg".into(), visits: "14".into(), last: "12.11".into(), fav: true, alt: false, bad: false },
+            GameRow { id: "12688469563406".into(), name: "Grow a Garden".into(), visits: "9".into(), last: "11.11".into(), fav: false, alt: true, bad: false },
+            GameRow { id: "17625359962".into(), name: "Rivals".into(), visits: "6".into(), last: "10.11".into(), fav: true, alt: false, bad: false },
+            GameRow { id: "7040729968".into(), name: "7734576442".into(), visits: "3".into(), last: "08.11".into(), fav: false, alt: true, bad: true },
+            GameRow { id: "13924028732".into(), name: "Blade Ball".into(), visits: "2".into(), last: "05.11".into(), fav: false, alt: false, bad: false },
+        ]));
+        ui.set_games_msg("Место 920587237 запущено".into());
+        ui.set_games_msg_err(false);
 
         // ---- Flags ----
         ui.set_flags_has_client(true);
@@ -3947,6 +4409,10 @@ mod shots {
         ui.set_set_cleanup_busy(false);
         ui.set_set_cleanup_text("".into());
         ui.set_set_cleanup_err(false);
+        ui.set_set_close_tray(true);
+        ui.set_set_auto_clean(true);
+        ui.set_set_cfg_msg("Конфигурация сохранена".into());
+        ui.set_set_cfg_msg_err(false);
         ui.set_set_path("C:\\Users\\Linar\\AppData\\Local\\ByteStrap".into());
         ui.set_set_path_hint("Папка с версиями, модами и профилями".into());
         ui.set_set_path_token(0);
@@ -3965,19 +4431,20 @@ mod shots {
 
         let shots: Vec<(i32, String)> = vec![
             (0, "0-home".into()),
-            (1, "1-flags".into()),
-            (2, "2-versions".into()),
-            (3, "3-mods".into()),
-            (4, "4-logs".into()),
-            (5, "5-settings".into()),
-            (6, "6-about".into()),
+            (1, "1-games".into()),
+            (2, "2-flags".into()),
+            (3, "3-versions".into()),
+            (4, "4-mods".into()),
+            (5, "5-logs".into()),
+            (6, "6-settings".into()),
+            (7, "7-about".into()),
             // Прокрутки: таблица флагов, файлы модов, низ настроек.
-            (1, "1-flags-table".into()),
-            (3, "3-mods-files".into()),
-            (5, "5-settings-b".into()),
+            (2, "2-flags-table".into()),
+            (4, "4-mods-files".into()),
+            (6, "6-settings-b".into()),
             // Модальные поверхности.
-            (3, "3-mods-saveas".into()),
-            (1, "1-flags-import".into()),
+            (4, "4-mods-saveas".into()),
+            (2, "2-flags-import".into()),
             (0, "0-home-confirm".into()),
         ];
 
@@ -3990,17 +4457,17 @@ mod shots {
             ui.set_import_open(false);
             ui.set_confirm_body("".into());
             match name.as_str() {
-                "1-flags-table" | "3-mods-files" | "5-settings-b" => {
+                "2-flags-table" | "4-mods-files" | "6-settings-b" => {
                     scroll(&ui, -120.0, 6);
                 }
-                "3-mods-saveas" => {
+                "4-mods-saveas" => {
                     ui.set_dlg_open(true);
                     ui.set_dlg_desc("Сохранить профиль модов".into());
                     ui.set_dlg_hint("Название профиля".into());
                     ui.set_dlg_input("PvP-32-нмр".into());
                     ui.set_dlg_ok_label("Сохранить".into());
                 }
-                "1-flags-import" => {
+                "2-flags-import" => {
                     ui.set_import_open(true);
                     ui.set_import_body(
                         "Конфликт импорта: 3 файла уже существуют в папке Mods.\n\n\

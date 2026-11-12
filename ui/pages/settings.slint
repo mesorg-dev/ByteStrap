@@ -19,6 +19,10 @@ export component SettingsPage inherits PageFade {
     in-out property <int> threads: 4;
     in-out property <bool> auto-update: true;
     in-out property <bool> close-launch: false;
+    /// Сворачивать в трей вместо выхода (Windows).
+    in-out property <bool> close-tray: true;
+    /// Авто-очистка кэша раз в сутки.
+    in-out property <bool> auto-clean: false;
     in-out property <bool> discord-rp: true;
     in-out property <bool> rp-place: true;
     in-out property <bool> rp-time: true;
@@ -36,6 +40,9 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> cleanup-busy: false;
     in-out property <string> cleanup-text: "";
     in-out property <bool> cleanup-err: false;
+    // ===== Экспорт/импорт конфигурации =====
+    in-out property <string> cfg-msg: "";
+    in-out property <bool> cfg-msg-err: false;
     // ===== Звук интерфейса =====
     in-out property <bool> sound: true;
     /// 0..100.
@@ -53,6 +60,10 @@ export component SettingsPage inherits PageFade {
     callback path-edited(string);
     callback path-reset();
     callback cleanup-run();
+    callback close-tray-set(bool);
+    callback auto-clean-set(bool);
+    callback cfg-export();
+    callback cfg-import();
     callback sound-set(bool);
     callback sound-vol-set(int);
 
@@ -65,13 +76,14 @@ export component SettingsPage inherits PageFade {
         + (root.channel-preview-text == "" ? 0px : 26px)
         + (root.channel-changed ? 40px : 0px);
     property <length> h-lang: 90px;
-    property <length> h-behavior: 305px
+    property <length> h-behavior: 347px
         + (root.discord-rp ? 126px : 0px)
         + (root.deeplink-ok != 0 ? 26px : 0px);
     animate h-behavior { duration: Theme.t-mid; easing: ease-out; }
     property <length> h-sound: 142px;
     property <length> h-path: 110px;
-    property <length> h-cleanup: 112px;
+    property <length> h-cleanup: 162px;
+    property <length> h-profile: 112px;
 
     VerticalLayout {
         spacing: 0px;
@@ -97,7 +109,8 @@ export component SettingsPage inherits PageFade {
             content-width: self.width;
             content-height: c-channel.height + 12px + c-lang.height + 12px
                 + c-behavior.height + 12px + c-sound.height + 12px
-                + c-path.height + 12px + c-cleanup.height + 16px;
+                + c-path.height + 12px + c-cleanup.height + 12px
+                + c-profile.height + 16px;
 
             // ===== Канал Roblox =====
             c-channel := Rectangle {
@@ -319,6 +332,12 @@ export component SettingsPage inherits PageFade {
                         desc: T.settings_close_on_launch_desc;
                         checked: root.close-launch;
                         toggled(v) => { root.close-launch-set(v); }
+                    }
+                    OptionRow {
+                        title: T.settings_close_tray;
+                        desc: T.settings_close_tray_desc;
+                        checked: root.close-tray;
+                        toggled(v) => { root.close-tray-set(v); }
                     }
                     OptionRow {
                         title: T.settings_discord_rp;
@@ -588,6 +607,13 @@ export component SettingsPage inherits PageFade {
                         color: Theme.fg-dimmer;
                     }
 
+                    OptionRow {
+                        title: T.settings_auto_clean;
+                        desc: T.settings_auto_clean_desc;
+                        checked: root.auto-clean;
+                        toggled(v) => { root.auto-clean-set(v); }
+                    }
+
                     HorizontalLayout {
                         spacing: 12px;
                         Btn {
@@ -604,6 +630,68 @@ export component SettingsPage inherits PageFade {
                             font-size: 12px;
                             height: 32px;
                             color: root.cleanup-err ? Theme.bad : Theme.good;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+            }
+
+            // ===== Профиль конфигурации: экспорт/импорт =====
+            c-profile := Rectangle {
+                x: 0;
+                y: c-cleanup.y + c-cleanup.height + 12px;
+                width: 100%;
+                height: root.h-profile;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.settings_profile;
+                        font-weight: 600;
+                        font-size: 13px;
+                        height: 17px;
+                        color: Theme.fg;
+                    }
+                    Text {
+                        text: T.settings_profile_desc;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.settings_profile_export;
+                            kind: 0;
+                            width: 110px;
+                            height: 32px;
+                            clicked => { root.cfg-export(); }
+                        }
+                        Btn {
+                            label: T.settings_profile_import;
+                            kind: 2;
+                            width: 100px;
+                            height: 32px;
+                            clicked => { root.cfg-import(); }
+                        }
+                        if root.cfg-msg != "" : Text {
+                            text: root.cfg-msg;
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            height: 32px;
+                            color: root.cfg-msg-err ? Theme.bad : Theme.good;
                             vertical-alignment: center;
                             overflow: elide;
                             horizontal-stretch: 1;

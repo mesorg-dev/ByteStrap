@@ -28,6 +28,9 @@ export component HomePage inherits PageFade {
     in-out property <string> flags-count;
     in-out property <string> hours-count;
     in-out property <[PlaceRow]> top-places;
+    /// Минуты игры за последние 14 дней (старые → новые) и подписи DD.MM.
+    in-out property <[int]> play-days: [];
+    in-out property <[string]> play-labels: [];
     /// Строка живой сессии («в игре … · место …»), "" — скрыто.
     in-out property <string> session-text;
     /// Windows-only кнопка «Вставить».
@@ -325,6 +328,87 @@ export component HomePage inherits PageFade {
                             }
                         }
                     }
+                }
+            }
+
+            // ===== Активность за 14 дней =====
+            if root.play-days.length > 0 : Rectangle {
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 10px;
+
+                    Text {
+                        text: T.home_chart;
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        letter-spacing: 2px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    // 14 колонок: чем выше — тем больше минут; столбик тянется вверх.
+                    Rectangle {
+                        height: 56px;
+
+                        bars := HorizontalLayout {
+                            spacing: 5px;
+
+                            property <int> max-min: 1;
+                            for i in 14 : Rectangle {
+                                property <length> h:
+                                    56px * (root.play-days[i] / (bars.max-min * 1.0));
+                                width: (parent.width - 65px) / 14;
+                                height: 56px;
+
+                                // «Пол» — всегда виден.
+                                Rectangle {
+                                    x: 0;
+                                    y: 54px;
+                                    width: parent.width;
+                                    height: 2px;
+                                    border-radius: 1px;
+                                    background: #ffffff0d;
+                                }
+
+                                Rectangle {
+                                    x: 0;
+                                    y: parent.height - parent.h;
+                                    width: parent.width;
+                                    height: parent.h;
+                                    border-radius: 2px;
+                                    background: Theme.accent;
+                                    opacity: 0.55 + 0.45 * (parent.h / parent.height);
+                                    animate height { duration: Theme.t-mid; easing: ease-out; }
+                                }
+                            }
+                        }
+
+                        // Подписи: первый и последний день.
+                        Text {
+                            x: 0;
+                            y: parent.height + 2px;
+                            font-family: Theme.font-mono;
+                            font-size: 9px;
+                            color: Theme.fg-dimmer;
+                            text: root.play-labels[0];
+                        }
+                        Text {
+                            x: parent.width - 30px;
+                            y: parent.height + 2px;
+                            font-family: Theme.font-mono;
+                            font-size: 9px;
+                            color: Theme.fg-dimmer;
+                            text: root.play-labels[13];
+                        }
+                    }
+                    Rectangle { height: 12px; }
                 }
             }
 

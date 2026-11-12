@@ -23,8 +23,9 @@ import { VersionsPage } from "pages/versions.slint";
 import { SettingsPage } from "pages/settings.slint";
 import { ModsPage } from "pages/mods.slint";
 import { FlagsPage } from "pages/flags.slint";
+import { GamesPage } from "pages/games.slint";
 import { AboutPage } from "pages/about.slint";
-import { PlaceRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
+import { PlaceRow, GameRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -57,6 +58,14 @@ export component AppWindow inherits Window {
     in-out property <string> hours-count: "0";
     in-out property <string> session-text: "";
     in-out property <[PlaceRow]> top-places: [];
+    /// Минуты по последним 14 дням (старые → новые) + подписи DD.MM.
+    in-out property <[int]> play-days: [];
+    in-out property <[string]> play-labels: [];
+
+    // Games (page 1)
+    in-out property <[GameRow]> games-rows: [];
+    in-out property <string> games-msg: "";
+    in-out property <bool> games-msg-err: false;
 
     in-out property <[LogLine]> log-lines: [];
     in-out property <[string]> log-files: [];
@@ -66,7 +75,7 @@ export component AppWindow inherits Window {
     in-out property <bool> log-missing: false;
     in-out property <int> log-jump-token: 0;
 
-    // Versions (page 2)
+    // Versions (page 3)
     in-out property <string> ver-installed-guid: "";
     in-out property <string> ver-selected-guid: "";
     in-out property <[VersionRow]> ver-versions: [];
@@ -74,7 +83,7 @@ export component AppWindow inherits Window {
     in-out property <int> ver-integrity-kind: 0;
     in-out property <string> ver-checked-text: "";
 
-    // Mods (page 3)
+    // Mods (page 4)
     in-out property <string> mods-path: "";
     in-out property <[ModRow]> mods-list: [];
     in-out property <string> mods-msg: "";
@@ -89,7 +98,7 @@ export component AppWindow inherits Window {
     in-out property <bool> mods-profile-sel-valid: false;
     in-out property <bool> mods-profiles-empty: false;
 
-    // Flags (page 1)
+    // Flags (page 2)
     in-out property <bool> flags-has-client: false;
     /// Windows-only возможности (импорт/буфер/экспорт, «Вставить» на Home).
     in-out property <bool> win-share: false;
@@ -118,7 +127,7 @@ export component AppWindow inherits Window {
     in-out property <string> dlg-input: "";
     in-out property <string> dlg-ok-label: "";
 
-    // Settings (page 5)
+    // Settings (page 6)
     in-out property <int> set-ch-sel: -1;
     in-out property <bool> set-ch-checking: false;
     in-out property <int> set-ch-preview-kind: 0;
@@ -128,6 +137,9 @@ export component AppWindow inherits Window {
     in-out property <int> set-threads: 4;
     in-out property <bool> set-auto-update: true;
     in-out property <bool> set-close-launch: false;
+    /// Сворачивать в трей вместо выхода (Windows).
+    in-out property <bool> set-close-tray: true;
+    in-out property <bool> set-auto-clean: false;
     in-out property <bool> set-discord-rp: true;
     in-out property <bool> set-rp-place: true;
     in-out property <bool> set-rp-time: true;
@@ -142,12 +154,14 @@ export component AppWindow inherits Window {
     in-out property <bool> set-cleanup-busy: false;
     in-out property <string> set-cleanup-text: "";
     in-out property <bool> set-cleanup-err: false;
+    in-out property <string> set-cfg-msg: "";
+    in-out property <bool> set-cfg-msg-err: false;
     in-out property <bool> set-sound: true;
     in-out property <int> set-sound-vol: 70;
     /// Тело модального подтверждения ("" — закрыто).
     in-out property <string> confirm-body: "";
 
-    // About (page 6)
+    // About (page 7)
     in-out property <string> about-version: "";
     in-out property <int> update-kind: 0;
     in-out property <string> update-text: "";
@@ -165,6 +179,10 @@ export component AppWindow inherits Window {
     callback cancel-install();
     callback link-go(string);
     callback link-paste();
+    callback games-add(string);
+    callback games-launch(string);
+    callback games-fav(string);
+    callback games-remove(string);
     callback log-select(int);
     callback log-refresh();
     callback log-copy();
@@ -185,6 +203,10 @@ export component AppWindow inherits Window {
     callback threads-set(int);
     callback auto-update-set(bool);
     callback close-launch-set(bool);
+    callback close-tray-set(bool);
+    callback auto-clean-set(bool);
+    callback cfg-export();
+    callback cfg-import();
     callback discord-rp-set(bool);
     callback rp-opt-set(int, bool);
     callback deeplink-set(bool);
@@ -302,6 +324,8 @@ export component AppWindow inherits Window {
                     hours-count: root.hours-count;
                     session-text: root.session-text;
                     top-places: root.top-places;
+                    play-days: root.play-days;
+                    play-labels: root.play-labels;
                     share: root.win-share;
                     primary => { root.primary(); }
                     update-client => { root.update-client(); }
@@ -311,7 +335,19 @@ export component AppWindow inherits Window {
                     link-paste => { root.link-paste(); }
                 }
 
-                if root.page == 4 : LogsPage {
+                if root.page == 1 : GamesPage {
+                    width: 100%;
+                    height: 100%;
+                    rows: root.games-rows;
+                    msg: root.games-msg;
+                    msg-err: root.games-msg-err;
+                    add(t) => { root.games-add(t); }
+                    launch(id) => { root.games-launch(id); }
+                    fav(id) => { root.games-fav(id); }
+                    remove(id) => { root.games-remove(id); }
+                }
+
+                if root.page == 5 : LogsPage {
                     width: 100%;
                     height: 100%;
                     lines: root.log-lines;
@@ -329,7 +365,7 @@ export component AppWindow inherits Window {
                     search-edited(q) => { root.log-search(q); }
                 }
 
-                if root.page == 1 : FlagsPage {
+                if root.page == 2 : FlagsPage {
                     width: 100%;
                     height: 100%;
                     has-client: root.flags-has-client;
@@ -367,7 +403,7 @@ export component AppWindow inherits Window {
                     profile-export => { root.flags-profile-export(); }
                     profile-import => { root.flags-profile-import(); }
                 }
-                if root.page == 2 : VersionsPage {
+                if root.page == 3 : VersionsPage {
                     width: 100%;
                     height: 100%;
                     busy: root.busy;
@@ -383,7 +419,7 @@ export component AppWindow inherits Window {
                     check-integrity => { root.ver-check(); }
                     repair => { root.ver-repair(); }
                 }
-                if root.page == 3 : ModsPage {
+                if root.page == 4 : ModsPage {
                     width: 100%;
                     height: 100%;
                     mods-path: root.mods-path;
@@ -413,7 +449,7 @@ export component AppWindow inherits Window {
                     profile-export => { root.mods-profile-export(); }
                     profile-import => { root.mods-profile-import(); }
                 }
-                if root.page == 5 : SettingsPage {
+                if root.page == 6 : SettingsPage {
                     width: 100%;
                     height: 100%;
                     busy: root.busy;
@@ -426,6 +462,8 @@ export component AppWindow inherits Window {
                     threads: root.set-threads;
                     auto-update: root.set-auto-update;
                     close-launch: root.set-close-launch;
+                    close-tray: root.set-close-tray;
+                    auto-clean: root.set-auto-clean;
                     discord-rp: root.set-discord-rp;
                     rp-place: root.set-rp-place;
                     rp-time: root.set-rp-time;
@@ -440,6 +478,8 @@ export component AppWindow inherits Window {
                     cleanup-busy: root.set-cleanup-busy;
                     cleanup-text: root.set-cleanup-text;
                     cleanup-err: root.set-cleanup-err;
+                    cfg-msg: root.set-cfg-msg;
+                    cfg-msg-err: root.set-cfg-msg-err;
                     sound: root.set-sound;
                     sound-vol: root.set-sound-vol;
                     channel-pick(c) => { root.ch-pick(c); }
@@ -448,6 +488,10 @@ export component AppWindow inherits Window {
                     threads-set(t) => { root.threads-set(t); }
                     auto-update-set(v) => { root.auto-update-set(v); }
                     close-launch-set(v) => { root.close-launch-set(v); }
+                    close-tray-set(v) => { root.close-tray-set(v); }
+                    auto-clean-set(v) => { root.auto-clean-set(v); }
+                    cfg-export => { root.cfg-export(); }
+                    cfg-import => { root.cfg-import(); }
                     discord-rp-set(v) => { root.discord-rp-set(v); }
                     rp-opt-set(k, v) => { root.rp-opt-set(k, v); }
                     deeplink-set(v) => { root.deeplink-set(v); }
@@ -457,7 +501,7 @@ export component AppWindow inherits Window {
                     sound-set(v) => { root.sound-set(v); }
                     sound-vol-set(v) => { root.sound-vol-set(v); }
                 }
-                if root.page == 6 : AboutPage {
+                if root.page == 7 : AboutPage {
                     width: 100%;
                     height: 100%;
                     app-version: root.about-version;

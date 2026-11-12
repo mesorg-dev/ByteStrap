@@ -33,6 +33,12 @@ pub struct Config {
     pub sound: bool,
     /// Громкость звуков интерфейса: 0..100.
     pub sound_volume: u32,
+    /// Крестик скрывает окно в трей вместо выхода.
+    pub close_to_tray: bool,
+    /// Авто-очистка кэша раз в сутки.
+    pub auto_clean: bool,
+    /// Unix-время последней авто-очистки.
+    pub auto_clean_last: u64,
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
@@ -58,6 +64,9 @@ impl Default for Config {
             deeplink: true,
             sound: true,
             sound_volume: 70,
+            close_to_tray: true,
+            auto_clean: false,
+            auto_clean_last: 0,
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,

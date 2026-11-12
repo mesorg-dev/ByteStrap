@@ -8,6 +8,7 @@ pub mod launcher;
 pub mod logview;
 pub mod logger;
 pub mod mods;
+pub mod places;
 pub mod playtime;
 pub mod presets;
 pub mod roblox_link;

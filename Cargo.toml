@@ -44,6 +44,7 @@ windows-sys = { version = "0.61", features = [
 # Winit-доступ для frameless-окна (drag/min/max); только Windows —
 # unstable-winit-030 в slint не собирается под android.
 slint = { version = "1.18", features = ["unstable-winit-030"] }
+tray-icon = "0.26"
 
 [build-dependencies]
 winresource = "0.1"

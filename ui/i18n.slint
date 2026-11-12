@@ -5,6 +5,7 @@
 export global T {
     // Навигация
     in-out property <string> nav_home: "Главная";
+    in-out property <string> nav_games: "Игры";
     in-out property <string> nav_flags: "FastFlags";
     in-out property <string> nav_versions: "Версии";
     in-out property <string> nav_mods: "Моды";
@@ -32,7 +33,20 @@ export global T {
     in-out property <string> home_link_hint: "ссылка на место / приватку / сервер…";
     in-out property <string> home_link_go: "Запустить";
     in-out property <string> home_link_paste: "Вставить";
+    in-out property <string> home_chart: "ИГРЫ ЗА 14 ДНЕЙ · МИНУТЫ";
     in-out property <string> home_places: "ВРЕМЯ ПО МЕСТАМ";
+
+    // Games
+    in-out property <string> games_h1: "Игры";
+    in-out property <string> games_sub: "Запуск места по placeId или ссылке roblox.com/games/…";
+    in-out property <string> games_hint: "placeId или ссылка на место…";
+    in-out property <string> games_add: "Играть";
+    in-out property <string> games_col_name: "МЕСТО";
+    in-out property <string> games_col_visits: "ЗАПУСКОВ";
+    in-out property <string> games_col_last: "ДАТА";
+    in-out property <string> games_empty: "Пока пусто — добавьте место по placeId.";
+    in-out property <string> games_fav: "Избранное";
+    in-out property <string> games_remove: "Убрать";
 
     // Логи
     in-out property <string> logs_h1: "Логи";
@@ -109,6 +123,14 @@ export global T {
     in-out property <string> settings_deeplink_desc: "Друзья, приватные серверы и плейсы — открывать через ByteStrap";
     in-out property <string> settings_deeplink_on: "Активно — roblox:// открывается через ByteStrap";
     in-out property <string> settings_deeplink_fail: "Не удалось зарегистрировать протокол roblox://";
+    in-out property <string> settings_close_tray: "Сворачивать в трей";
+    in-out property <string> settings_close_tray_desc: "Закрытие окна оставляет лаунчер в трее";
+    in-out property <string> settings_auto_clean: "Авто-очистка раз в сутки";
+    in-out property <string> settings_auto_clean_desc: "Чистить кэш при запуске, если прошло больше 20 часов";
+    in-out property <string> settings_profile: "Профиль конфигурации";
+    in-out property <string> settings_profile_desc: "Настройки, профили флагов и места — одним JSON-файлом";
+    in-out property <string> settings_profile_export: "Экспорт…";
+    in-out property <string> settings_profile_import: "Импорт…";
     in-out property <string> settings_path: "Папка установки";
     in-out property <string> settings_path_desc: "Пусто — стандартная папка ByteStrap";
     in-out property <string> settings_path_reset: "Сбросить";

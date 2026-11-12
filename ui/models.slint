@@ -12,6 +12,19 @@ export struct PlaceRow {
     duration: string,
 }
 
+/// Строка на странице Games: недавнее/избранное место Roblox.
+export struct GameRow {
+    id: string,
+    name: string,
+    visits: string,
+    /// «12.11» — день последнего запуска.
+    last: string,
+    fav: bool,
+    alt: bool,
+    /// true — не удаётся разобрать placeId (показываем как текст).
+    bad: bool,
+}
+
 export struct VersionRow {
     guid: string,
     size: string,

@@ -21,6 +21,24 @@ export component IconStar inherits Rectangle {
     }
 }
 
+export component IconGamepad inherits Rectangle {
+    in-out property <color> c: Theme.fg-dim;
+    width: 18px;
+    height: 18px;
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: 18;
+        viewbox-height: 18;
+        stroke: root.c;
+        stroke-width: 1.5px;
+        fill: transparent;
+        commands: "M6.2 4 L11.8 4 C13.7 4 15.1 5.2 15.6 7 L16.4 10.3 C16.8 12.1 15.7 13.6 14.2 13.6 C13.3 13.6 12.6 13.2 12.1 12.4 L11.3 11 L6.7 11 L5.9 12.4 C5.4 13.2 4.7 13.6 3.8 13.6 C2.3 13.6 1.2 12.1 1.6 10.3 L2.4 7 C2.9 5.2 4.3 4 6.2 4 Z M5.4 6.4 L5.4 8.8 M4.2 7.6 L6.6 7.6 M11.6 6.7 L13.9 6.7 M12.75 5.55 L12.75 7.85";
+    }
+}
+
 export component IconHome inherits Rectangle {
     in-out property <color> c: Theme.fg-dim;
     width: 18px;
