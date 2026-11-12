@@ -16,10 +16,14 @@ pub use stub::*;
 #[cfg(windows)]
 mod imp {
     use std::sync::mpsc::Sender;
-    use std::sync::OnceLock;
 
-    use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
+    use tray_icon::menu::{Accelerator, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
     use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
+    thread_local! {
+        /// TrayIcon не Send/Sync (Rc внутри) — но все вызовы только на главном потоке.
+        static TRAY: std::cell::RefCell<Option<TrayIcon>> = const { std::cell::RefCell::new(None) };
+    }
 
     /// Что пользователь выбрал в трее.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,15 +37,13 @@ mod imp {
     const ID_PLAY: &str = "bs-play";
     const ID_QUIT: &str = "bs-quit";
 
-    static TRAY: OnceLock<TrayIcon> = OnceLock::new();
-
     /// Создать иконку с меню. Один раз на процесс; ошибки — тихо.
     pub fn spawn(tx: Sender<super::super::app_slint::AsyncEvent>) {
         let menu = Menu::new();
-        let open = MenuItem::with_id(ID_SHOW, "Открыть ByteStrap", true, None::<&str>);
-        let play = MenuItem::with_id(ID_PLAY, "Запустить Roblox", true, None::<&str>);
+        let open = MenuItem::with_id(ID_SHOW, "Открыть ByteStrap", true, None::<Accelerator>);
+        let play = MenuItem::with_id(ID_PLAY, "Запустить Roblox", true, None::<Accelerator>);
         let sep1 = PredefinedMenuItem::separator();
-        let quit = MenuItem::with_id(ID_QUIT, "Выход", true, None::<&str>);
+        let quit = MenuItem::with_id(ID_QUIT, "Выход", true, None::<Accelerator>);
         let _ = menu.append_items(&[&open, &play, &sep1, &quit]);
 
         let icon = Icon::from_rgba(render_star(32), 32, 32).ok();
@@ -59,7 +61,7 @@ mod imp {
                 return;
             }
         };
-        let _ = TRAY.set(tray);
+        TRAY.with(|slot| *slot.borrow_mut() = Some(tray));
 
         // События меню и кликов → общий канал контроллера.
         std::thread::Builder::new()
@@ -104,9 +106,11 @@ mod imp {
 
     /// Обновить тултип (главный поток): время сессии или просто имя.
     pub fn set_tooltip(text: &str) {
-        if let Some(t) = TRAY.get() {
-            let _ = t.set_tooltip(Some(text));
-        }
+        TRAY.with(|slot| {
+            if let Some(t) = slot.borrow_mut().as_ref() {
+                let _ = t.set_tooltip(Some(text));
+            }
+        });
     }
 
     /// Белая четырёхлучевая звезда (как логотип) на прозрачном фоне.
