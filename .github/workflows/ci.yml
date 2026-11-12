@@ -25,15 +25,16 @@ jobs:
           cargo test --locked *>&1 | Tee-Object -FilePath test-out.txt | Write-Host
           if ($LASTEXITCODE -ne 0) {
             # Ошибки компиляции — в аннотации чек-рана (публичный API):
-            # каждая аннотация — заголовок ошибки + 14 строк контекста ниже.
-            Select-String -Path test-out.txt -Pattern '^error(\[E\d+\])?:' -Context 0,14 |
-              ForEach-Object {
-                $block = $_.Line + [Environment]::NewLine +
-                  ($_.Context.PostContext -join [Environment]::NewLine)
-                $enc = $block.Replace('%', '%25').Replace("`r", '').
-                  Replace([Environment]::NewLine, '%0A')
-                Write-Output "::error::$enc"
+            # заголовок ошибки + 15 строк контекста (~разделитель) с файлом/строкой.
+            $all = Get-Content test-out.txt
+            for ($i = 0; $i -lt $all.Length; $i++) {
+              if ($all[$i] -match '^error(\[E\d+\])?:') {
+                $end = [Math]::Min($i + 15, $all.Length - 1)
+                $block = ($all[$i..$end] -join ' ~ ')
+                if ($block.Length -gt 3800) { $block = $block.Substring(0, 3800) }
+                Write-Output "::error::$block"
               }
+            }
             exit $LASTEXITCODE
           }
 
