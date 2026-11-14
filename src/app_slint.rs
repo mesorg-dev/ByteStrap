@@ -233,6 +233,8 @@ struct Ctx {
     session_secs: u64,
     session_place: Option<String>,
     session_display: Option<String>,
+    /// Окно спрятано в трей на время игры (вернуть после выхода из Roblox).
+    hidden_for_game: bool,
 
     tx: Sender<AsyncEvent>,
     rx: Receiver<AsyncEvent>,
@@ -407,7 +409,18 @@ impl Ctx {
                         logger::info("Клиент Roblox запущен");
                         self.start_session_watch();
                         if self.config.close_on_launch {
-                            self.quit = true;
+                            // На время игры окно уходит в трей (не закрываем
+                            // процесс) и возвращается после выхода из Roblox.
+                            #[cfg(windows)]
+                            if let Some(ui) = self.weak.upgrade() {
+                                let _ = ui.hide();
+                                self.hidden_for_game = true;
+                                logger::info("Лаунчер свёрнут в трей на время игры");
+                            }
+                            #[cfg(not(windows))]
+                            {
+                                self.quit = true;
+                            }
                         }
                     }
                     Err(e) => {
@@ -895,8 +908,12 @@ impl Ctx {
                     }
                     tray::Action::Play => {
                         self.play(None);
-                        let ui = self.weak.clone().unwrap();
-                        let _ = ui.show();
+                        // Если окно спрятано на время игры — не показываем его.
+                        if !self.hidden_for_game {
+                            let ui = self.weak.clone().unwrap();
+                            let _ = ui.show();
+                            winit_restore(&ui);
+                        }
                     }
                     tray::Action::Quit => {
                         self.quit = true;
@@ -955,6 +972,16 @@ impl Ctx {
                         self.sync_discord();
                         // Топ игр по времени мог измениться.
                         self.refresh_tray();
+                        // Окно возвращалось из трея только если его туда
+                        // спрятали при запуске игры.
+                        if self.hidden_for_game {
+                            self.hidden_for_game = false;
+                            if let Some(ui) = self.weak.upgrade() {
+                                let _ = ui.show();
+                                #[cfg(windows)]
+                                winit_restore(&ui);
+                            }
+                        }
                     }
                 },
             }
@@ -4279,6 +4306,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         session_secs: 0,
         session_place: None,
         session_display: None,
+        hidden_for_game: false,
         tx,
         rx,
         cancel: None,
