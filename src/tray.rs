@@ -9,7 +9,7 @@
 #![allow(dead_code)]
 
 #[cfg(windows)]
-pub use imp::{set_tooltip, spawn, sync, Action, TrayData};
+pub use imp::{set_tooltip, spawn, sync, Action};
 
 #[cfg(not(windows))]
 pub use stub::*;
@@ -83,14 +83,12 @@ mod imp {
     const PFX_MOD: &str = "bs-mp:";
     const PFX_GAME: &str = "bs-gm:";
 
-    type Acc = Option<tray_icon::menu::accelerator::Accelerator>;
-
     fn item(id: &str, text: &str) -> MenuItem {
-        MenuItem::with_id(id, text, true, None::<Acc>)
+        MenuItem::with_id(id, text, true, None)
     }
 
     fn check(id: &str, text: &str, on: bool) -> CheckMenuItem {
-        CheckMenuItem::with_id(id, text, true, on, None::<Acc>)
+        CheckMenuItem::with_id(id, text, true, on, None)
     }
 
     /// Собрать меню по данным.

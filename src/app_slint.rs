@@ -2875,8 +2875,9 @@ fn winit_min(_ui: &AppWindow) {}
 /// вывести на передний план и отдать фокус (клик по иконке трея).
 
 #[cfg(windows)]
-fn winit_restore(ui: &AppWindow) {    let _ = ui.window().with_winit_window(|x| {
-        if !x.is_visible() {
+fn winit_restore(ui: &AppWindow) {
+    let _ = ui.window().with_winit_window(|x| {
+        if x.is_visible() != Some(true) {
             x.set_visible(true);
         }
         x.set_minimized(false);
