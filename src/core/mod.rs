@@ -1,3 +1,4 @@
+pub mod accounts;
 pub mod cleanup;
 pub mod config;
 pub mod deep_link;

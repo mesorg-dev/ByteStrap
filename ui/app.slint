@@ -71,6 +71,11 @@ export component AppWindow inherits Window {
     in-out property <string> games-msg: "";
     in-out property <bool> games-msg-err: false;
 
+    // Аккаунты (Home)
+    in-out property <[string]> account-items: [];
+    in-out property <int> account-sel: 0;
+    in-out property <string> account-name: "";
+
     in-out property <[LogLine]> log-lines: [];
     in-out property <[string]> log-files: [];
     in-out property <int> log-selected: 0;
@@ -193,6 +198,7 @@ export component AppWindow inherits Window {
     callback cancel-install();
     callback link-go(string);
     callback link-paste();
+    callback account-pick(int);
     callback games-add(string);
     callback games-launch(string);
     callback games-fav(string);
@@ -362,6 +368,10 @@ export component AppWindow inherits Window {
                     play-days: root.play-days;
                     play-labels: root.play-labels;
                     share: root.win-share;
+                    account-items: root.account-items;
+                    account-sel: root.account-sel;
+                    account-name: root.account-name;
+                    account-pick(i) => { root.account-pick(i); }
                     primary => { root.primary(); }
                     update-client => { root.update-client(); }
                     cancel => { root.cancel-install(); }
@@ -872,6 +882,7 @@ export component AppWindow inherits Window {
                     if Dd.owner >= 0 && Dd.owner < 100 { root.preset-pick(Dd.owner, i); }
                     else if Dd.owner == 100 { root.flags-profile-pick(i); }
                     else if Dd.owner == 200 { root.mods-profile-pick(i); }
+                    else if Dd.owner == 300 { root.account-pick(i); }
                 }
             }
         }

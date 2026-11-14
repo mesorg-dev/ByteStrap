@@ -20,6 +20,7 @@ use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
 use crate::core::config::Config;
+use crate::core::accounts::{self, Accounts};
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::places::{Places};
@@ -48,6 +49,10 @@ pub enum AsyncEvent {
     Tray(tray::Action),
     /// Имя места получено: (id, Some(имя) | None).
     PlaceName((u64, Option<String>)),
+    /// Аккаунт добавлен: (id, Some(имя) | None, если имя не получено).
+    AccountAdded((String, Option<String>)),
+    /// Получен auth-ticket аккаунта: ссылка запуска или ошибка.
+    LaunchTicket(Result<String, String>),
     Session(SessionEvent),
 }
 
@@ -104,6 +109,8 @@ enum Confirm {
 enum Dlg {
     ModsProfile,
     FlagsProfile,
+    /// Ввод куки `.ROBLOSECURITY` для нового аккаунта.
+    AccountCookie,
 }
 
 /// Очередь конфликтов импорта FastFlags (окно спрашивает по одному).
@@ -227,6 +234,8 @@ struct Ctx {
     cfg_msg: Option<(String, bool)>,
     /// Оверлей «Картинка клиента» поверх окна Roblox.
     overlay: overlay::Handle,
+    /// Аккаунты Roblox (мультиаккаунт).
+    accounts: Accounts,
 
     // — Сессия игры (Tick/End из playtime::watch_session) —
     session_active: bool,
@@ -389,6 +398,34 @@ impl Ctx {
     // ---- Запуск ----
 
     fn play(&mut self, arg: Option<&str>) {
+        // Если выбран аккаунт — запускаем клиент от его имени (auth-ticket).
+        if let Some(account) = self.accounts.active() {
+            if !account.cookie.is_empty() {
+                let cookie = account.cookie.clone();
+                let place = arg.and_then(Self::parse_place);
+                let tx = self.tx.clone();
+                self.install.error = None;
+                logger::info("Получаем auth-ticket аккаунта…");
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build();
+                    let res = match rt {
+                        Ok(rt) => rt
+                            .block_on(accounts::auth_ticket(&cookie))
+                            .map(|t| accounts::launch_uri(&t, place))
+                            .map_err(|e| e.to_string()),
+                        Err(e) => Err(e.to_string()),
+                    };
+                    let _ = tx.send(AsyncEvent::LaunchTicket(res));
+                });
+                return;
+            }
+        }
+        self.play_direct(arg);
+    }
+
+    fn play_direct(&mut self, arg: Option<&str>) {
         let guid = self
             .installed
             .clone()
@@ -963,6 +1000,32 @@ impl Ctx {
                         }
                     }
                 }
+                AsyncEvent::AccountAdded((id, name)) => {
+                    let mut found = false;
+                    for a in self.accounts.accounts.iter_mut() {
+                        if a.id == id {
+                            if let Some(n) = &name {
+                                a.name = n.clone();
+                            }
+                            found = true;
+                        }
+                    }
+                    match &name {
+                        Some(n) => logger::info(format!("Аккаунт добавлен: {n}")),
+                        None if found => {
+                            logger::warn("Аккаунт добавлен, но имя не получено (неверная кука?)")
+                        }
+                        None => logger::warn("Аккаунт не найден"),
+                    }
+                    self.accounts.save(&self.config.base());
+                }
+                AsyncEvent::LaunchTicket(res) => match res {
+                    Ok(uri) => self.play_direct(Some(&uri)),
+                    Err(e) => {
+                        logger::error(format!("Аккаунт: не удалось получить ticket: {e}"));
+                        self.install.error = Some(e);
+                    }
+                },
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
@@ -1357,6 +1420,7 @@ impl Ctx {
                     self.config.active_flag_profile.clone()
                 }
             }
+            Dlg::AccountCookie => String::new(),
         };
         self.save_dlg = Some(kind);
     }
@@ -1365,6 +1429,14 @@ impl Ctx {
         let lang = self.lang;
         let name = name.trim().to_string();
         match self.save_dlg {
+            Some(Dlg::AccountCookie) => {
+                if name.is_empty() {
+                    return;
+                }
+                self.save_dlg = None;
+                self.dlg_input.clear();
+                self.account_add(&name);
+            }
             Some(Dlg::ModsProfile) => {
                 if name.is_empty() {
                     self.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
@@ -2194,6 +2266,85 @@ impl Ctx {
             })
             .collect();
         ui.set_top_places(ModelRc::new(VecModel::from(rows)));
+
+        // Аккаунты: список для выпадашки на Home.
+        let (items, sel, current) = self.account_ui();
+        ui.set_account_items(ModelRc::new(VecModel::from(items)));
+        ui.set_account_sel(sel);
+        ui.set_account_name(current.as_str().into());
+    }
+
+    /// Пункты выпадающего списка аккаунтов: [0] — без аккаунта,
+    /// далее аккаунты, в конце «Добавить…» и (при активном) «Удалить…».
+    fn account_ui(&self) -> (Vec<SharedString>, i32, String) {
+        let lang = self.lang;
+        let mut items: Vec<SharedString> = vec![tr(lang, "Acc_None").into()];
+        let mut sel = 0i32;
+        for (i, a) in self.accounts.accounts.iter().enumerate() {
+            items.push(a.name.as_str().into());
+            if a.id == self.accounts.active {
+                sel = (i + 1) as i32;
+            }
+        }
+        items.push(tr(lang, "Acc_Add").into());
+        let has_active = self.accounts.active().is_some();
+        if has_active {
+            items.push(tr(lang, "Acc_Remove").into());
+        }
+        let current = self
+            .accounts
+            .active()
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| tr(lang, "Acc_None").to_string());
+        (items, sel, current)
+    }
+
+    /// Выбор пункта в списке аккаунтов (index — как в `account_ui`).
+    fn account_pick(&mut self, index: usize) {
+        let n = self.accounts.accounts.len();
+        if index == 0 {
+            self.accounts.active.clear();
+            self.accounts.save(&self.config.base());
+            logger::info("Запуск без аккаунта");
+        } else if index <= n {
+            let id = self.accounts.accounts[index - 1].id.clone();
+            self.accounts.active = id;
+            self.accounts.save(&self.config.base());
+            let name = self.accounts.accounts[index - 1].name.clone();
+            logger::info(format!("Активный аккаунт: {name}"));
+        } else if index == n + 1 {
+            self.open_save_dlg(Dlg::AccountCookie);
+        } else if index == n + 2 {
+            if let Some(a) = self.accounts.active().cloned() {
+                self.accounts.remove(&a.id);
+                self.accounts.save(&self.config.base());
+                logger::info(format!("Аккаунт удалён: {}", a.name));
+                self.save_dlg = None;
+                self.dlg_input.clear();
+            }
+        }
+    }
+
+    /// Добавить аккаунт по куке: сразу в список, имя — асинхронно.
+    fn account_add(&mut self, cookie: &str) {
+        let cookie = accounts::normalize_cookie(cookie);
+        if cookie.is_empty() {
+            return;
+        }
+        let id = self.accounts.add(&cookie, "…");
+        self.accounts.save(&self.config.base());
+        let tx = self.tx.clone();
+        let c = cookie.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            let name = match rt {
+                Ok(rt) => rt.block_on(accounts::fetch_username(&c)),
+                Err(_) => None,
+            };
+            let _ = tx.send(AsyncEvent::AccountAdded((id, name)));
+        });
     }
 
     fn push_versions(&self, ui: &AppWindow) {
@@ -2678,6 +2829,12 @@ impl Ctx {
                     .into(),
                 );
             }
+            Some(Dlg::AccountCookie) => {
+                ui.set_dlg_open(true);
+                ui.set_dlg_desc(tr(lang, "Acc_AddDesc").into());
+                ui.set_dlg_hint(tr(lang, "Acc_CookieHint").into());
+                ui.set_dlg_ok_label(tr(lang, "Acc_AddOk").into());
+            }
         }
     }
 
@@ -3051,6 +3208,7 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_home_link_paste(tr(lang, "Home_LinkPaste").into());
     t.set_home_chart(tr(lang, "Home_Chart").into());
     t.set_home_places(tr(lang, "Home_Places").into());
+    t.set_home_account(tr(lang, "Home_Account").into());
     t.set_games_h1(tr(lang, "Games_H1").into());
     t.set_games_sub(tr(lang, "Games_Sub").into());
     t.set_games_hint(tr(lang, "Games_Hint").into());
@@ -3376,6 +3534,20 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             if let Ok(mut c) = ctx.try_borrow_mut() {
                 c.link_msg = None;
             }
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_account_pick(move |i: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.account_pick(i.max(0) as usize);
+            }
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            c.push_home(&ui);
+            c.push_dlg(&ui);
         });
     }
 
@@ -4417,6 +4589,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     tray::spawn(tx.clone());
 
     let weak = ui.as_weak();
+    let accounts = Accounts::load(&config.base());
     let overlay = overlay::spawn(overlay::Params {
         enabled: config.overlay_on,
         bright: config.overlay_bright,
@@ -4453,6 +4626,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         games_msg: None,
         cfg_msg: None,
         overlay,
+        accounts,
         session_active: false,
         session_secs: 0,
         session_place: None,

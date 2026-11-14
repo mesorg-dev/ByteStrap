@@ -3,7 +3,7 @@
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { PageFade, Btn, TextField, ProgressBar, StatusDot } from "../widgets.slint";
+import { PageFade, Btn, TextField, ProgressBar, StatusDot, Combo } from "../widgets.slint";
 import { PlaceRow } from "../models.slint";
 
 export component HomePage inherits PageFade {
@@ -33,6 +33,10 @@ export component HomePage inherits PageFade {
     in-out property <[string]> play-labels: [];
     /// Строка живой сессии («в игре … · место …»), "" — скрыто.
     in-out property <string> session-text;
+    /// Аккаунты: список, выбранный индекс и имя активного.
+    in-out property <[string]> account-items: [];
+    in-out property <int> account-sel: 0;
+    in-out property <string> account-name: "";
     /// Windows-only кнопка «Вставить».
     in-out property <bool> share: true;
 
@@ -42,6 +46,7 @@ export component HomePage inherits PageFade {
     callback link-go(string);
     callback link-paste();
     callback link-changed();
+    callback account-pick(int);
 
     flick := Flickable {
         width: 100%;
@@ -92,6 +97,29 @@ export component HomePage inherits PageFade {
                 VerticalLayout {
                     padding: 22px;
                     spacing: 14px;
+
+                    // Аккаунт: выбор активного (и добавление/удаление).
+                    Rectangle {
+                        height: 32px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Text {
+                                text: T.home_account;
+                                width: 84px;
+                                font-size: 12px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            account-combo := Combo {
+                                dd-id: 300;
+                                horizontal-stretch: 1;
+                                items: root.account-items;
+                                selected: root.account-sel;
+                                current-text: root.account-name;
+                            }
+                        }
+                    }
 
                     // Строка: точка + статус + кнопки справа.
                     Rectangle {
