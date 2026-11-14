@@ -88,7 +88,20 @@ component NavItem inherits Rectangle {
 export component SideBar inherits Rectangle {
     /// Активная страница (0..7).
     in-out property <int> page: 0;
+    /// Пункт «Логи» можно скрыть в настройках.
+    in-out property <bool> show-logs: true;
     callback navigate(int);
+
+    /// Позиция пункта: скрытые «Логи» сдвигают «Настройки» и «О программе».
+    pure function item-y(kind: int) -> length {
+        (18px + kind * Theme.nav-step)
+            - ((!root.show-logs && kind > 5) ? Theme.nav-step : 0px)
+    }
+    /// Скользящий индикатор: индекс видимого пункта для активной страницы.
+    pure function ind-y() -> length {
+        (18px + (root.page - ((!root.show-logs && root.page > 5) ? 1 : 0)) * Theme.nav-step
+            + (Theme.nav-item-h - 20px) / 2)
+    }
 
     background: transparent;
 
@@ -96,7 +109,7 @@ export component SideBar inherits Rectangle {
     // которая плавно переезжает при смене страницы.
     Rectangle {
         x: 0;
-        y: 18px + root.page * Theme.nav-step + (Theme.nav-item-h - 20px) / 2;
+        y: root.ind-y();
         animate y { duration: Theme.t-mid; easing: ease-out; }
         width: 3px;
         height: 20px;
@@ -108,7 +121,7 @@ export component SideBar inherits Rectangle {
 
     NavItem {
         x: 12px;
-        y: 18px;
+        y: root.item-y(0);
         width: parent.width - 24px;
         kind: 0;
         label: T.nav_home;
@@ -117,7 +130,7 @@ export component SideBar inherits Rectangle {
     }
     NavItem {
         x: 12px;
-        y: 68px;
+        y: root.item-y(1);
         width: parent.width - 24px;
         kind: 1;
         label: T.nav_games;
@@ -126,7 +139,7 @@ export component SideBar inherits Rectangle {
     }
     NavItem {
         x: 12px;
-        y: 118px;
+        y: root.item-y(2);
         width: parent.width - 24px;
         kind: 2;
         label: T.nav_flags;
@@ -135,7 +148,7 @@ export component SideBar inherits Rectangle {
     }
     NavItem {
         x: 12px;
-        y: 168px;
+        y: root.item-y(3);
         width: parent.width - 24px;
         kind: 3;
         label: T.nav_versions;
@@ -144,16 +157,16 @@ export component SideBar inherits Rectangle {
     }
     NavItem {
         x: 12px;
-        y: 218px;
+        y: root.item-y(4);
         width: parent.width - 24px;
         kind: 4;
         label: T.nav_mods;
         active: root.page == 4;
         clicked => { root.navigate(4); }
     }
-    NavItem {
+    if root.show-logs : NavItem {
         x: 12px;
-        y: 268px;
+        y: root.item-y(5);
         width: parent.width - 24px;
         kind: 5;
         label: T.nav_logs;
@@ -162,7 +175,7 @@ export component SideBar inherits Rectangle {
     }
     NavItem {
         x: 12px;
-        y: 318px;
+        y: root.item-y(6);
         width: parent.width - 24px;
         kind: 6;
         label: T.nav_settings;
@@ -171,7 +184,7 @@ export component SideBar inherits Rectangle {
     }
     NavItem {
         x: 12px;
-        y: 368px;
+        y: root.item-y(7);
         width: parent.width - 24px;
         kind: 7;
         label: T.nav_about;

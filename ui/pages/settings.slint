@@ -23,6 +23,8 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> close-tray: true;
     /// Авто-очистка кэша раз в сутки.
     in-out property <bool> auto-clean: false;
+    /// Показывать вкладку «Логи» в сайдбаре.
+    in-out property <bool> show-logs: true;
     in-out property <bool> discord-rp: true;
     in-out property <bool> rp-place: true;
     in-out property <bool> rp-time: true;
@@ -69,6 +71,7 @@ export component SettingsPage inherits PageFade {
     callback path-reset();
     callback cleanup-run();
     callback close-tray-set(bool);
+    callback show-logs-set(bool);
     callback auto-clean-set(bool);
     callback cfg-export();
     callback cfg-import();
@@ -88,7 +91,7 @@ export component SettingsPage inherits PageFade {
         + (root.channel-preview-text == "" ? 0px : 26px)
         + (root.channel-changed ? 40px : 0px);
     property <length> h-lang: 90px;
-    property <length> h-behavior: 347px
+    property <length> h-behavior: 397px
         + (root.discord-rp ? 126px : 0px)
         + (root.deeplink-ok != 0 ? 26px : 0px);
     animate h-behavior { duration: Theme.t-mid; easing: ease-out; }
@@ -351,6 +354,12 @@ export component SettingsPage inherits PageFade {
                         desc: T.settings_close_tray_desc;
                         checked: root.close-tray;
                         toggled(v) => { root.close-tray-set(v); }
+                    }
+                    OptionRow {
+                        title: T.settings_show_logs;
+                        desc: T.settings_show_logs_desc;
+                        checked: root.show-logs;
+                        toggled(v) => { root.show-logs-set(v); }
                     }
                     OptionRow {
                         title: T.settings_discord_rp;

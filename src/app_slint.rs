@@ -26,9 +26,8 @@ use crate::core::places::{Places};
 use crate::core::flags::FlagError;
 use crate::core::overlay;
 use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
-#[cfg(windows)]
-use crate::tray;
 use crate::i18n::{fmt, tr, Lang};
+use crate::tray;
 
 // ===== Общие типы (перенесены из src/app.rs в Фазе 2) =====
 
@@ -176,6 +175,16 @@ fn clipboard_json() -> Option<String> {
         None
     } else {
         Some(trimmed)
+    }
+}
+
+/// Параметры оверлея из конфига.
+fn push_overlay(c: &Ctx) -> overlay::Params {
+    overlay::Params {
+        enabled: c.config.overlay_on,
+        bright: c.config.overlay_bright,
+        satur: c.config.overlay_sat,
+        contrast: c.config.overlay_contrast,
     }
 }
 
@@ -388,18 +397,23 @@ impl Ctx {
             return;
         };
         match launcher::exe_path(&self.config.base(), &guid) {
-            Some(exe) => match launcher::launch(&exe, arg) {
-                Ok(()) => {
-                    self.install.error = None;
-                    logger::info("Клиент Roblox запущен");
-                    self.start_session_watch();
-                    if self.config.close_on_launch {
-                        self.quit = true;
+            Some(exe) => {
+                // FastFlags: гарантированно на месте непосредственно перед
+                // запуском (после любых проверок/обновлений клиента).
+                self.ensure_flags_before_launch(&guid);
+                match launcher::launch(&exe, arg) {
+                    Ok(()) => {
+                        self.install.error = None;
+                        logger::info("Клиент Roblox запущен");
+                        self.start_session_watch();
+                        if self.config.close_on_launch {
+                            self.quit = true;
+                        }
                     }
-                }
-                Err(e) => {
-                    logger::error(format!("Не удалось запустить клиента: {e}"));
-                    self.install.error = Some(e.to_string());
+                    Err(e) => {
+                        logger::error(format!("Не удалось запустить клиента: {e}"));
+                        self.install.error = Some(e.to_string());
+                    }
                 }
             },
             None => {
@@ -418,6 +432,33 @@ impl Ctx {
             None => {
                 self.link_msg = Some((tr(self.lang, "Home_LinkBad").to_string(), true));
             }
+        }
+    }
+
+    /// Флаги перед запуском: активный профиль (или правки из памяти) пишем в
+    /// ClientSettings установленной версии — на случай затёртых апдейтом.
+    /// Пустой набор не пишем, чтобы не стирать сохранённый файл.
+    fn ensure_flags_before_launch(&mut self, guid: &str) {
+        let map: BTreeMap<String, String> =
+            if !self.config.active_flag_profile.is_empty() {
+                let profiles = flags::load_profiles(&self.config.base());
+                match profiles.profiles.get(&self.config.active_flag_profile) {
+                    Some(p) => flags::profile_to_flags(p).into_iter().collect(),
+                    None => self.flags.iter().cloned().collect(),
+                }
+            } else {
+                self.flags.iter().cloned().collect()
+            };
+        if map.is_empty() {
+            return;
+        }
+        let dir = self.flags_dir(guid);
+        match flags::save(&dir, &map) {
+            Ok(()) => {
+                self.flags = map.into_iter().collect();
+                self.flags_dirty = false;
+            }
+            Err(e) => logger::warn(format!("FastFlags: не удалось записать перед запуском: {e}")),
         }
     }
 
@@ -685,6 +726,43 @@ impl Ctx {
         });
     }
 
+    /// Пересборка меню трея: оверлей, профили флагов/модов, топ-3 игр.
+    fn refresh_tray(&self) {
+        let base = self.config.base();
+        let profiles = flags::load_profiles(&base);
+        let flag_profiles: Vec<String> = profiles.profiles.keys().cloned().collect();
+        let mod_profiles = mods::list_profiles(&base);
+        let games = self
+            .playtime
+            .top(3)
+            .into_iter()
+            .filter_map(|(id, e)| {
+                let pid: u64 = id.parse().ok()?;
+                let name = if e.name.is_empty() {
+                    format!("Place {id}")
+                } else {
+                    e.name.clone()
+                };
+                Some((pid, name))
+            })
+            .collect();
+        tray::sync(tray::TrayData {
+            overlay_on: self.config.overlay_on,
+            flag_profiles,
+            active_flag: self.config.active_flag_profile.clone(),
+            mod_profiles,
+            active_mod: self.config.active_mod_profile.clone(),
+            games,
+        });
+    }
+
+    /// Включить/выключить цветокоррекцию (из трея или UI) и сохранить.
+    fn set_overlay_on(&mut self, v: bool) {
+        self.config.overlay_on = v;
+        self.config.save();
+        self.overlay.update(push_overlay(self));
+    }
+
     /// Отправить в Discord активность по настройкам RP (что показывать).
     fn push_discord(&self, secs: u64) {
         let details = self
@@ -737,7 +815,12 @@ impl Ctx {
                             }
                         }
                         Ok(None) => UpdateUi::UpToDate,
-                        Err(e) => UpdateUi::Error(e),
+                        // Авто-проверка (не ручная) падает тихо: не спамим
+                        // ошибкой в UI из-за сети/лимитов GitHub API.
+                        Err(e) => {
+                            logger::warn(format!("Проверка обновлений: {e}"));
+                            UpdateUi::Idle
+                        }
                     };
                 }
                 AsyncEvent::UpdateProgress { done, total } => {
@@ -787,6 +870,7 @@ impl Ctx {
                         }
                         Err(e) => self.mods_msg = Some((e, true)),
                     }
+                    self.refresh_tray();
                 }
                 AsyncEvent::CleanupDone(freed, files) => {
                     self.cleanup_busy = false;
@@ -806,7 +890,8 @@ impl Ctx {
                 AsyncEvent::Tray(action) => match action {
                     tray::Action::Show => {
                         let ui = self.weak.clone().unwrap();
-                        ui.show().expect("show window");
+                        let _ = ui.show();
+                        winit_restore(&ui);
                     }
                     tray::Action::Play => {
                         self.play(None);
@@ -815,6 +900,26 @@ impl Ctx {
                     }
                     tray::Action::Quit => {
                         self.quit = true;
+                    }
+                    tray::Action::OverlayToggle => {
+                        self.set_overlay_on(!self.config.overlay_on);
+                        let ui = self.weak.clone().unwrap();
+                        ui.set_set_overlay_on(self.config.overlay_on);
+                        self.refresh_tray();
+                    }
+                    tray::Action::FlagProfile(name) => {
+                        self.apply_flag_profile(&name);
+                        let ui = self.weak.clone().unwrap();
+                        self.push_flags(&ui);
+                        self.refresh_tray();
+                    }
+                    tray::Action::ModProfile(name) => {
+                        self.start_mod_profile_load(name);
+                        self.refresh_tray();
+                    }
+                    tray::Action::Game(id) => {
+                        self.launch_place(id);
+                        self.refresh_tray();
                     }
                 },
                 AsyncEvent::PlaceName((id, name)) => {
@@ -844,9 +949,12 @@ impl Ctx {
                         self.session_secs = 0;
                         self.session_place = None;
                         self.session_display = None;
-                        let _ = self.discord.send(discord::Update::Idle);
                         self.playtime.merge(total, &places);
                         self.playtime.save(&self.config.base());
+                        // Возврат к статусу лаунчера / снятие активности.
+                        self.sync_discord();
+                        // Топ игр по времени мог измениться.
+                        self.refresh_tray();
                     }
                 },
             }
@@ -920,13 +1028,21 @@ impl Ctx {
 
     // ---- Обновления лаунчера (порт src/app.rs) ----
 
-    fn check_updates(&mut self) {
+    /// `force` — ручная кнопка «Проверить» (игнорирует 4-часовой гейт).
+    /// Авто-проверка на старте: не чаще раза в 4 часа, ошибки — тихо.
+    fn check_updates(&mut self, force: bool) {
         if matches!(
             self.update,
             UpdateUi::Checking | UpdateUi::Downloading { .. }
         ) {
             return;
         }
+        let now = playtime::now_unix();
+        if !force && now.saturating_sub(self.config.update_check_last) < 4 * 3600 {
+            return;
+        }
+        self.config.update_check_last = now;
+        self.config.save();
         self.update = UpdateUi::Checking;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
@@ -1252,6 +1368,7 @@ impl Ctx {
                         ));
                     }
                 }
+                self.refresh_tray();
             }
             None => {}
         }
@@ -1511,6 +1628,7 @@ impl Ctx {
                     Some((fmt(lang, "Flags_SaveErr", &[&e.to_string()]), true));
             }
         }
+        self.refresh_tray();
     }
 
     fn flags_profile_delete_request(&mut self) {
@@ -1766,10 +1884,13 @@ impl Ctx {
     }
 
     fn sync_discord(&self) {
-        if !self.config.discord_rp || !self.session_active {
+        if !self.config.discord_rp {
             let _ = self.discord.send(discord::Update::Idle);
-        } else if self.session_display.is_some() {
+        } else if self.session_active && self.session_display.is_some() {
             self.push_discord(self.session_secs);
+        } else {
+            // Лаунчер открыт, сессии нет — статус «в меню ByteStrap».
+            let _ = self.discord.send(discord::Update::Launcher);
         }
     }
 
@@ -1855,6 +1976,7 @@ impl Ctx {
                     }
                     Err(e) => self.mods_msg = Some((e.to_string(), true)),
                 }
+                self.refresh_tray();
             }
             Some(Confirm::ClearAll) => {
                 self.flags.clear();
@@ -1894,6 +2016,7 @@ impl Ctx {
                         ));
                     }
                 }
+                self.refresh_tray();
             }
             None => {}
         }
@@ -2141,6 +2264,7 @@ impl Ctx {
         ui.set_set_close_launch(self.config.close_on_launch);
         ui.set_set_close_tray(self.config.close_to_tray);
         ui.set_set_auto_clean(self.config.auto_clean);
+        ui.set_set_show_logs(self.config.show_logs);
         ui.set_set_discord_rp(self.config.discord_rp);
         ui.set_set_rp_place(self.config.discord_rp_place);
         ui.set_set_rp_time(self.config.discord_rp_time);
@@ -2711,6 +2835,34 @@ fn open_url(url: &str) {
 
 // ===== Операции с окном (winit доступен только на Windows) =====
 
+/// Стартовый размер не больше ~90% рабочей области экрана: на маленьких
+/// мониторах (1280×1024, 1366×768) окно 1120×700 иначе вылезает за края.
+#[cfg(windows)]
+fn clamp_window_to_screen(ui: &AppWindow) {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
+    let mut rc: RECT = unsafe { std::mem::zeroed() };
+    let ok = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut rc as *mut _ as *mut _, 0) };
+    if ok == 0 {
+        return;
+    }
+    let scale = ui.window().scale_factor();
+    let w = (rc.right - rc.left) as f32 / scale;
+    let h = (rc.bottom - rc.top) as f32 / scale;
+    // Минимум окна (820×520) не превышаем, даже если экран крошечный.
+    let max_w = (w * 0.9).max(820.0);
+    let max_h = (h * 0.9).max(520.0);
+    if max_w < 1120.0 || max_h < 700.0 {
+        ui.window().set_size(slint::PhysicalSize::new(
+            (max_w * scale).round() as u32,
+            (max_h * scale).round() as u32,
+        ));
+    }
+}
+
+#[cfg(not(windows))]
+fn clamp_window_to_screen(_ui: &AppWindow) {}
+
 #[cfg(windows)]
 fn winit_min(ui: &AppWindow) {
     let _ = ui.window().with_winit_window(|x| x.set_minimized(true));
@@ -2718,6 +2870,23 @@ fn winit_min(ui: &AppWindow) {
 
 #[cfg(not(windows))]
 fn winit_min(_ui: &AppWindow) {}
+
+/// Вернуть окно из трея: показать, развернуть из свернутого вида,
+/// вывести на передний план и отдать фокус (клик по иконке трея).
+
+#[cfg(windows)]
+fn winit_restore(ui: &AppWindow) {    let _ = ui.window().with_winit_window(|x| {
+        if !x.is_visible() {
+            x.set_visible(true);
+        }
+        x.set_minimized(false);
+        x.focus_window();
+    });
+}
+
+#[cfg(not(windows))]
+#[allow(dead_code)]
+fn winit_restore(_ui: &AppWindow) {}
 
 #[cfg(windows)]
 fn winit_toggle_max(ui: &AppWindow) {
@@ -2863,6 +3032,8 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_pic_contrast(tr(lang, "Settings_PicContrast").into());
     t.set_settings_close_tray(tr(lang, "Settings_CloseTray").into());
     t.set_settings_close_tray_desc(tr(lang, "Settings_CloseTrayDesc").into());
+    t.set_settings_show_logs(tr(lang, "Settings_ShowLogs").into());
+    t.set_settings_show_logs_desc(tr(lang, "Settings_ShowLogsDesc").into());
     t.set_settings_auto_clean(tr(lang, "Settings_AutoClean").into());
     t.set_settings_auto_clean_desc(tr(lang, "Settings_AutoCleanDesc").into());
     t.set_settings_profile(tr(lang, "Settings_Profile").into());
@@ -2928,7 +3099,19 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     // — Окно —
     {
         let w = weak.clone();
-        ui.on_win_min(move || winit_min(&w.unwrap()));
+        #[cfg_attr(not(windows), allow(unused_variables))]
+        let ctx2 = Rc::clone(ctx);
+        ui.on_win_min(move || {
+            let ui = &w.unwrap();
+            // Режим «сворачивать в трей»: кнопка «—» прячет окно с панели
+            // задач, процесс остаётся в трее.
+            #[cfg(windows)]
+            if ctx2.borrow().config.close_to_tray {
+                let _ = ui.hide();
+                return;
+            }
+            winit_min(ui);
+        });
     }
     {
         let w = weak.clone();
@@ -3210,7 +3393,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
         let weak = weak.clone();
         ui.on_about_check(move || {
             {
-                ctx.borrow_mut().check_updates();
+                ctx.borrow_mut().check_updates(true);
             }
             let c = ctx.borrow();
             c.push_about(&weak.unwrap());
@@ -3411,24 +3594,12 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
         });
     }
     // — Оверлей «Картинка клиента» —
-    fn push_overlay(c: &Ctx) -> overlay::Params {
-        overlay::Params {
-            enabled: c.config.overlay_on,
-            bright: c.config.overlay_bright,
-            satur: c.config.overlay_sat,
-            contrast: c.config.overlay_contrast,
-        }
-    }
     {
         let ctx = Rc::clone(ctx);
         let weak = weak.clone();
         ui.on_overlay_set(move |v: bool| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.overlay_on = v;
-                c.config.save();
-                c.overlay.update(push_overlay(&c));
-            }
+            ctx.borrow_mut().set_overlay_on(v);
+            ctx.borrow().refresh_tray();
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
         });
@@ -3505,6 +3676,21 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let mut c = ctx.borrow_mut();
             c.config.auto_clean = v;
             c.config.save();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_show_logs_set(move |v: bool| {
+            let mut c = ctx.borrow_mut();
+            c.config.show_logs = v;
+            c.config.save();
+            let ui = c.weak.clone().unwrap();
+            ui.set_set_show_logs(v);
+            // Скрыли «Логи», а открыты они — вернуться на главную.
+            if !v && ui.get_page() == 5 {
+                ui.set_page(0);
+            }
+            c.push_settings(&ui);
         });
     }
     {
@@ -3977,6 +4163,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     logger::info("Интерфейс Slint запущен");
 
     let ui = AppWindow::new()?;
+    clamp_window_to_screen(&ui);
     let config = Config::load();
     let lang = Lang::resolve(&config.language);
     apply_i18n(&ui, lang);
@@ -4008,6 +4195,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let deeplink_ok = deep_link::status();
     let channel_draft = config.channel.clone();
     let (discord, discord_rx) = discord::spawn();
+    // RP: сразу показываем статус лаунчера (если включено).
+    if config.discord_rp {
+        let _ = discord.send(discord::Update::Launcher);
+    }
 
     let (tx, rx) = mpsc::channel();
     let places = Places::load(&config.base());
@@ -4119,10 +4310,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
     }));
 
     wire(&ui, &ctx);
+    // Меню трея: начальные данные (оверлей, профили, топ игр).
+    ctx.borrow().refresh_tray();
     ui.set_about_version(updater::current_version().into());
     ui.set_win_share(cfg!(windows));
     if ctx.borrow().config.auto_update {
-        ctx.borrow_mut().check_updates();
+        ctx.borrow_mut().check_updates(false);
     }
     ctx.borrow().push_home(&ui);
 

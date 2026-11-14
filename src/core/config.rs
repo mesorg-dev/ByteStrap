@@ -45,8 +45,13 @@ pub struct Config {
     pub overlay_contrast: i32,
     /// Авто-очистка кэша раз в сутки.
     pub auto_clean: bool,
+    /// Показывать вкладку «Логи» в сайдбаре.
+    pub show_logs: bool,
     /// Unix-время последней авто-очистки.
     pub auto_clean_last: u64,
+    /// Unix-время последней проверки обновлений лаунчера (гейт 4 часа —
+    /// лимит GitHub API 60 запросов/час на IP).
+    pub update_check_last: u64,
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
@@ -78,7 +83,9 @@ impl Default for Config {
             overlay_sat: 100,
             overlay_contrast: 100,
             auto_clean: false,
+            show_logs: true,
             auto_clean_last: 0,
+            update_check_last: 0,
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,

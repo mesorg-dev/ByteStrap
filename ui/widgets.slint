@@ -154,6 +154,7 @@ export component TextField inherits Rectangle {
         y: 0;
         width: parent.width - 22px;
         height: parent.height;
+        vertical-alignment: center;
         single-line: true;
         font-size: 12px;
         font-family: Theme.font;
@@ -462,8 +463,11 @@ export component Slider inherits Rectangle {
         background: #ffffff14;
     }
 
-    // Заполнение.
+    // Заполнение: от левого края трека до центра бегунка.
+    // x: 0 обязателен — без явной позиции Slint центрирует элемент
+    // ((родитель − ширина) / 2), и полоса уползает вправо от бегунка.
     Rectangle {
+        x: 0;
         y: (parent.height - 4px) / 2;
         width: root.knob-x + 7px;
         height: 4px;

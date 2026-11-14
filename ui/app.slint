@@ -31,8 +31,8 @@ export component AppWindow inherits Window {
     title: "ByteStrap";
     no-frame: true;
     resize-border-width: 6px;
-    min-width: 940px;
-    min-height: 580px;
+    min-width: 820px;
+    min-height: 520px;
     preferred-width: 1120px;
     preferred-height: 700px;
     background: Theme.bg-deep;
@@ -140,6 +140,8 @@ export component AppWindow inherits Window {
     /// Сворачивать в трей вместо выхода (Windows).
     in-out property <bool> set-close-tray: true;
     in-out property <bool> set-auto-clean: false;
+    /// Показывать вкладку «Логи» в сайдбаре.
+    in-out property <bool> set-show-logs: true;
     in-out property <bool> set-discord-rp: true;
     in-out property <bool> set-rp-place: true;
     in-out property <bool> set-rp-time: true;
@@ -209,6 +211,7 @@ export component AppWindow inherits Window {
     callback close-launch-set(bool);
     callback close-tray-set(bool);
     callback auto-clean-set(bool);
+    callback show-logs-set(bool);
     callback cfg-export();
     callback cfg-import();
     callback discord-rp-set(bool);
@@ -296,6 +299,7 @@ export component AppWindow inherits Window {
             width: Theme.sidebar-w;
             height: parent.height - Theme.titlebar-h;
             page: root.page;
+            show-logs: root.set-show-logs;
             navigate(p) => { root.page = p; Dd.open = false; }
         }
 
@@ -472,6 +476,7 @@ export component AppWindow inherits Window {
                     close-launch: root.set-close-launch;
                     close-tray: root.set-close-tray;
                     auto-clean: root.set-auto-clean;
+                    show-logs: root.set-show-logs;
                     discord-rp: root.set-discord-rp;
                     rp-place: root.set-rp-place;
                     rp-time: root.set-rp-time;
@@ -502,6 +507,7 @@ export component AppWindow inherits Window {
                     close-launch-set(v) => { root.close-launch-set(v); }
                     close-tray-set(v) => { root.close-tray-set(v); }
                     auto-clean-set(v) => { root.auto-clean-set(v); }
+                    show-logs-set(v) => { root.show-logs-set(v); }
                     cfg-export => { root.cfg-export(); }
                     cfg-import => { root.cfg-import(); }
                     discord-rp-set(v) => { root.discord-rp-set(v); }
