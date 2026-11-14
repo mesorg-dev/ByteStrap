@@ -25,7 +25,7 @@ import { ModsPage } from "pages/mods.slint";
 import { FlagsPage } from "pages/flags.slint";
 import { GamesPage } from "pages/games.slint";
 import { AboutPage } from "pages/about.slint";
-import { PlaceRow, GameRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
+import { PlaceRow, GameRow, ServerRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -70,6 +70,9 @@ export component AppWindow inherits Window {
     in-out property <[GameRow]> games-rows: [];
     in-out property <string> games-msg: "";
     in-out property <bool> games-msg-err: false;
+    in-out property <[ServerRow]> games-servers: [];
+    in-out property <string> games-servers-msg: "";
+    in-out property <bool> games-servers-busy: false;
 
     // Аккаунты (Home)
     in-out property <[string]> account-items: [];
@@ -203,6 +206,9 @@ export component AppWindow inherits Window {
     callback games-launch(string);
     callback games-fav(string);
     callback games-remove(string);
+    callback games-servers-refresh(string);
+    callback games-servers-best(string);
+    callback games-server-join(string, string);
     callback log-select(int);
     callback log-refresh();
     callback log-copy();
@@ -386,10 +392,16 @@ export component AppWindow inherits Window {
                     rows: root.games-rows;
                     msg: root.games-msg;
                     msg-err: root.games-msg-err;
+                    servers: root.games-servers;
+                    servers-msg: root.games-servers-msg;
+                    servers-busy: root.games-servers-busy;
                     add(t) => { root.games-add(t); }
                     launch(id) => { root.games-launch(id); }
                     fav(id) => { root.games-fav(id); }
                     remove(id) => { root.games-remove(id); }
+                    servers-refresh(p) => { root.games-servers-refresh(p); }
+                    servers-best(p) => { root.games-servers-best(p); }
+                    server-join(p, j) => { root.games-server-join(p, j); }
                 }
 
                 if root.page == 5 : LogsPage {

@@ -14,6 +14,7 @@ pub mod places;
 pub mod playtime;
 pub mod presets;
 pub mod roblox_link;
+pub mod servers;
 pub mod share;
 pub mod updater;
 pub mod versions;

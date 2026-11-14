@@ -26,7 +26,7 @@ use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::places::{Places};
 use crate::core::flags::FlagError;
 use crate::core::overlay;
-use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, updater, versions};
+use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, servers, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::tray;
 
@@ -53,6 +53,8 @@ pub enum AsyncEvent {
     AccountAdded((String, Option<String>)),
     /// Получен auth-ticket аккаунта: ссылка запуска или ошибка.
     LaunchTicket(Result<String, String>),
+    /// Список серверов места: (placeId, результат).
+    Servers((u64, Result<Vec<servers::ServerInfo>, String>)),
     Session(SessionEvent),
 }
 
@@ -230,6 +232,11 @@ struct Ctx {
     link_msg: Option<(String, bool)>,
     /// (текст, ошибка) — строка под полем placeId на Games.
     games_msg: Option<(String, bool)>,
+    /// Публичные серверы места, выбранного для «Серверов».
+    servers_place: u64,
+    servers: Vec<servers::ServerInfo>,
+    servers_msg: Option<(String, bool)>,
+    servers_busy: bool,
     /// (текст, ошибка) — статус экспорта/импорта конфигурации.
     cfg_msg: Option<(String, bool)>,
     /// Оверлей «Картинка клиента» поверх окна Roblox.
@@ -403,6 +410,7 @@ impl Ctx {
             if !account.cookie.is_empty() {
                 let cookie = account.cookie.clone();
                 let place = arg.and_then(Self::parse_place);
+                let job = arg.and_then(Self::parse_job);
                 let tx = self.tx.clone();
                 self.install.error = None;
                 logger::info("Получаем auth-ticket аккаунта…");
@@ -413,7 +421,7 @@ impl Ctx {
                     let res = match rt {
                         Ok(rt) => rt
                             .block_on(accounts::auth_ticket(&cookie))
-                            .map(|t| accounts::launch_uri(&t, place))
+                            .map(|t| accounts::launch_uri(&t, place, job.as_deref()))
                             .map_err(|e| e.to_string()),
                         Err(e) => Err(e.to_string()),
                     };
@@ -527,6 +535,21 @@ impl Ctx {
         None
     }
 
+    /// JobId сервера из ввода (для захода в конкретный сервер).
+    fn parse_job(input: &str) -> Option<String> {
+        let t = input.trim();
+        let url = roblox_link::parse_arg(t)?;
+        let after = url
+            .split("gameInstanceId=")
+            .nth(1)
+            .or_else(|| url.split("jobId=").nth(1))?;
+        let job: String = after
+            .chars()
+            .take_while(|c| *c == '-' || c.is_ascii_alphanumeric())
+            .collect();
+        (!job.is_empty()).then_some(job)
+    }
+
     /// Кнопка «Играть» на Games: разобрать ввод, запомнить место и запустить.
     fn games_go(&mut self, input: &str) {
         let Some(id) = Self::parse_place(input) else {
@@ -584,6 +607,78 @@ impl Ctx {
         ));
     }
 
+    /// Загрузить список публичных серверов места (кнопка «Загрузить»).
+    fn refresh_servers(&mut self, input: &str) {
+        let Some(id) = Self::parse_place(input) else {
+            self.servers_msg = Some((tr(self.lang, "Games_Servers_BadId").to_string(), true));
+            return;
+        };
+        if self.servers_busy {
+            return;
+        }
+        self.servers_place = id;
+        self.servers_busy = true;
+        self.servers_msg = Some((tr(self.lang, "Games_Servers_Loading").to_string(), false));
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            let res = match rt {
+                Ok(rt) => rt.block_on(servers::fetch(id)).map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            };
+            let _ = tx.send(AsyncEvent::Servers((id, res)));
+        });
+    }
+
+    /// «Лучший сервер»: заходить в сервер с наименьшим пингом.
+    fn server_best(&mut self, input: &str) {
+        if self.servers.is_empty() {
+            self.refresh_servers(input);
+            return;
+        }
+        match servers::best(&self.servers) {
+            Some(s) => {
+                let id = s.id.clone();
+                self.server_join(&self.servers_place.to_string(), &id);
+            }
+            None => {
+                self.servers_msg = Some((tr(self.lang, "Games_Servers_None").to_string(), true));
+            }
+        }
+    }
+
+    /// Запуск клиента в конкретный сервер места (по JobId).
+    fn server_join(&mut self, place: &str, job: &str) {
+        let Some(id) = Self::parse_place(place) else {
+            self.servers_msg = Some((tr(self.lang, "Games_Servers_BadId").to_string(), true));
+            return;
+        };
+        if job.is_empty() {
+            return;
+        }
+        self.places.launch(id, &self.config.base());
+        self.places.save(&self.config.base());
+        let url = servers::server_uri(id, job);
+        self.play(Some(&url));
+        self.servers_msg = Some((
+            fmt(self.lang, "Games_Servers_Joining", &[job]),
+            false,
+        ));
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            let name = match rt {
+                Ok(rt) => rt.block_on(playtime::fetch_place_name(&id.to_string())),
+                Err(_) => None,
+            };
+            let _ = tx.send(AsyncEvent::PlaceName((id, name)));
+        });
+    }
+
     fn push_games(&self, ui: &AppWindow) {
         ui.set_games_msg(
             self.games_msg
@@ -623,6 +718,30 @@ impl Ctx {
             })
             .collect();
         ui.set_games_rows(ModelRc::new(VecModel::from(rows)));
+
+        ui.set_games_servers_msg(
+            self.servers_msg
+                .as_ref()
+                .map(|(t, _)| t.clone())
+                .unwrap_or_default()
+                .into(),
+        );
+        ui.set_games_servers_busy(self.servers_busy);
+        let srows: Vec<ServerRow> = self
+            .servers
+            .iter()
+            .map(|s| ServerRow {
+                id: s.id.clone().into(),
+                place: self.servers_place.to_string().into(),
+                players: format!("{}/{}", s.playing, s.max).into(),
+                ping: s
+                    .ping
+                    .map(|p| format!("{p} ms"))
+                    .unwrap_or_else(|| "—".into())
+                    .into(),
+            })
+            .collect();
+        ui.set_games_servers(ModelRc::new(VecModel::from(srows)));
     }
 
     /// Тултип трея (главный поток): сессия или просто имя.
@@ -1026,6 +1145,31 @@ impl Ctx {
                         self.install.error = Some(e);
                     }
                 },
+                AsyncEvent::Servers((place, res)) => {
+                    if place != self.servers_place {
+                        continue;
+                    }
+                    self.servers_busy = false;
+                    match res {
+                        Ok(list) => {
+                            self.servers_msg = Some((
+                                fmt(
+                                    self.lang,
+                                    "Games_Servers_Found",
+                                    &[&list.len().to_string()],
+                                ),
+                                false,
+                            ));
+                            self.servers = list;
+                        }
+                        Err(e) => {
+                            logger::error(format!("Сервера места {place}: {e}"));
+                            self.servers = Vec::new();
+                            self.servers_msg =
+                                Some((format!("{}: {e}", tr(self.lang, "Games_Servers_Err")), true));
+                        }
+                    }
+                }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
@@ -3219,6 +3363,14 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_games_empty(tr(lang, "Games_Empty").into());
     t.set_games_fav(tr(lang, "Games_Fav").into());
     t.set_games_remove(tr(lang, "Games_Remove").into());
+    t.set_games_servers(tr(lang, "Games_Servers").into());
+    t.set_games_servers_desc(tr(lang, "Games_Servers_Desc").into());
+    t.set_games_servers_load(tr(lang, "Games_Servers_Load").into());
+    t.set_games_servers_best(tr(lang, "Games_Servers_Best").into());
+    t.set_games_servers_job(tr(lang, "Games_Servers_Job").into());
+    t.set_games_servers_players(tr(lang, "Games_Servers_Players").into());
+    t.set_games_servers_ping(tr(lang, "Games_Servers_Ping").into());
+    t.set_games_servers_join(tr(lang, "Games_Servers_Join").into());
     t.set_logs_h1(tr(lang, "Logs_H1").into());
     t.set_logs_sub(tr(lang, "Logs_Sub").into());
     t.set_logs_launcher(tr(lang, "Logs_Launcher").into());
@@ -3461,6 +3613,34 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let c = ctx.borrow();
             let ui = weak.unwrap();
             c.push_games(&ui);
+        });
+    }
+    // — Сервера (страница Games) —
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_servers_refresh(move |p: SharedString| {
+            ctx.borrow_mut().refresh_servers(&p);
+            let c = ctx.borrow();
+            c.push_games(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_servers_best(move |p: SharedString| {
+            ctx.borrow_mut().server_best(&p);
+            let c = ctx.borrow();
+            c.push_games(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_server_join(move |p: SharedString, j: SharedString| {
+            ctx.borrow_mut().server_join(&p, &j);
+            let c = ctx.borrow();
+            c.push_games(&weak.unwrap());
         });
     }
 
@@ -4624,6 +4804,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
         places,
         link_msg: None,
         games_msg: None,
+        servers_place: 0,
+        servers: Vec::new(),
+        servers_msg: None,
+        servers_busy: false,
         cfg_msg: None,
         overlay,
         accounts,
@@ -4866,6 +5050,14 @@ mod shots {
         ]));
         ui.set_games_msg("Место 920587237 запущено".into());
         ui.set_games_msg_err(false);
+        ui.set_games_servers_msg("Серверов: 4".into());
+        ui.set_games_servers_busy(false);
+        ui.set_games_servers(rows(vec![
+            ServerRow { id: "3a9f1c2b-77de-4e01-9c3a-a1b2c3d4e5f6".into(), place: "920587237".into(), players: "38/50".into(), ping: "24 ms".into() },
+            ServerRow { id: "8f2b0d4a-1e33-4c77-b0aa-112233445566".into(), place: "920587237".into(), players: "50/50".into(), ping: "31 ms".into() },
+            ServerRow { id: "c1d2e3f4-a5b6-4c7d-8e9f-001122334455".into(), place: "920587237".into(), players: "12/50".into(), ping: "78 ms".into() },
+            ServerRow { id: "d4e5f6a7-b8c9-4d0e-9f1a-223344556677".into(), place: "920587237".into(), players: "45/50".into(), ping: "—".into() },
+        ]));
 
         // ---- Flags ----
         ui.set_flags_has_client(true);
@@ -5069,6 +5261,7 @@ mod shots {
         let shots: Vec<(i32, String)> = vec![
             (0, "0-home".into()),
             (1, "1-games".into()),
+            (1, "1-games-servers".into()),
             (2, "2-flags".into()),
             (3, "3-versions".into()),
             (4, "4-mods".into()),
@@ -5100,6 +5293,10 @@ mod shots {
                 "6-settings-b" => {
                     // Низ страницы настроек: карточка «Оформление».
                     scroll(&ui, -400.0, 6);
+                }
+                "1-games-servers" => {
+                    // Карточка «Сервера» под таблицей мест.
+                    scroll(&ui, -420.0, 6);
                 }
                 "4-mods-saveas" => {
                     ui.set_dlg_open(true);

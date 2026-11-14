@@ -159,18 +159,22 @@ pub async fn auth_ticket(cookie: &str) -> anyhow::Result<String> {
 }
 
 /// Собрать ссылку запуска `roblox-player:` с тикетом аккаунта.
-/// `place` — если задан, клиент сразу зайдёт в этот плейс.
-pub fn launch_uri(ticket: &str, place: Option<u64>) -> String {
+/// `place` — если задан, клиент сразу зайдёт в этот плейс;
+/// `job` — если задан JobId сервера, вход в конкретный сервер.
+pub fn launch_uri(ticket: &str, place: Option<u64>, job: Option<&str>) -> String {
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
     let btid = ms as u64 % 9_000_000_000 + 1_000_000_000;
-    let place_url = match place {
-        Some(id) => format!(
+    let place_url = match (place, job) {
+        (Some(id), Some(j)) => format!(
+            "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGameJob&browserTrackerId={btid}&placeId={id}&gameId={j}&isPlayTogetherGame=false"
+        ),
+        (Some(id), None) => format!(
             "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame&browserTrackerId={btid}&placeId={id}&isPlayTogetherGame=false"
         ),
-        None => "https://www.roblox.com/home".to_string(),
+        _ => "https://www.roblox.com/home".to_string(),
     };
     format!(
         "roblox-player:1+launchmode:play+gameinfo:{ticket}+launchtime:{ms}+placelauncherurl:{}+browsertrackerid:{btid}+robloxLocale:ru_ru+gameLocale:ru_ru+channel:",
