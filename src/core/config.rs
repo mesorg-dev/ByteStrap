@@ -47,6 +47,12 @@ pub struct Config {
     pub auto_clean: bool,
     /// Показывать вкладку «Логи» в сайдбаре.
     pub show_logs: bool,
+    /// Индекс акцентного цвета (палитра accents в app_slint).
+    pub theme_accent: u32,
+    /// Индекс фоновой палитры (глубина/оттенок фона).
+    pub theme_bg: u32,
+    /// Путь к пользовательскому фоновому изображению (пусто — нет).
+    pub bg_image: String,
     /// Unix-время последней авто-очистки.
     pub auto_clean_last: u64,
     /// Unix-время последней проверки обновлений лаунчера (гейт 4 часа —
@@ -84,6 +90,9 @@ impl Default for Config {
             overlay_contrast: 100,
             auto_clean: false,
             show_logs: true,
+            theme_accent: 0,
+            theme_bg: 0,
+            bg_image: String::new(),
             auto_clean_last: 0,
             update_check_last: 0,
             window_max: false,

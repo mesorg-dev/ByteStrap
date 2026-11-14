@@ -41,6 +41,10 @@ export component AppWindow inherits Window {
     // ===== Состояние (заполняет контроллер) =====
     in-out property <int> page: 0;
 
+    /// Пользовательский фон лаунчера.
+    in-out property <image> bg-image;
+    in-out property <bool> bg-image-on: false;
+
     in-out property <string> status-text: "";
     in-out property <int> status-dot: 0;
     in-out property <bool> busy: false;
@@ -164,6 +168,10 @@ export component AppWindow inherits Window {
     in-out property <int> set-overlay-bright: 0;
     in-out property <int> set-overlay-sat: 100;
     in-out property <int> set-overlay-contrast: 100;
+    /// Оформление: индекс акцента, индекс фона, имя файла фона.
+    in-out property <int> set-theme-accent: 0;
+    in-out property <int> set-theme-bg: 0;
+    in-out property <string> set-bg-image-name: "";
     /// Тело модального подтверждения ("" — закрыто).
     in-out property <string> confirm-body: "";
 
@@ -226,6 +234,10 @@ export component AppWindow inherits Window {
     callback overlay-bright-set(int);
     callback overlay-sat-set(int);
     callback overlay-contrast-set(int);
+    callback theme-accent-set(int);
+    callback theme-bg-set(int);
+    callback theme-bg-pick();
+    callback theme-bg-reset();
     callback confirm-yes();
     callback confirm-no();
     callback mods-open-folder();
@@ -264,6 +276,17 @@ export component AppWindow inherits Window {
     callback flags-profile-import();
     /// 0 — оставить, 1 — заменить, 2 — заменить все, 3 — отмена.
     callback import-decision(int);
+
+    // ===== Пользовательский фон (под звёздами) =====
+    if root.bg-image-on : Image {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        source: root.bg-image;
+        image-fit: cover;
+        opacity: 0.6;
+    }
 
     // ===== Звёздное небо под всем =====
     Starfield {
@@ -499,6 +522,9 @@ export component AppWindow inherits Window {
                     overlay-bright: root.set-overlay-bright;
                     overlay-sat: root.set-overlay-sat;
                     overlay-contrast: root.set-overlay-contrast;
+                    theme-accent: root.set-theme-accent;
+                    theme-bg: root.set-theme-bg;
+                    bg-image-name: root.set-bg-image-name;
                     channel-pick(c) => { root.ch-pick(c); }
                     channel-apply => { root.ch-apply(); }
                     lang-pick(i) => { root.lang-pick(i); }
@@ -522,6 +548,10 @@ export component AppWindow inherits Window {
                     overlay-bright-set(v) => { root.overlay-bright-set(v); }
                     overlay-sat-set(v) => { root.overlay-sat-set(v); }
                     overlay-contrast-set(v) => { root.overlay-contrast-set(v); }
+                    theme-accent-set(i) => { root.theme-accent-set(i); }
+                    theme-bg-set(i) => { root.theme-bg-set(i); }
+                    theme-bg-pick => { root.theme-bg-pick(); }
+                    theme-bg-reset => { root.theme-bg-reset(); }
                 }
                 if root.page == 7 : AboutPage {
                     width: 100%;

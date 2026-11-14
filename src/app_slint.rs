@@ -601,6 +601,23 @@ impl Ctx {
         }
     }
 
+    /// Выбрать пользовательский фон лаунчера (диалог файла).
+    #[cfg(not(windows))]
+    fn pick_bg_image(&mut self) {}
+
+    #[cfg(windows)]
+    fn pick_bg_image(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Фон ByteStrap")
+            .add_filter("Изображения", &["png", "jpg", "jpeg", "webp", "bmp"])
+            .pick_file()
+        {
+            self.config.bg_image = path.to_string_lossy().to_string();
+            self.config.save();
+            logger::info("Фон лаунчера обновлён");
+        }
+    }
+
     /// Экспорт конфигурации (настройки + флаги + места) одним JSON.
     #[cfg(not(windows))]
     fn cfg_export(&mut self) {}
@@ -2325,6 +2342,16 @@ impl Ctx {
         ui.set_set_overlay_sat(self.config.overlay_sat);
         ui.set_set_overlay_contrast(self.config.overlay_contrast);
 
+        ui.set_set_theme_accent(self.config.theme_accent as i32);
+        ui.set_set_theme_bg(self.config.theme_bg as i32);
+        ui.set_set_bg_image_name(
+            Path::new(self.config.bg_image.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .into(),
+        );
+
         ui.set_set_cleanup_busy(self.cleanup_busy);
         match &self.cleanup_msg {
             Some((text, err)) => {
@@ -2937,6 +2964,64 @@ fn winit_drag(ui: &AppWindow) {
 #[cfg(not(windows))]
 fn winit_drag(_ui: &AppWindow) {}
 
+// ===== Оформление: темы и фоны =====
+
+/// Акцентные цвета (r, g, b). Индексы совпадают с порядком в настройках.
+const ACCENTS: [(u8, u8, u8); 8] = [
+    (0xff, 0xff, 0xff), // белый
+    (0x6e, 0xa8, 0xfe), // лазурь
+    (0x7e, 0xe2, 0xb8), // мята
+    (0xb7, 0x9c, 0xff), // фиалка
+    (0xff, 0xcf, 0x7a), // янтарь
+    (0xff, 0x9d, 0xb3), // роза
+    (0x7f, 0xdc, 0xf0), // циан
+    (0xb6, 0xe2, 0x6a), // лайм
+];
+
+/// Фоновые палитры: (bg, bg-deep, sidebar).
+const BACKGROUNDS: [((u8, u8, u8), (u8, u8, u8), (u8, u8, u8)); 5] = [
+    ((0x05, 0x06, 0x0c), (0x03, 0x04, 0x09), (0x07, 0x08, 0x10)), // Stellar
+    ((0x07, 0x08, 0x17), (0x04, 0x05, 0x0e), (0x09, 0x0a, 0x1a)), // Indigo
+    ((0x04, 0x10, 0x1a), (0x02, 0x09, 0x11), (0x05, 0x12, 0x1e)), // Ocean
+    ((0x0c, 0x06, 0x14), (0x07, 0x03, 0x10), (0x10, 0x0a, 0x1c)), // Plum
+    ((0x06, 0x06, 0x07), (0x03, 0x03, 0x04), (0x09, 0x09, 0x0b)), // Carbon
+];
+
+fn rgb(c: (u8, u8, u8)) -> slint::Color {
+    slint::Color::from_rgb_u8(c.0, c.1, c.2)
+}
+
+/// Применить оформление: акцент, фон, пользовательскую картинку.
+fn apply_theme(ui: &AppWindow, cfg: &Config) {
+    let theme = ui.global::<Theme>();
+    let a = ACCENTS[(cfg.theme_accent as usize) % ACCENTS.len()];
+    theme.set_accent(rgb(a));
+    theme.set_on_accent(rgb((0x0b, 0x0e, 0x16)));
+    theme.set_glow(slint::Color::from_argb_u8(0x2b, a.0, a.1, a.2));
+
+    let (bg, deep, sb) = BACKGROUNDS[(cfg.theme_bg as usize) % BACKGROUNDS.len()];
+    theme.set_bg(rgb(bg));
+    theme.set_bg_deep(rgb(deep));
+    theme.set_sidebar(rgb(sb));
+
+    let path = cfg.bg_image.trim();
+    let on = !path.is_empty();
+    let img = if on { load_bg(path) } else { slint::Image::default() };
+    ui.set_bg_image(img);
+    ui.set_bg_image_on(on);
+}
+
+/// Загрузить пользовательский фон (декодеры картинок включены только на Windows).
+#[cfg(windows)]
+fn load_bg(path: &str) -> slint::Image {
+    slint::Image::load_from_path(Path::new(path)).unwrap_or_default()
+}
+
+#[cfg(not(windows))]
+fn load_bg(_path: &str) -> slint::Image {
+    slint::Image::default()
+}
+
 // ===== Перевод строк =====
 
 fn apply_i18n(ui: &AppWindow, lang: Lang) {
@@ -3068,6 +3153,12 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_profile_desc(tr(lang, "Settings_ProfileDesc").into());
     t.set_settings_profile_export(tr(lang, "Settings_ProfileExport").into());
     t.set_settings_profile_import(tr(lang, "Settings_ProfileImport").into());
+    t.set_settings_appearance(tr(lang, "Settings_Appearance").into());
+    t.set_settings_appearance_desc(tr(lang, "Settings_AppearanceDesc").into());
+    t.set_settings_accent(tr(lang, "Settings_Accent").into());
+    t.set_settings_bg(tr(lang, "Settings_Bg").into());
+    t.set_settings_bg_pick(tr(lang, "Settings_BgPick").into());
+    t.set_settings_bg_reset(tr(lang, "Settings_BgReset").into());
     t.set_btn_yes(tr(lang, "Btn_Yes").into());
     t.set_btn_no(tr(lang, "Btn_No").into());
     t.set_mods_h1(tr(lang, "Mods_H1").into());
@@ -3723,6 +3814,65 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     }
     {
         let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_theme_accent_set(move |i: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.theme_accent = i.max(0) as u32;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            apply_theme(&ui, &c.config);
+            c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_theme_bg_set(move |i: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.theme_bg = i.max(0) as u32;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            apply_theme(&ui, &c.config);
+            c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_theme_bg_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_bg_image();
+            }
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            apply_theme(&ui, &c.config);
+            c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_theme_bg_reset(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.bg_image.clear();
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            let ui = weak.unwrap();
+            apply_theme(&ui, &c.config);
+            c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
         ui.on_cfg_export(move || {
             ctx.borrow_mut().cfg_export();
             let c = ctx.borrow();
@@ -4195,6 +4345,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let config = Config::load();
     let lang = Lang::resolve(&config.language);
     apply_i18n(&ui, lang);
+    apply_theme(&ui, &config);
 
     // Звук интерфейса: движок (только Windows), начальные громкость/вкл.
     let audio = crate::audio::global();
@@ -4769,8 +4920,12 @@ mod shots {
             ui.set_import_open(false);
             ui.set_confirm_body("".into());
             match name.as_str() {
-                "2-flags-table" | "4-mods-files" | "6-settings-b" => {
+                "2-flags-table" | "4-mods-files" => {
                     scroll(&ui, -120.0, 6);
+                }
+                "6-settings-b" => {
+                    // Низ страницы настроек: карточка «Оформление».
+                    scroll(&ui, -400.0, 6);
                 }
                 "4-mods-saveas" => {
                     ui.set_dlg_open(true);

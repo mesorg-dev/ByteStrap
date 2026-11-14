@@ -57,6 +57,18 @@ export component SettingsPage inherits PageFade {
     in-out property <int> overlay-sat: 100;
     /// Контраст: 50..150.
     in-out property <int> overlay-contrast: 100;
+    // ===== Оформление =====
+    in-out property <int> theme-accent: 0;
+    in-out property <int> theme-bg: 0;
+    in-out property <string> bg-image-name: "";
+    /// Палитры акцентов и фонов (индексы совпадают с контроллером).
+    property <[int]> acc-idx: [0, 1, 2, 3, 4, 5, 6, 7];
+    property <[color]> acc-col: [
+        #ffffff, #6ea8fe, #7ee2b8, #b79cff,
+        #ffcf7a, #ff9db3, #7fdcf0, #b6e26a
+    ];
+    property <[int]> bg-idx: [0, 1, 2, 3, 4];
+    property <[color]> bg-col: [#05060c, #070817, #04101a, #0c0614, #060607];
 
     callback channel-pick(string);
     callback channel-apply();
@@ -81,6 +93,10 @@ export component SettingsPage inherits PageFade {
     callback overlay-bright-set(int);
     callback overlay-sat-set(int);
     callback overlay-contrast-set(int);
+    callback theme-accent-set(int);
+    callback theme-bg-set(int);
+    callback theme-bg-pick();
+    callback theme-bg-reset();
 
     changed path-token => {
         path-field.text = root.path;
@@ -100,6 +116,7 @@ export component SettingsPage inherits PageFade {
     property <length> h-path: 110px;
     property <length> h-cleanup: 162px;
     property <length> h-profile: 112px;
+    property <length> h-appearance: 224px;
 
     VerticalLayout {
         spacing: 0px;
@@ -126,7 +143,7 @@ export component SettingsPage inherits PageFade {
             content-height: c-channel.height + 12px + c-lang.height + 12px
                 + c-behavior.height + 12px + c-sound.height + 12px
                 + c-picture.height + 12px + c-path.height + 12px + c-cleanup.height + 12px
-                + c-profile.height + 16px;
+                + c-profile.height + 12px + c-appearance.height + 16px;
 
             // ===== Канал Roblox =====
             c-channel := Rectangle {
@@ -816,6 +833,120 @@ export component SettingsPage inherits PageFade {
                             font-size: 12px;
                             height: 32px;
                             color: root.cfg-msg-err ? Theme.bad : Theme.good;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+            }
+
+            // ===== Оформление: темы и фоны =====
+            c-appearance := Rectangle {
+                x: 0;
+                y: c-profile.y + c-profile.height + 12px;
+                width: 100%;
+                height: root.h-appearance;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: #ffffff17;
+                border-radius: Theme.r-card;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000055;
+                drop-shadow-offset-y: 4px;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: T.settings_appearance;
+                        font-weight: 600;
+                        font-size: 13px;
+                        height: 17px;
+                        color: Theme.fg;
+                    }
+                    Text {
+                        text: T.settings_appearance_desc;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dimmer;
+                    }
+
+                    Text {
+                        text: T.settings_accent;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dim;
+                    }
+
+                    // Акцентные цвета.
+                    HorizontalLayout {
+                        height: 26px;
+                        spacing: 9px;
+                        for i in root.acc-idx : Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 11px;
+                            background: root.acc-col[i];
+                            border-width: 2px;
+                            border-color: root.theme-accent == i ? Theme.fg : #00000000;
+                            animate border-color { duration: Theme.t-fast; }
+                            acc-touch := TouchArea {
+                                clicked => { root.theme-accent-set(i); }
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    Text {
+                        text: T.settings_bg;
+                        font-size: 11px;
+                        height: 15px;
+                        color: Theme.fg-dim;
+                    }
+
+                    // Базовые фоновые палитры.
+                    HorizontalLayout {
+                        height: 26px;
+                        spacing: 9px;
+                        for i in root.bg-idx : Rectangle {
+                            width: 36px;
+                            height: 22px;
+                            border-radius: 6px;
+                            background: root.bg-col[i];
+                            border-width: 2px;
+                            border-color: root.theme-bg == i ? Theme.accent : #ffffff26;
+                            animate border-color { duration: Theme.t-fast; }
+                            bg-touch := TouchArea {
+                                clicked => { root.theme-bg-set(i); }
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    // Пользовательский фон-картинка.
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.settings_bg_pick;
+                            kind: 0;
+                            width: 150px;
+                            height: 30px;
+                            clicked => { root.theme-bg-pick(); }
+                        }
+                        Btn {
+                            label: T.settings_bg_reset;
+                            kind: 2;
+                            width: 110px;
+                            height: 30px;
+                            clicked => { root.theme-bg-reset(); }
+                        }
+                        if root.bg-image-name != "" : Text {
+                            text: root.bg-image-name;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dim;
                             vertical-alignment: center;
                             overflow: elide;
                             horizontal-stretch: 1;
