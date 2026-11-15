@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod antiafk;
 pub mod cleanup;
 pub mod config;
 pub mod deep_link;

@@ -251,6 +251,8 @@ struct Ctx {
     session_display: Option<String>,
     /// Окно спрятано в трей на время игры (вернуть после выхода из Roblox).
     hidden_for_game: bool,
+    /// Запущенный поток Anti-AFK (пока идёт сессия).
+    anti_afk: Option<crate::core::antiafk::Handle>,
 
     tx: Sender<AsyncEvent>,
     rx: Receiver<AsyncEvent>,
@@ -774,6 +776,23 @@ impl Ctx {
         }
     }
 
+    /// Выбор своей картинки splash-экрана.
+    #[cfg(not(windows))]
+    fn pick_splash_image(&mut self) {}
+
+    #[cfg(windows)]
+    fn pick_splash_image(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Splash-экран ByteStrap")
+            .add_filter("Изображения", &["png", "jpg", "jpeg", "webp", "bmp"])
+            .pick_file()
+        {
+            self.config.splash_image = path.to_string_lossy().to_string();
+            self.config.save();
+            logger::info("Картинка splash-экрана обновлена");
+        }
+    }
+
     /// Экспорт конфигурации (настройки + флаги + места) одним JSON.
     #[cfg(not(windows))]
     fn cfg_export(&mut self) {}
@@ -894,6 +913,11 @@ impl Ctx {
         self.session_secs = 0;
         self.session_place = None;
         self.session_display = None;
+        // Anti-AFK: имитируем активность, пока играет клиент.
+        if self.config.anti_afk {
+            self.anti_afk = Some(crate::core::antiafk::start());
+            logger::info("Anti-AFK включён");
+        }
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let (stx, srx) = std::sync::mpsc::channel::<SessionEvent>();
@@ -1190,6 +1214,10 @@ impl Ctx {
                         self.session_secs = 0;
                         self.session_place = None;
                         self.session_display = None;
+                        // Anti-AFK больше не нужен.
+                        if self.anti_afk.take().is_some() {
+                            logger::info("Anti-AFK остановлен");
+                        }
                         self.playtime.merge(total, &places);
                         self.playtime.save(&self.config.base());
                         // Возврат к статусу лаунчера / снятие активности.
@@ -2623,6 +2651,16 @@ impl Ctx {
         ui.set_set_discord_text(dst.as_str().into());
 
         ui.set_set_deeplink(self.config.deeplink);
+        ui.set_set_anti_afk(self.config.anti_afk);
+        ui.set_set_splash_on(self.config.splash_on);
+        let spl_name = self
+            .config
+            .splash_image
+            .rsplit(['\\', '/'])
+            .next()
+            .unwrap_or("")
+            .to_string();
+        ui.set_set_splash_image_name(spl_name.as_str().into());
         ui.set_set_deeplink_ok(match self.deeplink_ok {
             None => 0,
             Some(true) => 1,
@@ -2641,6 +2679,14 @@ impl Ctx {
         ui.set_set_theme_bg(self.config.theme_bg as i32);
         ui.set_set_bg_image_name(
             Path::new(self.config.bg_image.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .into(),
+        );
+        ui.set_set_splash_on(self.config.splash_on);
+        ui.set_set_splash_image_name(
+            Path::new(self.config.splash_image.trim())
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
@@ -3315,11 +3361,21 @@ fn apply_theme(ui: &AppWindow, cfg: &Config) {
 /// Загрузить пользовательский фон (декодеры картинок включены только на Windows).
 #[cfg(windows)]
 fn load_bg(path: &str) -> slint::Image {
-    slint::Image::load_from_path(Path::new(path)).unwrap_or_default()
+    load_image(path)
 }
 
 #[cfg(not(windows))]
 fn load_bg(_path: &str) -> slint::Image {
+    load_image(_path)
+}
+
+#[cfg(windows)]
+fn load_image(path: &str) -> slint::Image {
+    slint::Image::load_from_path(Path::new(path)).unwrap_or_default()
+}
+
+#[cfg(not(windows))]
+fn load_image(_path: &str) -> slint::Image {
     slint::Image::default()
 }
 
@@ -3426,6 +3482,12 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_close_on_launch_desc(tr(lang, "Settings_CloseOnLaunchDesc").into());
     t.set_settings_discord_rp(tr(lang, "Settings_DiscordRP").into());
     t.set_settings_discord_rp_desc(tr(lang, "Settings_DiscordRPDesc").into());
+    t.set_settings_anti_afk(tr(lang, "Settings_AntiAfk").into());
+    t.set_settings_anti_afk_desc(tr(lang, "Settings_AntiAfkDesc").into());
+    t.set_settings_splash(tr(lang, "Settings_Splash").into());
+    t.set_settings_splash_desc(tr(lang, "Settings_SplashDesc").into());
+    t.set_settings_splash_pick(tr(lang, "Settings_SplashPick").into());
+    t.set_settings_splash_hint(tr(lang, "Settings_SplashHint").into());
     t.set_settings_rp_place(tr(lang, "Settings_DiscordRP_Place").into());
     t.set_settings_rp_time(tr(lang, "Settings_DiscordRP_Time").into());
     t.set_settings_rp_brand(tr(lang, "Settings_DiscordRP_Brand").into());
@@ -4019,6 +4081,34 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     }
     {
         let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_anti_afk_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.anti_afk = v;
+                c.config.save();
+                logger::info(if v {
+                    "Anti-AFK включён (настройки)"
+                } else {
+                    "Anti-AFK выключен (настройки)"
+                });
+                // Если сессия уже идёт — применяем сразу.
+                match (v, &c.anti_afk) {
+                    (true, None) if c.session_active => {
+                        c.anti_afk = Some(crate::core::antiafk::start());
+                    }
+                    (false, Some(_)) => {
+                        c.anti_afk = None;
+                    }
+                    _ => {}
+                }
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
         ui.on_path_edited(move |t: SharedString| {
             let mut c = ctx.borrow_mut();
             c.config.bytestrap_path = t.to_string();
@@ -4221,6 +4311,53 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let ui = weak.unwrap();
             apply_theme(&ui, &c.config);
             c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_splash_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.splash_on = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_splash_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_splash_image();
+                let img = load_image(&c.config.splash_image);
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_splash_img(img);
+                    ui.set_splash_img_on(!c.config.splash_image.is_empty());
+                }
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_splash_reset(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.splash_image.clear();
+                c.config.save();
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_splash_img(slint::Image::default());
+                    ui.set_splash_img_on(false);
+                }
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
         });
     }
     {
@@ -4699,6 +4836,22 @@ pub fn run() -> Result<(), slint::PlatformError> {
     apply_i18n(&ui, lang);
     apply_theme(&ui, &config);
 
+    // Splash-экран: показывается при старте, fade-out через 1.4 с (если включён).
+    if config.splash_on {
+        ui.set_splash_open(true);
+        if !config.splash_image.is_empty() {
+            ui.set_splash_img(load_image(&config.splash_image));
+            ui.set_splash_img_on(true);
+        }
+        let splash_weak = ui.as_weak();
+        let splash_timer = Timer::default();
+        splash_timer.start(TimerMode::SingleShot, Duration::from_millis(1400), move || {
+            if let Some(ui) = splash_weak.upgrade() {
+                ui.set_splash_open(false);
+            }
+        });
+    }
+
     // Звук интерфейса: движок (только Windows), начальные громкость/вкл.
     let audio = crate::audio::global();
     audio.set_enabled(config.sound);
@@ -4816,6 +4969,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         session_place: None,
         session_display: None,
         hidden_for_game: false,
+        anti_afk: None,
         tx,
         rx,
         cancel: None,
@@ -5222,6 +5376,7 @@ mod shots {
         ui.set_set_discord_status(1);
         ui.set_set_discord_text("Подключено".into());
         ui.set_set_deeplink(true);
+        ui.set_set_anti_afk(true);
         ui.set_set_deeplink_ok(1);
         ui.set_set_sound(true);
         ui.set_set_sound_vol(70);
@@ -5260,6 +5415,7 @@ mod shots {
 
         let shots: Vec<(i32, String)> = vec![
             (0, "0-home".into()),
+            (0, "0-splash".into()),
             (1, "1-games".into()),
             (1, "1-games-servers".into()),
             (2, "2-flags".into()),
@@ -5291,12 +5447,16 @@ mod shots {
                     scroll(&ui, -120.0, 6);
                 }
                 "6-settings-b" => {
-                    // Низ страницы настроек: карточка «Оформление».
-                    scroll(&ui, -400.0, 6);
+                    // Низ страницы настроек: карточка «Оформление» целиком.
+                    scroll(&ui, -560.0, 6);
                 }
                 "1-games-servers" => {
                     // Карточка «Сервера» под таблицей мест.
                     scroll(&ui, -420.0, 6);
+                }
+                "0-splash" => {
+                    // Splash-экран поверх всего.
+                    ui.set_splash_open(true);
                 }
                 "4-mods-saveas" => {
                     ui.set_dlg_open(true);

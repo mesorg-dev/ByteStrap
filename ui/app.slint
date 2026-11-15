@@ -44,6 +44,10 @@ export component AppWindow inherits Window {
     /// Пользовательский фон лаунчера.
     in-out property <image> bg-image;
     in-out property <bool> bg-image-on: false;
+    // Splash-экран при запуске (окно скрыто/показано контроллером).
+    in-out property <bool> splash-open: false;
+    in-out property <image> splash-img;
+    in-out property <bool> splash-img-on: false;
 
     in-out property <string> status-text: "";
     in-out property <int> status-dot: 0;
@@ -161,6 +165,7 @@ export component AppWindow inherits Window {
     in-out property <int> set-discord-status: 0;
     in-out property <string> set-discord-text: "";
     in-out property <bool> set-deeplink: true;
+    in-out property <bool> set-anti-afk: false;
     in-out property <int> set-deeplink-ok: 0;
     in-out property <string> set-path: "";
     in-out property <string> set-path-hint: "";
@@ -180,6 +185,8 @@ export component AppWindow inherits Window {
     in-out property <int> set-theme-accent: 0;
     in-out property <int> set-theme-bg: 0;
     in-out property <string> set-bg-image-name: "";
+    in-out property <bool> set-splash-on: true;
+    in-out property <string> set-splash-image-name: "";
     /// Тело модального подтверждения ("" — закрыто).
     in-out property <string> confirm-body: "";
 
@@ -237,6 +244,7 @@ export component AppWindow inherits Window {
     callback discord-rp-set(bool);
     callback rp-opt-set(int, bool);
     callback deeplink-set(bool);
+    callback anti-afk-set(bool);
     callback path-edited(string);
     callback path-reset();
     callback cleanup-run();
@@ -250,6 +258,9 @@ export component AppWindow inherits Window {
     callback theme-bg-set(int);
     callback theme-bg-pick();
     callback theme-bg-reset();
+    callback splash-set(bool);
+    callback splash-pick();
+    callback splash-reset();
     callback confirm-yes();
     callback confirm-no();
     callback mods-open-folder();
@@ -529,6 +540,7 @@ export component AppWindow inherits Window {
                     discord-status: root.set-discord-status;
                     discord-text: root.set-discord-text;
                     deeplink: root.set-deeplink;
+                    anti-afk: root.set-anti-afk;
                     deeplink-ok: root.set-deeplink-ok;
                     path: root.set-path;
                     path-hint: root.set-path-hint;
@@ -547,6 +559,8 @@ export component AppWindow inherits Window {
                     theme-accent: root.set-theme-accent;
                     theme-bg: root.set-theme-bg;
                     bg-image-name: root.set-bg-image-name;
+                    splash-on: root.set-splash-on;
+                    splash-image-name: root.set-splash-image-name;
                     channel-pick(c) => { root.ch-pick(c); }
                     channel-apply => { root.ch-apply(); }
                     lang-pick(i) => { root.lang-pick(i); }
@@ -561,6 +575,7 @@ export component AppWindow inherits Window {
                     discord-rp-set(v) => { root.discord-rp-set(v); }
                     rp-opt-set(k, v) => { root.rp-opt-set(k, v); }
                     deeplink-set(v) => { root.deeplink-set(v); }
+                    anti-afk-set(v) => { root.anti-afk-set(v); }
                     path-edited(t) => { root.path-edited(t); }
                     path-reset => { root.path-reset(); }
                     cleanup-run => { root.cleanup-run(); }
@@ -574,6 +589,9 @@ export component AppWindow inherits Window {
                     theme-bg-set(i) => { root.theme-bg-set(i); }
                     theme-bg-pick => { root.theme-bg-pick(); }
                     theme-bg-reset => { root.theme-bg-reset(); }
+                    splash-set(v) => { root.splash-set(v); }
+                    splash-pick => { root.splash-pick(); }
+                    splash-reset => { root.splash-reset(); }
                 }
                 if root.page == 7 : AboutPage {
                     width: 100%;
@@ -896,6 +914,61 @@ export component AppWindow inherits Window {
                     else if Dd.owner == 200 { root.mods-profile-pick(i); }
                     else if Dd.owner == 300 { root.account-pick(i); }
                 }
+            }
+        }
+    }
+
+    // ===== Splash-экран (поверх всего, исчезает fade-out) =====
+    Rectangle {
+        property <float> op: root.splash-open ? 1.0 : 0.0;
+        animate op { duration: 350ms; easing: ease-out; }
+
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        visible: op > 0.01;
+        opacity: op;
+        background: Theme.bg;
+
+        Image {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            source: root.splash-img;
+            image-fit: cover;
+            visible: root.splash-img-on;
+        }
+
+        VerticalLayout {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            padding: 40px;
+            alignment: center;
+
+            Text {
+                width: 100%;
+                height: 64px;
+                text: "ByteStrap";
+                font-family: Theme.font-display;
+                font-weight: 800;
+                font-size: 44px;
+                letter-spacing: 2px;
+                color: Theme.fg;
+                horizontal-alignment: center;
+                visible: !root.splash-img-on;
+            }
+            Text {
+                width: 100%;
+                height: 20px;
+                text: T.settings_splash_hint;
+                font-size: 13px;
+                color: Theme.fg-dim;
+                horizontal-alignment: center;
+                visible: !root.splash-img-on;
             }
         }
     }

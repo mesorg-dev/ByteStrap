@@ -53,6 +53,12 @@ pub struct Config {
     pub theme_bg: u32,
     /// Путь к пользовательскому фоновому изображению (пусто — нет).
     pub bg_image: String,
+    /// Anti-AFK: имитировать пробел в окне Roblox во время игры.
+    pub anti_afk: bool,
+    /// Показывать splash-экран при запуске лаунчера.
+    pub splash_on: bool,
+    /// Путь к пользовательскому изображению splash-экрана (пусто — логотип).
+    pub splash_image: String,
     /// Unix-время последней авто-очистки.
     pub auto_clean_last: u64,
     /// Unix-время последней проверки обновлений лаунчера (гейт 4 часа —
@@ -93,6 +99,9 @@ impl Default for Config {
             theme_accent: 0,
             theme_bg: 0,
             bg_image: String::new(),
+            anti_afk: false,
+            splash_on: true,
+            splash_image: String::new(),
             auto_clean_last: 0,
             update_check_last: 0,
             window_max: false,

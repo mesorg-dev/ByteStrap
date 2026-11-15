@@ -33,6 +33,8 @@ export component SettingsPage inherits PageFade {
     in-out property <int> discord-status: 0;
     in-out property <string> discord-text;
     in-out property <bool> deeplink: true;
+    /// Anti-AFK: имитация активности во время игры.
+    in-out property <bool> anti-afk: false;
     /// 0 — неизвестно, 1 — ок, 2 — ошибка.
     in-out property <int> deeplink-ok: 0;
     in-out property <string> path;
@@ -61,6 +63,8 @@ export component SettingsPage inherits PageFade {
     in-out property <int> theme-accent: 0;
     in-out property <int> theme-bg: 0;
     in-out property <string> bg-image-name: "";
+    in-out property <bool> splash-on: true;
+    in-out property <string> splash-image-name: "";
     /// Палитры акцентов и фонов (индексы совпадают с контроллером).
     property <[int]> acc-idx: [0, 1, 2, 3, 4, 5, 6, 7];
     property <[color]> acc-col: [
@@ -79,6 +83,7 @@ export component SettingsPage inherits PageFade {
     callback discord-rp-set(bool);
     callback rp-opt-set(int, bool);
     callback deeplink-set(bool);
+    callback anti-afk-set(bool);
     callback path-edited(string);
     callback path-reset();
     callback cleanup-run();
@@ -97,6 +102,9 @@ export component SettingsPage inherits PageFade {
     callback theme-bg-set(int);
     callback theme-bg-pick();
     callback theme-bg-reset();
+    callback splash-set(bool);
+    callback splash-pick();
+    callback splash-reset();
 
     changed path-token => {
         path-field.text = root.path;
@@ -107,7 +115,7 @@ export component SettingsPage inherits PageFade {
         + (root.channel-preview-text == "" ? 0px : 26px)
         + (root.channel-changed ? 40px : 0px);
     property <length> h-lang: 90px;
-    property <length> h-behavior: 397px
+    property <length> h-behavior: 447px
         + (root.discord-rp ? 126px : 0px)
         + (root.deeplink-ok != 0 ? 26px : 0px);
     animate h-behavior { duration: Theme.t-mid; easing: ease-out; }
@@ -116,7 +124,7 @@ export component SettingsPage inherits PageFade {
     property <length> h-path: 110px;
     property <length> h-cleanup: 162px;
     property <length> h-profile: 112px;
-    property <length> h-appearance: 224px;
+    property <length> h-appearance: 321px;
 
     VerticalLayout {
         spacing: 0px;
@@ -383,6 +391,12 @@ export component SettingsPage inherits PageFade {
                         desc: T.settings_discord_rp_desc;
                         checked: root.discord-rp;
                         toggled(v) => { root.discord-rp-set(v); }
+                    }
+                    OptionRow {
+                        title: T.settings_anti_afk;
+                        desc: T.settings_anti_afk_desc;
+                        checked: root.anti-afk;
+                        toggled(v) => { root.anti-afk-set(v); }
                     }
 
                     // Discord RP: плавно раскрывающийся под-блок
@@ -944,6 +958,45 @@ export component SettingsPage inherits PageFade {
                         }
                         if root.bg-image-name != "" : Text {
                             text: root.bg-image-name;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            color: Theme.fg-dim;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: #ffffff0d;
+                    }
+
+                    // Splash-экран при запуске.
+                    OptionRow {
+                        title: T.settings_splash;
+                        desc: T.settings_splash_desc;
+                        checked: root.splash-on;
+                        toggled(v) => { root.splash-set(v); }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Btn {
+                            label: T.settings_splash_pick;
+                            kind: 0;
+                            width: 150px;
+                            height: 30px;
+                            clicked => { root.splash-pick(); }
+                        }
+                        Btn {
+                            label: T.settings_bg_reset;
+                            kind: 2;
+                            width: 110px;
+                            height: 30px;
+                            clicked => { root.splash-reset(); }
+                        }
+                        if root.splash-image-name != "" : Text {
+                            text: root.splash-image-name;
                             font-family: Theme.font-mono;
                             font-size: 11px;
                             color: Theme.fg-dim;
