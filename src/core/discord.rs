@@ -30,7 +30,9 @@ pub enum Update {
         state: Option<String>,
         start: Option<u64>,
     },
-    /// Сессии нет — снять активность.
+    /// Лаунчер открыт, сессии нет — статус «в меню».
+    Launcher,
+    /// RP выключен/выход — снять активность и закрыть пайп.
     Idle,
 }
 
@@ -162,10 +164,12 @@ async fn worker(mut rx: UnboundedReceiver<Update>, status: UnboundedSender<Statu
             desired = Some(u);
         }
 
-        let wants_session = matches!(&desired, Some(Update::Session { .. }));
+        let wants_connect = desired.is_some();
 
-        // Ленивое подключение: только пока есть сессия, с паузой при ошибках.
-        if conn.is_none() && wants_session && Instant::now() >= next_retry {
+        // Ленивое подключение: пока есть что показать, с паузой при ошибках.
+        // Ретраи идут и для статуса лаунчера — Discord, запущенный позже
+        // лаунчера, подхватывается автоматически.
+        if conn.is_none() && wants_connect && Instant::now() >= next_retry {
             match Conn::connect().await {
                 Ok(c) => {
                     conn = Some(c);
@@ -201,7 +205,25 @@ async fn worker(mut rx: UnboundedReceiver<Update>, status: UnboundedSender<Statu
                         }
                     }
                 }
-                // Сессии нет: снять активность (если что-то отправляли) и закрыть пайп.
+                // Статус лаунчера: достаточно отправить один раз.
+                Some(u @ Update::Launcher) => {
+                    let needs = match &last_sent {
+                        None => true,
+                        Some((prev, _)) => prev != u,
+                    };
+                    if needs {
+                        let payload = set_activity_json(&nonce, u);
+                        if c.send(OP_FRAME, &payload).await.is_ok() {
+                            last_sent = Some((u.clone(), Instant::now()));
+                        } else {
+                            conn = None;
+                            last_sent = None;
+                            push_status(&status, &mut last_status,
+                                Status::Disconnected("connection lost".into()));
+                        }
+                    }
+                }
+                // RP выключен: снять активность (если что-то отправляли) и закрыть пайп.
                 _ => {
                     if last_sent.is_some() {
                         let payload = clear_activity_json(&nonce);
@@ -212,8 +234,8 @@ async fn worker(mut rx: UnboundedReceiver<Update>, status: UnboundedSender<Statu
                     push_status(&status, &mut last_status, Status::Idle);
                 }
             }
-        } else if !wants_session {
-            // Пайп уже закрыт (или не открывался) — сессии нет, статус спокоен.
+        } else if !wants_connect {
+            // Пайп уже закрыт (или не открывался) — RP выключен, статус спокоен.
             push_status(&status, &mut last_status, Status::Idle);
         }
     }
@@ -270,13 +292,10 @@ fn take_frame(buf: &mut Vec<u8>) -> Option<(u32, String)> {
 }
 
 fn set_activity_json(nonce: &std::sync::atomic::AtomicU64, u: &Update) -> String {
-    let Update::Session {
-        details,
-        state,
-        start,
-    } = u
-    else {
-        return clear_activity_json(nonce);
+    let (details, state, start) = match u {
+        Update::Session { details, state, start } => (details.clone(), state.clone(), *start),
+        Update::Launcher => (Some("В меню ByteStrap".to_string()), None, None),
+        Update::Idle => return clear_activity_json(nonce),
     };
     let mut act = String::new();
     if let Some(d) = details {

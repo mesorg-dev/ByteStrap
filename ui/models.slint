@@ -25,6 +25,18 @@ export struct GameRow {
     bad: bool,
 }
 
+/// Публичный сервер места (Games → список серверов).
+export struct ServerRow {
+    /// JobId сервера.
+    id: string,
+    /// placeId места.
+    place: string,
+    /// «12 / 50».
+    players: string,
+    /// «45 мс» или «—».
+    ping: string,
+}
+
 export struct VersionRow {
     guid: string,
     size: string,

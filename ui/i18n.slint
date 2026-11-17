@@ -35,6 +35,7 @@ export global T {
     in-out property <string> home_link_paste: "Вставить";
     in-out property <string> home_chart: "ИГРЫ ЗА 14 ДНЕЙ · МИНУТЫ";
     in-out property <string> home_places: "ВРЕМЯ ПО МЕСТАМ";
+    in-out property <string> home_account: "Аккаунт";
 
     // Games
     in-out property <string> games_h1: "Игры";
@@ -47,6 +48,14 @@ export global T {
     in-out property <string> games_empty: "Пока пусто — добавьте место по placeId.";
     in-out property <string> games_fav: "Избранное";
     in-out property <string> games_remove: "Убрать";
+    in-out property <string> games_servers: "Сервера";
+    in-out property <string> games_servers_desc: "Публичные серверы места: пинг и заполненность. Вход в конкретный сервер по JobId.";
+    in-out property <string> games_servers_load: "Загрузить";
+    in-out property <string> games_servers_best: "Лучший сервер";
+    in-out property <string> games_servers_job: "JOB ID";
+    in-out property <string> games_servers_players: "ИГРОКИ";
+    in-out property <string> games_servers_ping: "ПИНГ";
+    in-out property <string> games_servers_join: "Играть";
 
     // Логи
     in-out property <string> logs_h1: "Логи";
@@ -113,6 +122,12 @@ export global T {
     in-out property <string> settings_close_on_launch_desc: "Лаунчер свернётся, когда Roblox откроется";
     in-out property <string> settings_discord_rp: "Discord Rich Presence";
     in-out property <string> settings_discord_rp_desc: "Показывать статус игровой сессии в Discord";
+    in-out property <string> settings_anti_afk: "Anti-AFK";
+    in-out property <string> settings_anti_afk_desc: "Не отключать за неактивность: имитировать пробел раз в минуту";
+    in-out property <string> settings_splash: "Splash-экран";
+    in-out property <string> settings_splash_desc: "Заставка при запуске лаунчера";
+    in-out property <string> settings_splash_pick: "Свой splash…";
+    in-out property <string> settings_splash_hint: "Запуск ByteStrap…";
     in-out property <string> settings_rp_place: "Название места";
     in-out property <string> settings_rp_time: "Время сессии";
     in-out property <string> settings_rp_brand: "Надпись ByteStrap";
@@ -125,12 +140,20 @@ export global T {
     in-out property <string> settings_deeplink_fail: "Не удалось зарегистрировать протокол roblox://";
     in-out property <string> settings_close_tray: "Сворачивать в трей";
     in-out property <string> settings_close_tray_desc: "Закрытие окна оставляет лаунчер в трее";
+    in-out property <string> settings_show_logs: "Вкладка «Логи»";
+    in-out property <string> settings_show_logs_desc: "Показывать вкладку «Логи» в боковом меню";
     in-out property <string> settings_auto_clean: "Авто-очистка раз в сутки";
     in-out property <string> settings_auto_clean_desc: "Чистить кэш при запуске, если прошло больше 20 часов";
     in-out property <string> settings_profile: "Профиль конфигурации";
     in-out property <string> settings_profile_desc: "Настройки, профили флагов и места — одним JSON-файлом";
     in-out property <string> settings_profile_export: "Экспорт…";
     in-out property <string> settings_profile_import: "Импорт…";
+    in-out property <string> settings_appearance: "Оформление";
+    in-out property <string> settings_appearance_desc: "Акцентный цвет, фон и обои лаунчера";
+    in-out property <string> settings_accent: "Акцентный цвет";
+    in-out property <string> settings_bg: "Фон";
+    in-out property <string> settings_bg_pick: "Свой фон…";
+    in-out property <string> settings_bg_reset: "Сбросить";
     in-out property <string> settings_path: "Папка установки";
     in-out property <string> settings_path_desc: "Пусто — стандартная папка ByteStrap";
     in-out property <string> settings_path_reset: "Сбросить";

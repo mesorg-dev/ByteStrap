@@ -1,3 +1,5 @@
+pub mod accounts;
+pub mod antiafk;
 pub mod cleanup;
 pub mod config;
 pub mod deep_link;
@@ -13,6 +15,7 @@ pub mod places;
 pub mod playtime;
 pub mod presets;
 pub mod roblox_link;
+pub mod servers;
 pub mod share;
 pub mod updater;
 pub mod versions;
