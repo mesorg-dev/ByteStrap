@@ -118,6 +118,8 @@ pub enum SessionEvent {
         place: Option<String>,
         /// Имя места из API (если уже разрешено).
         place_name: Option<String>,
+        /// IP и порт игрового сервера (если найден в логе).
+        server: Option<(String, u16)>,
     },
     /// Процесс завершён: итог и разбивка по местам (id, name, secs).
     End {
@@ -130,6 +132,7 @@ pub enum SessionEvent {
 pub fn watch_session(tx: Sender<SessionEvent>) {
     let start = Instant::now();
     let mut place: Option<String> = None;
+    let mut server: Option<(String, u16)> = None;
     let mut per_place: BTreeMap<String, u64> = BTreeMap::new();
     let mut names: BTreeMap<String, String> = BTreeMap::new();
     let mut log_offset: u64 = 0;
@@ -144,8 +147,8 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
             log_path = newest_log();
         }
         if let Some(p) = &log_path {
-            let found = scan_new_place(p, &mut log_offset);
-            if let Some(id) = found {
+            let (found_place, found_server) = scan_log_events(p, &mut log_offset);
+            if let Some(id) = found_place {
                 if place.as_deref() != Some(id.as_str()) && !names.contains_key(&id) {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
@@ -158,6 +161,9 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
                 }
                 place = Some(id);
             }
+            if let Some(s) = found_server {
+                server = Some(s);
+            }
         }
         let total = start.elapsed().as_secs();
         if let Some(id) = &place {
@@ -167,6 +173,7 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
             secs: total,
             place: place.clone(),
             place_name: place.as_ref().and_then(|id| names.get(id)).cloned(),
+            server: server.clone(),
         });
     }
 
@@ -227,36 +234,50 @@ fn newest_log() -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-/// Читает новые байты лога и возвращает последний встретившийся placeId.
-fn scan_new_place(path: &Path, offset: &mut u64) -> Option<String> {
+/// Читает новые байты лога и возвращает (placeId, serverIp:port).
+fn scan_log_events(path: &Path, offset: &mut u64) -> (Option<String>, Option<(String, u16)>) {
     use std::io::{Read, Seek, SeekFrom};
 
-    let mut f = std::fs::File::open(path).ok()?;
-    let len = f.metadata().ok()?.len();
+    let mut f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return (None, None),
+    };
+    let len = match f.metadata() {
+        Ok(m) => m.len(),
+        Err(_) => return (None, None),
+    };
     if len < *offset {
         // лог перекатился
         *offset = 0;
     }
     if len == *offset {
-        return None;
+        return (None, None);
     }
-    f.seek(SeekFrom::Start(*offset)).ok()?;
+    if f.seek(SeekFrom::Start(*offset)).is_err() {
+        return (None, None);
+    }
     let mut buf = Vec::new();
-    f.take(len - *offset).read_to_end(&mut buf).ok()?;
+    if f.take(len - *offset).read_to_end(&mut buf).is_err() {
+        return (None, None);
+    }
     *offset = len;
 
     let text = String::from_utf8_lossy(&buf);
-    let mut found = None;
+    let mut found_place = None;
+    let mut found_server = None;
     for line in text.lines() {
         if let Some(id) = find_place_id(line) {
-            found = Some(id);
+            found_place = Some(id);
+        }
+        if let Some(s) = crate::core::servers::find_server_ip(line) {
+            found_server = Some(s);
         }
     }
-    found
+    (found_place, found_server)
 }
 
 /// `placeId=123…` / `"placeId":123` / `PlaceId: 123` → Some(id).
-fn find_place_id(line: &str) -> Option<String> {
+pub fn find_place_id(line: &str) -> Option<String> {
     let lower = line.to_ascii_lowercase();
     let mut idx = 0usize;
     while let Some(pos) = lower[idx..].find("placeid") {

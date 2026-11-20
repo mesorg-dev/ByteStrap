@@ -36,7 +36,7 @@ mod imp {
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows,
         GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, PeekMessageW,
         RegisterClassExW, SetLayeredWindowAttributes, SetWindowPos, ShowWindow,
-        TranslateMessage, MSG, WNDCLASSEXW, WNDENUMPROC, HWND_TOPMOST, LWA_ALPHA,
+        TranslateMessage, MSG, WNDCLASSEXW, HWND_TOPMOST, LWA_ALPHA,
         PM_REMOVE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
         WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
         WS_EX_TRANSPARENT, WS_POPUP, WS_VISIBLE,

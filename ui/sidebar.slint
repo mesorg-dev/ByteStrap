@@ -103,9 +103,18 @@ export component SideBar inherits Rectangle {
             + (Theme.nav-item-h - 20px) / 2)
     }
 
-    background: transparent;
+    background: #080a13f2;
 
-    // Скользящий индикатор активного пункта: белая линия с ореолом,
+    // Правая граница сайдбара для контраста поверх любых обоев.
+    Rectangle {
+        x: parent.width - 1px;
+        y: 0;
+        width: 1px;
+        height: parent.height;
+        background: #ffffff14;
+    }
+
+    // Скользящий индикатор активного пункта: акцентная линия с ореолом,
     // которая плавно переезжает при смене страницы.
     Rectangle {
         x: 0;
@@ -114,9 +123,9 @@ export component SideBar inherits Rectangle {
         width: 3px;
         height: 20px;
         border-radius: 1.5px;
-        background: #ffffff;
-        drop-shadow-blur: 7px;
-        drop-shadow-color: #ffffff59;
+        background: Theme.accent;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: Theme.glow;
     }
 
     NavItem {

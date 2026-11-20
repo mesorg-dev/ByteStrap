@@ -19,6 +19,11 @@ pub struct PlaceEntry {
     pub visits: u32,
     #[serde(default)]
     pub unix: u64,
+    /// Кастомное разрешение окна для этого плейса (0 = глобальное из настроек).
+    #[serde(default)]
+    pub custom_w: u32,
+    #[serde(default)]
+    pub custom_h: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -53,11 +58,13 @@ impl Places {
         let prev = self.items.iter().find(|e| e.id == id).cloned();
         self.items.retain(|e| e.id != id);
         let mut entry =
-            PlaceEntry { id, name: String::new(), fav: false, visits: 1, unix: now };
+            PlaceEntry { id, name: String::new(), fav: false, visits: 1, unix: now, custom_w: 0, custom_h: 0 };
         if let Some(p) = prev {
             entry.visits += p.visits;
             entry.name = p.name;
             entry.fav = p.fav;
+            entry.custom_w = p.custom_w;
+            entry.custom_h = p.custom_h;
         }
         self.items.insert(0, entry);
         if self.items.len() > CAP {
@@ -77,6 +84,14 @@ impl Places {
     pub fn toggle_fav(&mut self, id: u64, base: &Path) {
         if let Some(e) = self.items.iter_mut().find(|e| e.id == id) {
             e.fav = !e.fav;
+            self.save(base);
+        }
+    }
+
+    pub fn set_resolution(&mut self, id: u64, w: u32, h: u32, base: &Path) {
+        if let Some(e) = self.items.iter_mut().find(|e| e.id == id) {
+            e.custom_w = w;
+            e.custom_h = h;
             self.save(base);
         }
     }

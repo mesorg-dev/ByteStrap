@@ -183,7 +183,7 @@ export component ModsPage inherits PageFade {
 
                     for m in root.mods-list : Rectangle {
                         height: 34px;
-                        background: row-touch.has-hover ? #ffffff06 : transparent;
+                        background: row-touch.has-hover ? Theme.glass-hover : transparent;
                         animate background { duration: Theme.t-fast; }
 
                         // Захват ховера строки — снизу, не перекрывает тумблер.
@@ -215,7 +215,7 @@ export component ModsPage inherits PageFade {
                         Text {
                             x: 260px;
                             y: 0;
-                            width: parent.width - 260px - 116px;
+                            width: parent.width - 260px - 110px;
                             height: 34px;
                             text: m.meta;
                             font-family: Theme.font-mono;
@@ -225,26 +225,26 @@ export component ModsPage inherits PageFade {
                             overflow: elide;
                         }
 
-                        // Порядок и папка — справа.
+                        // Порядок и папка — справа (унифицированные 28×28).
                         GlyphBtn {
-                            x: parent.width - 104px;
-                            y: 4px;
+                            x: parent.width - 100px;
+                            y: 3px;
                             glyph: "↑";
                             enabled: m.can-up;
                             tip: T.mods_up;
                             clicked => { root.move-mod(m.id, -1); }
                         }
                         GlyphBtn {
-                            x: parent.width - 72px;
-                            y: 4px;
+                            x: parent.width - 66px;
+                            y: 3px;
                             glyph: "↓";
                             enabled: m.can-down;
                             tip: T.mods_down;
                             clicked => { root.move-mod(m.id, 1); }
                         }
                         IconBtn {
-                            x: parent.width - 40px;
-                            y: 2px;
+                            x: parent.width - 32px;
+                            y: 3px;
                             icon: 1;
                             tip: T.mods_open_folder;
                             clicked => { root.open-mod-folder(m.id); }

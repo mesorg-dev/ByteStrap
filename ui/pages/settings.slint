@@ -4,6 +4,7 @@
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { PageFade, Btn, TextField, OptionRow, StatusDot, Slider } from "../widgets.slint";
+import { Snd } from "../snd.slint";
 
 export component SettingsPage inherits PageFade {
     in-out property <bool> busy: false;
@@ -21,6 +22,14 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> close-launch: false;
     /// Сворачивать в трей вместо выхода (Windows).
     in-out property <bool> close-tray: true;
+    /// Центрирование окон
+    in-out property <bool> center-window: true;
+    in-out property <bool> center-game: false;
+    /// Разрешение окна Roblox: 0 — Авто, 1 — 1080p, 2 — 900p, 3 — 1440×1080 (4:3), 4 — 720p, 5 — 1024×768 (4:3), 6 — Своё.
+    in-out property <int> game-res-mode: 0;
+    in-out property <string> game-res-w: "1920";
+    in-out property <string> game-res-h: "1080";
+    in-out property <bool> live-bg: true;
     /// Авто-очистка кэша раз в сутки.
     in-out property <bool> auto-clean: false;
     /// Показывать вкладку «Логи» в сайдбаре.
@@ -29,6 +38,9 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> rp-place: true;
     in-out property <bool> rp-time: true;
     in-out property <bool> rp-brand: true;
+    in-out property <bool> rp-incognito: false;
+    in-out property <bool> rp-server: true;
+    in-out property <string> discord-custom: "";
     /// 0 — ожидание, 1 — подключено, 2 — ошибка.
     in-out property <int> discord-status: 0;
     in-out property <string> discord-text;
@@ -80,8 +92,16 @@ export component SettingsPage inherits PageFade {
     callback threads-set(int);
     callback auto-update-set(bool);
     callback close-launch-set(bool);
+    callback center-window-set(bool);
+    callback center-game-set(bool);
+    callback game-res-mode-set(int);
+    callback game-res-custom-set(int, int);
+    callback live-bg-set(bool);
     callback discord-rp-set(bool);
     callback rp-opt-set(int, bool);
+    callback rp-incognito-set(bool);
+    callback rp-server-set(bool);
+    callback discord-custom-set(string);
     callback deeplink-set(bool);
     callback anti-afk-set(bool);
     callback path-edited(string);
@@ -110,23 +130,9 @@ export component SettingsPage inherits PageFade {
         path-field.text = root.path;
     }
 
-    // Высоты карточек (вложенный макет упакован сверху, остаток — снизу).
-    property <length> h-channel: 110px
-        + (root.channel-preview-text == "" ? 0px : 26px)
-        + (root.channel-changed ? 40px : 0px);
-    property <length> h-lang: 90px;
-    property <length> h-behavior: 447px
-        + (root.discord-rp ? 126px : 0px)
-        + (root.deeplink-ok != 0 ? 26px : 0px);
-    animate h-behavior { duration: Theme.t-mid; easing: ease-out; }
-    property <length> h-sound: 142px;
-    property <length> h-picture: 206px;
-    property <length> h-path: 110px;
-    property <length> h-cleanup: 162px;
-    property <length> h-profile: 112px;
-    property <length> h-appearance: 321px;
-
     VerticalLayout {
+        width: 100%;
+        height: 100%;
         spacing: 0px;
 
         Text {
@@ -146,867 +152,1049 @@ export component SettingsPage inherits PageFade {
         Rectangle { height: 16px; }
 
         flick := Flickable {
+            width: 100%;
             vertical-stretch: 1;
-            content-width: self.width;
-            content-height: c-channel.height + 12px + c-lang.height + 12px
-                + c-behavior.height + 12px + c-sound.height + 12px
-                + c-picture.height + 12px + c-path.height + 12px + c-cleanup.height + 12px
-                + c-profile.height + 12px + c-appearance.height + 16px;
+            content-width: flick.width;
+            content-height: col.preferred-height;
 
-            // ===== Канал Roblox =====
-            c-channel := Rectangle {
-                x: 0;
-                y: 0;
-                width: 100%;
-                height: root.h-channel;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+            col := VerticalLayout {
+                width: flick.width;
+                spacing: 14px;
+                padding-bottom: 24px;
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                // ===== Канал Roblox =====
+                        c-channel := Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
 
-                    Text {
-                        text: T.settings_channel;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_channel_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
-
-                    HorizontalLayout {
+                    VerticalLayout {
+                        padding: 18px;
                         spacing: 8px;
-                        Btn {
-                            label: "LIVE";
-                            kind: root.channel-sel == 0 ? 1 : 2;
-                            active: root.channel-sel == 0;
-                            width: 90px;
-                            height: 30px;
-                            clicked => { root.channel-pick("LIVE"); }
-                        }
-                        Btn {
-                            label: "BETA";
-                            kind: root.channel-sel == 1 ? 1 : 2;
-                            active: root.channel-sel == 1;
-                            width: 90px;
-                            height: 30px;
-                            clicked => { root.channel-pick("BETA"); }
-                        }
-                        Btn {
-                            label: "ZNext";
-                            kind: root.channel-sel == 2 ? 1 : 2;
-                            active: root.channel-sel == 2;
-                            width: 90px;
-                            height: 30px;
-                            clicked => { root.channel-pick("ZNext"); }
-                        }
-                        Rectangle { horizontal-stretch: 1; }
-                    }
 
-                    if root.channel-preview-text != "" : Text {
-                        text: root.channel-preview-text;
-                        font-family: Theme.font-mono;
-                        font-size: 12px;
-                        height: 18px;
-                        color: root.channel-preview-kind == 2 ? Theme.good
-                            : root.channel-preview-kind == 3 ? Theme.bad
-                            : Theme.fg-dim;
-                        overflow: elide;
-                    }
+                        Text {
+                            text: T.settings_channel;
+                            font-weight: 600;
+                            font-size: 13px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: T.settings_channel_desc;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
 
-                    if root.channel-changed : Btn {
-                        label: T.settings_channel_apply;
-                        kind: 0;
-                        width: 240px;
-                        height: 32px;
-                        clicked => { root.channel-apply(); }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Btn {
+                                label: "LIVE";
+                                kind: root.channel-sel == 0 ? 1 : 2;
+                                active: root.channel-sel == 0;
+                                width: 90px;
+                                height: 30px;
+                                clicked => { root.channel-pick("LIVE"); }
+                            }
+                            Btn {
+                                label: "BETA";
+                                kind: root.channel-sel == 1 ? 1 : 2;
+                                active: root.channel-sel == 1;
+                                width: 90px;
+                                height: 30px;
+                                clicked => { root.channel-pick("BETA"); }
+                            }
+                            Btn {
+                                label: "ZNext";
+                                kind: root.channel-sel == 2 ? 1 : 2;
+                                active: root.channel-sel == 2;
+                                width: 90px;
+                                height: 30px;
+                                clicked => { root.channel-pick("ZNext"); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        if root.channel-preview-text != "" : Text {
+                            text: root.channel-preview-text;
+                            font-family: Theme.font-mono;
+                            font-size: 12px;
+                            color: root.channel-preview-kind == 2 ? Theme.good
+                                : root.channel-preview-kind == 3 ? Theme.bad
+                                : Theme.fg-dim;
+                            overflow: elide;
+                        }
+
+                        if root.channel-changed : Btn {
+                            label: T.settings_channel_apply;
+                            kind: 0;
+                            width: 240px;
+                            height: 32px;
+                            clicked => { root.channel-apply(); }
+                        }
                     }
                 }
-            }
 
-            // ===== Язык =====
-            c-lang := Rectangle {
-                x: 0;
-                y: c-channel.height + 12px;
-                width: 100%;
-                height: root.h-lang;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                // ===== Язык =====
+                c-lang := Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
-
-                    Text {
-                        text: T.settings_lang;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-
-                    HorizontalLayout {
+                    VerticalLayout {
+                        padding: 18px;
                         spacing: 8px;
-                        Btn {
-                            label: "Русский";
-                            kind: 2;
-                            active: root.lang-code == 0;
-                            width: 120px;
-                            height: 30px;
-                            clicked => { root.lang-pick(0); }
+
+                        Text {
+                            text: T.settings_lang;
+                            font-weight: 600;
+                            font-size: 13px;
+                            color: Theme.fg;
                         }
-                        Btn {
-                            label: "English";
-                            kind: 2;
-                            active: root.lang-code == 1;
-                            width: 120px;
-                            height: 30px;
-                            clicked => { root.lang-pick(1); }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Btn {
+                                label: "Русский";
+                                kind: 2;
+                                active: root.lang-code == 0;
+                                width: 120px;
+                                height: 30px;
+                                clicked => { root.lang-pick(0); }
+                            }
+                            Btn {
+                                label: "English";
+                                kind: 2;
+                                active: root.lang-code == 1;
+                                width: 120px;
+                                height: 30px;
+                                clicked => { root.lang-pick(1); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
                         }
-                        Rectangle { horizontal-stretch: 1; }
                     }
                 }
-            }
 
-            // ===== Поведение =====
-            c-behavior := Rectangle {
-                x: 0;
-                y: c-lang.y + c-lang.height + 12px;
-                width: 100%;
-                height: root.h-behavior;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                // ===== Потоки загрузки =====
+                c-threads := Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 10px;
 
-                    Text {
-                        text: T.settings_threads;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
+                        Text {
+                            text: T.settings_threads;
+                            font-weight: 600;
+                            font-size: 13px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: T.settings_threads_desc;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
+
+                        // Сегментный слайдер потоков 1..8 во всю ширину карточки
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            for i in 8 : Rectangle {
+                                horizontal-stretch: 1;
+                                height: 32px;
+                                border-radius: 6px;
+                                background: (i + 1) <= root.threads ? #ffffffd9 : #ffffff0f;
+                                border-width: 1px;
+                                border-color: (i + 1) <= root.threads ? #ffffff00 : #ffffff1a;
+                                animate background { duration: Theme.t-fast; }
+
+                                Text {
+                                    width: 100%;
+                                    height: 100%;
+                                    text: i + 1;
+                                    font-family: Theme.font-mono;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    color: (i + 1) <= root.threads ? #0b0d14 : Theme.fg-dim;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                seg-touch := TouchArea {
+                                    width: 100%;
+                                    height: 100%;
+                                    clicked => {
+                                        Snd.play(1);
+                                        root.threads-set(i + 1);
+                                    }
+                                }
+                            }
+                        }
                     }
-                    Text {
-                        text: T.settings_threads_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
+                }
 
-                    // Сегментный слайдер потоков 1..8.
-                    HorizontalLayout {
-                        spacing: 6px;
-                        for i in 8 : Rectangle {
-                            horizontal-stretch: 1;
-                            height: 24px;
-                            border-radius: 5px;
-                            background: (i + 1) <= root.threads ? #ffffffd9 : Theme.field;
-                            border-width: 1px;
-                            border-color: (i + 1) <= root.threads ? #ffffff00 : Theme.line;
-                            animate background { duration: Theme.t-fast; }
+                // ===== Поведение =====
+                c-behavior := Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
+
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 12px;
+
+                        Text {
+                            text: T.settings_behavior;
+                            font-weight: 600;
+                            font-size: 13px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: T.settings_behavior_desc;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
+
+                        OptionRow {
+                            title: T.settings_auto_update;
+                            desc: T.settings_auto_update_desc;
+                            checked: root.auto-update;
+                            toggled(v) => { root.auto-update-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_close_on_launch;
+                            desc: T.settings_close_on_launch_desc;
+                            checked: root.close-launch;
+                            toggled(v) => { root.close-launch-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_close_tray;
+                            desc: T.settings_close_tray_desc;
+                            checked: root.close-tray;
+                            toggled(v) => { root.close-tray-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_center_win;
+                            checked: root.center-window;
+                            toggled(v) => { root.center-window-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_center_game;
+                            checked: root.center-game;
+                            toggled(v) => { root.center-game-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_show_logs;
+                            desc: T.settings_show_logs_desc;
+                            checked: root.show-logs;
+                            toggled(v) => { root.show-logs-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_discord_rp;
+                            desc: T.settings_discord_rp_desc;
+                            checked: root.discord-rp;
+                            toggled(v) => { root.discord-rp-set(v); }
+                        }
+
+                        // Discord RP: раскрывающийся под-блок
+                        if root.discord-rp : Rectangle {
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                spacing: 12px;
+
+                                // Направляющая линия
+                                Rectangle {
+                                    width: 1px;
+                                    background: #ffffff26;
+                                }
+
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 8px;
+                                    padding-top: 2px;
+                                    padding-bottom: 4px;
+
+                                    HorizontalLayout {
+                                        height: 30px;
+                                        spacing: 8px;
+
+                                        Text {
+                                            text: T.settings_rp_custom;
+                                            font-size: 11px;
+                                            color: Theme.fg-dim;
+                                            vertical-alignment: center;
+                                            width: 86px;
+                                        }
+                                        cust-input := TextField {
+                                            text: root.discord-custom;
+                                            placeholder: T.settings_rp_custom_hint;
+                                            horizontal-stretch: 1;
+                                            height: 30px;
+                                            edited => { root.discord-custom-set(cust-input.text); }
+                                        }
+                                    }
+
+                                    OptionRow {
+                                        title: T.settings_rp_incognito;
+                                        desc: T.settings_rp_incognito_desc;
+                                        checked: root.rp-incognito;
+                                        toggled(v) => { root.rp-incognito-set(v); }
+                                    }
+                                    OptionRow {
+                                        title: T.settings_rp_server;
+                                        desc: T.settings_rp_server_desc;
+                                        checked: root.rp-server;
+                                        toggled(v) => { root.rp-server-set(v); }
+                                    }
+                                    OptionRow {
+                                        title: T.settings_rp_place;
+                                        checked: root.rp-place;
+                                        toggled(v) => { root.rp-opt-set(0, v); }
+                                    }
+                                    OptionRow {
+                                        title: T.settings_rp_time;
+                                        checked: root.rp-time;
+                                        toggled(v) => { root.rp-opt-set(1, v); }
+                                    }
+                                    OptionRow {
+                                        title: T.settings_rp_brand;
+                                        checked: root.rp-brand;
+                                        toggled(v) => { root.rp-opt-set(2, v); }
+                                    }
+
+                                    HorizontalLayout {
+                                        height: 18px;
+                                        spacing: 8px;
+
+                                        StatusDot {
+                                            kind: root.discord-status == 2 ? 3 : root.discord-status;
+                                        }
+                                        Text {
+                                            text: root.discord-text;
+                                            font-size: 11px;
+                                            color: root.discord-status == 1 ? Theme.good
+                                                : root.discord-status == 2 ? Theme.bad
+                                                : Theme.fg-dimmer;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        OptionRow {
+                            title: T.settings_anti_afk;
+                            desc: T.settings_anti_afk_desc;
+                            checked: root.anti-afk;
+                            toggled(v) => { root.anti-afk-set(v); }
+                        }
+
+                        OptionRow {
+                            title: T.settings_deeplink;
+                            desc: T.settings_deeplink_desc;
+                            checked: root.deeplink;
+                            toggled(v) => { root.deeplink-set(v); }
+                        }
+
+                        if root.deeplink-ok != 0 : HorizontalLayout {
+                            height: 18px;
+                            spacing: 8px;
+
+                            StatusDot {
+                                kind: root.deeplink-ok == 1 ? 1 : 3;
+                            }
+                            Text {
+                                text: root.deeplink-ok == 1 ? T.settings_deeplink_on : T.settings_deeplink_fail;
+                                font-size: 11px;
+                                color: root.deeplink-ok == 1 ? Theme.good : Theme.bad;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                }
+
+                // ===== Разрешение окна Roblox =====
+                c-res := Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
+
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 10px;
+
+                        Text {
+                            text: T.settings_game_res;
+                            font-weight: 600;
+                            font-size: 13px;
+                            color: Theme.fg;
+                        }
+                        Text {
+                            text: T.settings_game_res_desc;
+                            font-size: 11px;
+                            color: Theme.fg-dimmer;
+                        }
+
+                        // Сетка кнопок пресетов
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Btn {
+                                label: T.settings_res_auto;
+                                kind: 2;
+                                active: root.game-res-mode == 0;
+                                width: 75px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(0); }
+                            }
+                            Btn {
+                                label: "1080p";
+                                kind: 2;
+                                active: root.game-res-mode == 1;
+                                width: 75px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(1); }
+                            }
+                            Btn {
+                                label: "900p";
+                                kind: 2;
+                                active: root.game-res-mode == 2;
+                                width: 70px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(2); }
+                            }
+                            Btn {
+                                label: "720p";
+                                kind: 2;
+                                active: root.game-res-mode == 4;
+                                width: 70px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(4); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Btn {
+                                label: "1440×1080 (4:3)";
+                                kind: 2;
+                                active: root.game-res-mode == 3;
+                                width: 140px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(3); }
+                            }
+                            Btn {
+                                label: "1024×768 (4:3)";
+                                kind: 2;
+                                active: root.game-res-mode == 5;
+                                width: 130px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(5); }
+                            }
+                            Btn {
+                                label: T.settings_res_custom;
+                                kind: 2;
+                                active: root.game-res-mode == 6;
+                                width: 85px;
+                                height: 28px;
+                                clicked => { root.game-res-mode-set(6); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        // Поля ввода для кастомного режима (6)
+                        if root.game-res-mode == 6 : HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
 
                             Text {
-                                width: 100%;
-                                height: 100%;
-                                text: i + 1;
-                                font-family: Theme.font-mono;
-                                font-size: 11px;
-                                color: (i + 1) <= root.threads ? Theme.on-accent : Theme.fg-dim;
-                                horizontal-alignment: center;
+                                text: T.settings_res_w + ":";
+                                font-size: 12px;
+                                color: Theme.fg-dim;
                                 vertical-alignment: center;
                             }
-
-                            seg-touch := TouchArea {
-                                width: 100%;
-                                height: 100%;
-                                clicked => { root.threads-set(i + 1); }
+                            res-w-input := TextField {
+                                width: 90px;
+                                height: 28px;
+                                text: root.game-res-w;
+                                accepted => {
+                                    root.game-res-custom-set(self.text.to-float(), res-h-input.text.to-float());
+                                }
                             }
+                            Text {
+                                text: "×";
+                                font-size: 13px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: T.settings_res_h + ":";
+                                font-size: 12px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                            }
+                            res-h-input := TextField {
+                                width: 90px;
+                                height: 28px;
+                                text: root.game-res-h;
+                                accepted => {
+                                    root.game-res-custom-set(res-w-input.text.to-float(), self.text.to-float());
+                                }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
                         }
-                        Text {
-                            width: 26px;
-                            horizontal-stretch: 0;
-                            text: root.threads;
-                            font-family: Theme.font-mono;
-                            font-size: 12px;
-                            color: Theme.fg-dim;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
                     }
+                }
 
-                    Rectangle {
-                        height: 1px;
-                        background: #ffffff0d;
-                    }
+                        // ===== Путь установки =====
+                        c-path := Rectangle {
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: #ffffff17;
+                            border-radius: Theme.r-card;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000055;
+                            drop-shadow-offset-y: 4px;
 
-                    OptionRow {
-                        title: T.settings_auto_update;
-                        desc: T.settings_auto_update_desc;
-                        checked: root.auto-update;
-                        toggled(v) => { root.auto-update-set(v); }
-                    }
-                    OptionRow {
-                        title: T.settings_close_on_launch;
-                        desc: T.settings_close_on_launch_desc;
-                        checked: root.close-launch;
-                        toggled(v) => { root.close-launch-set(v); }
-                    }
-                    OptionRow {
-                        title: T.settings_close_tray;
-                        desc: T.settings_close_tray_desc;
-                        checked: root.close-tray;
-                        toggled(v) => { root.close-tray-set(v); }
-                    }
-                    OptionRow {
-                        title: T.settings_show_logs;
-                        desc: T.settings_show_logs_desc;
-                        checked: root.show-logs;
-                        toggled(v) => { root.show-logs-set(v); }
-                    }
-                    OptionRow {
-                        title: T.settings_discord_rp;
-                        desc: T.settings_discord_rp_desc;
-                        checked: root.discord-rp;
-                        toggled(v) => { root.discord-rp-set(v); }
-                    }
-                    OptionRow {
-                        title: T.settings_anti_afk;
-                        desc: T.settings_anti_afk_desc;
-                        checked: root.anti-afk;
-                        toggled(v) => { root.anti-afk-set(v); }
-                    }
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 8px;
 
-                    // Discord RP: плавно раскрывающийся под-блок
-                    // (высота анимируется, клиппинг скрывает контент).
-                    Rectangle {
-                        height: root.discord-rp ? 118px : 0px;
-                        animate height { duration: Theme.t-mid; easing: ease-out; }
-                        clip: true;
-                        opacity: root.discord-rp ? 1.0 : 0.0;
-                        animate opacity { duration: Theme.t-mid; }
-
-                        // Направляющая линия под-группы.
-                        Rectangle {
-                            x: 6px;
-                            y: 2px;
-                            width: 1px;
-                            height: parent.height - 10px;
-                            background: #ffffff26;
-                            animate background { duration: Theme.t-mid; }
-                        }
-
-                        VerticalLayout {
-                            x: 18px;
-                            width: parent.width - 22px;
-                            padding-left: 0px;
-                            padding-right: 4px;
-                            padding-top: 2px;
-                            padding-bottom: 0px;
-                            spacing: 4px;
-                            OptionRow {
-                                title: T.settings_rp_place;
-                                checked: root.rp-place;
-                                toggled(v) => { root.rp-opt-set(0, v); }
-                            }
-                            OptionRow {
-                                title: T.settings_rp_time;
-                                checked: root.rp-time;
-                                toggled(v) => { root.rp-opt-set(1, v); }
-                            }
-                            OptionRow {
-                                title: T.settings_rp_brand;
-                                checked: root.rp-brand;
-                                toggled(v) => { root.rp-opt-set(2, v); }
-                            }
-                            Rectangle {
-                                height: 18px;
-                                StatusDot {
-                                    x: 0;
-                                    y: 4px;
-                                    kind: root.discord-status == 2 ? 3 : root.discord-status;
+                                Text {
+                                    text: T.settings_path;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
                                 }
                                 Text {
-                                    x: 16px;
-                                    y: 0;
-                                    width: parent.width - 16px;
-                                    height: 18px;
-                                    text: root.discord-text;
+                                    text: T.settings_path_desc;
                                     font-size: 11px;
-                                    color: root.discord-status == 1 ? Theme.good
-                                        : root.discord-status == 2 ? Theme.bad
-                                        : Theme.fg-dimmer;
-                                    vertical-alignment: center;
-                                    overflow: elide;
+                                    color: Theme.fg-dimmer;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    path-field := TextField {
+                                        text: root.path;
+                                        placeholder: root.path-hint;
+                                        horizontal-stretch: 1;
+                                        edited => { root.path-edited(path-field.text); }
+                                    }
+                                    Btn {
+                                        label: T.settings_path_reset;
+                                        kind: 2;
+                                        width: 100px;
+                                        height: 30px;
+                                        clicked => { root.path-reset(); }
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    OptionRow {
-                        title: T.settings_deeplink;
-                        desc: T.settings_deeplink_desc;
-                        checked: root.deeplink;
-                        toggled(v) => { root.deeplink-set(v); }
-                    }
+                        // ===== Очистка =====
+                        c-cleanup := Rectangle {
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: #ffffff17;
+                            border-radius: Theme.r-card;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000055;
+                            drop-shadow-offset-y: 4px;
 
-                    if root.deeplink-ok != 0 : Rectangle {
-                        height: 18px;
-                        StatusDot {
-                            x: 0;
-                            y: 4px;
-                            kind: root.deeplink-ok == 1 ? 1 : 3;
-                        }
-                        Text {
-                            x: 16px;
-                            y: 0;
-                            width: parent.width - 16px;
-                            height: 18px;
-                            text: root.deeplink-ok == 1 ? T.settings_deeplink_on : T.settings_deeplink_fail;
-                            font-size: 11px;
-                            color: root.deeplink-ok == 1 ? Theme.good : Theme.bad;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                    }
-                }
-            }
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 8px;
 
-            // ===== Звук интерфейса =====
-            c-sound := Rectangle {
-                x: 0;
-                y: c-behavior.y + c-behavior.height + 12px;
-                width: 100%;
-                height: root.h-sound;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                                Text {
+                                    text: T.settings_cleanup;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.settings_cleanup_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dimmer;
+                                }
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                                OptionRow {
+                                    title: T.settings_auto_clean;
+                                    desc: T.settings_auto_clean_desc;
+                                    checked: root.auto-clean;
+                                    toggled(v) => { root.auto-clean-set(v); }
+                                }
 
-                    Text {
-                        text: T.settings_sound;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_sound_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
-
-                    OptionRow {
-                        title: T.settings_sound_on;
-                        checked: root.sound;
-                        toggled(v) => { root.sound-set(v); }
-                    }
-
-                    // Громкость: подпись + слайдер + процент.
-                    Rectangle {
-                        height: 26px;
-
-                        Text {
-                            x: 0;
-                            y: 0;
-                            width: 80px;
-                            height: 26px;
-                            text: T.settings_sound_volume;
-                            font-size: 12px;
-                            color: Theme.fg;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-
-                        vol-slider := Slider {
-                            x: 88px;
-                            y: 0;
-                            width: parent.width - 130px;
-                            height: 26px;
-                            enabled: root.sound;
-                            value: root.sound-vol / 100;
-                            changed => {
-                                root.sound-vol-set(Math.round(vol-slider.value * 100));
-                            }
-                            opacity: root.sound ? 1.0 : 0.4;
-                        }
-
-                        Text {
-                            x: parent.width - 38px;
-                            y: 0;
-                            width: 38px;
-                            height: 26px;
-                            text: root.sound-vol + "%";
-                            font-family: Theme.font-mono;
-                            font-size: 11px;
-                            color: Theme.fg-dim;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-            }
-
-            // ===== Картинка клиента (оверлей) =====
-            c-picture := Rectangle {
-                x: 0;
-                y: c-sound.y + c-sound.height + 12px;
-                width: 100%;
-                height: root.h-picture;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
-
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
-
-                    Text {
-                        text: T.settings_picture;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_picture_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
-
-                    OptionRow {
-                        title: T.settings_picture_on;
-                        checked: root.overlay-on;
-                        toggled(v) => { root.overlay-set(v); }
-                    }
-
-                    // Три слайдера: подпись + слайдер + значение.
-                    property <[int]> pic-kinds: [0, 1, 2];
-                    for pk in pic-kinds : Rectangle {
-                        height: 26px;
-
-                        Text {
-                            x: 0;
-                            y: 0;
-                            width: 80px;
-                            height: 26px;
-                            text: pk == 0 ? T.settings_pic_bright
-                                : pk == 1 ? T.settings_pic_sat
-                                : T.settings_pic_contrast;
-                            font-size: 12px;
-                            color: Theme.fg;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-
-                        pic-slider := Slider {
-                            x: 88px;
-                            y: 0;
-                            width: parent.width - 130px;
-                            height: 26px;
-                            enabled: root.overlay-on;
-                            value: pk == 0
-                                ? (root.overlay-bright + 50) / 100
-                                : pk == 1
-                                    ? root.overlay-sat / 200
-                                    : (root.overlay-contrast - 50) / 100;
-                            changed => {
-                                if pk == 0 {
-                                    root.overlay-bright-set(
-                                        Math.round(pic-slider.value * 100) - 50);
-                                } else if pk == 1 {
-                                    root.overlay-sat-set(
-                                        Math.round(pic-slider.value * 200));
-                                } else {
-                                    root.overlay-contrast-set(
-                                        Math.round(pic-slider.value * 100) + 50);
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    Btn {
+                                        label: root.cleanup-busy ? T.settings_cleanup_busy : T.settings_cleanup_btn;
+                                        kind: 0;
+                                        width: 160px;
+                                        height: 32px;
+                                        enabled: !root.cleanup-busy && !root.busy;
+                                        clicked => { root.cleanup-run(); }
+                                    }
+                                    if root.cleanup-text != "" : Text {
+                                        text: root.cleanup-text;
+                                        font-family: Theme.font-mono;
+                                        font-size: 12px;
+                                        height: 32px;
+                                        color: root.cleanup-err ? Theme.bad : Theme.good;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
                                 }
                             }
-                            opacity: root.overlay-on ? 1.0 : 0.4;
                         }
 
-                        Text {
-                            x: parent.width - 44px;
-                            y: 0;
-                            width: 44px;
-                            height: 26px;
-                            text: pk == 0
-                                ? (root.overlay-bright > 0 ? "+" : "")
-                                    + root.overlay-bright
-                                : (pk == 1 ? root.overlay-sat : root.overlay-contrast) + "%";
-                            font-family: Theme.font-mono;
-                            font-size: 11px;
-                            color: Theme.fg-dim;
-                            horizontal-alignment: right;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-            }
+                        // ===== Оформление: темы и фоны =====
+                        c-appearance := Rectangle {
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: #ffffff17;
+                            border-radius: Theme.r-card;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000055;
+                            drop-shadow-offset-y: 4px;
 
-            // ===== Путь установки =====
-            c-path := Rectangle {
-                x: 0;
-                y: c-picture.y + c-picture.height + 12px;
-                width: 100%;
-                height: root.h-path;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 8px;
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                                Text {
+                                    text: T.settings_appearance;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.settings_appearance_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dimmer;
+                                }
 
-                    Text {
-                        text: T.settings_path;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_path_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
+                                Text {
+                                    text: T.settings_accent;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
 
-                    HorizontalLayout {
-                        spacing: 8px;
-                        path-field := TextField {
-                            text: root.path;
-                            placeholder: root.path-hint;
-                            horizontal-stretch: 1;
-                            edited => { root.path-edited(path-field.text); }
-                        }
-                        Btn {
-                            label: T.settings_path_reset;
-                            kind: 2;
-                            width: 100px;
-                            height: 30px;
-                            clicked => { root.path-reset(); }
-                        }
-                    }
-                }
-            }
+                                // Акцентные цвета.
+                                HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 9px;
 
-            // ===== Очистка =====
-            c-cleanup := Rectangle {
-                x: 0;
-                y: c-path.y + c-path.height + 12px;
-                width: 100%;
-                height: root.h-cleanup;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                                    for i in root.acc-idx : Rectangle {
+                                        width: 22px;
+                                        height: 22px;
+                                        border-radius: 11px;
+                                        background: root.acc-col[i];
+                                        border-width: 2px;
+                                        border-color: root.theme-accent == i ? Theme.fg : #00000000;
+                                        animate border-color { duration: Theme.t-fast; }
+                                        acc-touch := TouchArea {
+                                            clicked => { root.theme-accent-set(i); }
+                                        }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                                Text {
+                                    text: T.settings_bg;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
 
-                    Text {
-                        text: T.settings_cleanup;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_cleanup_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
+                                // Базовые фоновые палитры.
+                                HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 9px;
 
-                    OptionRow {
-                        title: T.settings_auto_clean;
-                        desc: T.settings_auto_clean_desc;
-                        checked: root.auto-clean;
-                        toggled(v) => { root.auto-clean-set(v); }
-                    }
+                                    for i in root.bg-idx : Rectangle {
+                                        width: 36px;
+                                        height: 22px;
+                                        border-radius: 6px;
+                                        background: root.bg-col[i];
+                                        border-width: 2px;
+                                        border-color: root.theme-bg == i ? Theme.accent : #ffffff26;
+                                        animate border-color { duration: Theme.t-fast; }
+                                        bg-touch := TouchArea {
+                                            clicked => { root.theme-bg-set(i); }
+                                        }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                }
 
-                    HorizontalLayout {
-                        spacing: 12px;
-                        Btn {
-                            label: root.cleanup-busy ? T.settings_cleanup_busy : T.settings_cleanup_btn;
-                            kind: 0;
-                            width: 160px;
-                            height: 32px;
-                            enabled: !root.cleanup-busy && !root.busy;
-                            clicked => { root.cleanup-run(); }
-                        }
-                        if root.cleanup-text != "" : Text {
-                            text: root.cleanup-text;
-                            font-family: Theme.font-mono;
-                            font-size: 12px;
-                            height: 32px;
-                            color: root.cleanup-err ? Theme.bad : Theme.good;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                    }
-                }
-            }
+                                // Пользовательский фон-картинка.
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Btn {
+                                        label: T.settings_bg_pick;
+                                        kind: 0;
+                                        width: 150px;
+                                        height: 30px;
+                                        clicked => { root.theme-bg-pick(); }
+                                    }
+                                    Btn {
+                                        label: T.settings_bg_reset;
+                                        kind: 2;
+                                        width: 110px;
+                                        height: 30px;
+                                        clicked => { root.theme-bg-reset(); }
+                                    }
+                                    if root.bg-image-name != "" : Text {
+                                        text: root.bg-image-name;
+                                        font-family: Theme.font-mono;
+                                        font-size: 11px;
+                                        color: Theme.fg-dim;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
 
-            // ===== Профиль конфигурации: экспорт/импорт =====
-            c-profile := Rectangle {
-                x: 0;
-                y: c-cleanup.y + c-cleanup.height + 12px;
-                width: 100%;
-                height: root.h-profile;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                                OptionRow {
+                                    title: T.settings_live_bg;
+                                    desc: T.settings_live_bg_desc;
+                                    checked: root.live-bg;
+                                    toggled(v) => { root.live-bg-set(v); }
+                                }
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
+                                Rectangle {
+                                    height: 1px;
+                                    background: #ffffff0d;
+                                }
 
-                    Text {
-                        text: T.settings_profile;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_profile_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
-
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Btn {
-                            label: T.settings_profile_export;
-                            kind: 0;
-                            width: 110px;
-                            height: 32px;
-                            clicked => { root.cfg-export(); }
-                        }
-                        Btn {
-                            label: T.settings_profile_import;
-                            kind: 2;
-                            width: 100px;
-                            height: 32px;
-                            clicked => { root.cfg-import(); }
-                        }
-                        if root.cfg-msg != "" : Text {
-                            text: root.cfg-msg;
-                            font-family: Theme.font-mono;
-                            font-size: 12px;
-                            height: 32px;
-                            color: root.cfg-msg-err ? Theme.bad : Theme.good;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                    }
-                }
-            }
-
-            // ===== Оформление: темы и фоны =====
-            c-appearance := Rectangle {
-                x: 0;
-                y: c-profile.y + c-profile.height + 12px;
-                width: 100%;
-                height: root.h-appearance;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
-
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 8px;
-
-                    Text {
-                        text: T.settings_appearance;
-                        font-weight: 600;
-                        font-size: 13px;
-                        height: 17px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: T.settings_appearance_desc;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dimmer;
-                    }
-
-                    Text {
-                        text: T.settings_accent;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dim;
-                    }
-
-                    // Акцентные цвета.
-                    HorizontalLayout {
-                        height: 26px;
-                        spacing: 9px;
-                        for i in root.acc-idx : Rectangle {
-                            width: 22px;
-                            height: 22px;
-                            border-radius: 11px;
-                            background: root.acc-col[i];
-                            border-width: 2px;
-                            border-color: root.theme-accent == i ? Theme.fg : #00000000;
-                            animate border-color { duration: Theme.t-fast; }
-                            acc-touch := TouchArea {
-                                clicked => { root.theme-accent-set(i); }
+                                // Splash-экран при запуске.
+                                OptionRow {
+                                    title: T.settings_splash;
+                                    desc: T.settings_splash_desc;
+                                    checked: root.splash-on;
+                                    toggled(v) => { root.splash-set(v); }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Btn {
+                                        label: T.settings_splash_pick;
+                                        kind: 0;
+                                        width: 150px;
+                                        height: 30px;
+                                        clicked => { root.splash-pick(); }
+                                    }
+                                    Btn {
+                                        label: T.settings_bg_reset;
+                                        kind: 2;
+                                        width: 110px;
+                                        height: 30px;
+                                        clicked => { root.splash-reset(); }
+                                    }
+                                    if root.splash-image-name != "" : Text {
+                                        text: root.splash-image-name;
+                                        font-family: Theme.font-mono;
+                                        font-size: 11px;
+                                        color: Theme.fg-dim;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
                             }
                         }
-                        Rectangle { horizontal-stretch: 1; }
-                    }
 
-                    Text {
-                        text: T.settings_bg;
-                        font-size: 11px;
-                        height: 15px;
-                        color: Theme.fg-dim;
-                    }
+                        // ===== Звук интерфейса =====
+                        c-sound := Rectangle {
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: #ffffff17;
+                            border-radius: Theme.r-card;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000055;
+                            drop-shadow-offset-y: 4px;
 
-                    // Базовые фоновые палитры.
-                    HorizontalLayout {
-                        height: 26px;
-                        spacing: 9px;
-                        for i in root.bg-idx : Rectangle {
-                            width: 36px;
-                            height: 22px;
-                            border-radius: 6px;
-                            background: root.bg-col[i];
-                            border-width: 2px;
-                            border-color: root.theme-bg == i ? Theme.accent : #ffffff26;
-                            animate border-color { duration: Theme.t-fast; }
-                            bg-touch := TouchArea {
-                                clicked => { root.theme-bg-set(i); }
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 8px;
+
+                                Text {
+                                    text: T.settings_sound;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.settings_sound_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dimmer;
+                                }
+
+                                OptionRow {
+                                    title: T.settings_sound_on;
+                                    checked: root.sound;
+                                    toggled(v) => { root.sound-set(v); }
+                                }
+
+                                // Громкость: подпись + слайдер + процент.
+                                HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 12px;
+
+                                    Text {
+                                        width: 80px;
+                                        text: T.settings_sound_volume;
+                                        font-size: 12px;
+                                        color: Theme.fg;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    vol-slider := Slider {
+                                        horizontal-stretch: 1;
+                                        height: 26px;
+                                        enabled: root.sound;
+                                        value: root.sound-vol / 100;
+                                        changed => {
+                                            root.sound-vol = Math.round(self.value * 100);
+                                            root.sound-vol-set(root.sound-vol);
+                                        }
+                                        opacity: root.sound ? 1.0 : 0.4;
+                                    }
+
+                                    Text {
+                                        width: 38px;
+                                        text: root.sound-vol + "%";
+                                        font-family: Theme.font-mono;
+                                        font-size: 11px;
+                                        color: Theme.fg-dim;
+                                        horizontal-alignment: right;
+                                        vertical-alignment: center;
+                                    }
+                                }
                             }
                         }
-                        Rectangle { horizontal-stretch: 1; }
-                    }
 
-                    // Пользовательский фон-картинка.
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Btn {
-                            label: T.settings_bg_pick;
-                            kind: 0;
-                            width: 150px;
-                            height: 30px;
-                            clicked => { root.theme-bg-pick(); }
-                        }
-                        Btn {
-                            label: T.settings_bg_reset;
-                            kind: 2;
-                            width: 110px;
-                            height: 30px;
-                            clicked => { root.theme-bg-reset(); }
-                        }
-                        if root.bg-image-name != "" : Text {
-                            text: root.bg-image-name;
-                            font-family: Theme.font-mono;
-                            font-size: 11px;
-                            color: Theme.fg-dim;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            horizontal-stretch: 1;
-                        }
-                    }
+                        // ===== Картинка клиента (оверлей) =====
+                        c-picture := Rectangle {
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: #ffffff17;
+                            border-radius: Theme.r-card;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000055;
+                            drop-shadow-offset-y: 4px;
 
-                    Rectangle {
-                        height: 1px;
-                        background: #ffffff0d;
-                    }
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 8px;
 
-                    // Splash-экран при запуске.
-                    OptionRow {
-                        title: T.settings_splash;
-                        desc: T.settings_splash_desc;
-                        checked: root.splash-on;
-                        toggled(v) => { root.splash-set(v); }
-                    }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Btn {
-                            label: T.settings_splash_pick;
-                            kind: 0;
-                            width: 150px;
-                            height: 30px;
-                            clicked => { root.splash-pick(); }
+                                Text {
+                                    text: T.settings_picture;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.settings_picture_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dimmer;
+                                }
+
+                                OptionRow {
+                                    title: T.settings_picture_on;
+                                    checked: root.overlay-on;
+                                    toggled(v) => { root.overlay-set(v); }
+                                }
+
+                                HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 12px;
+
+                                    Text {
+                                        width: 80px;
+                                        text: T.settings_pic_bright;
+                                        font-size: 12px;
+                                        color: Theme.fg;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Slider {
+                                        horizontal-stretch: 1;
+                                        height: 26px;
+                                        enabled: root.overlay-on;
+                                        value: (root.overlay-bright + 50) / 100;
+                                        changed => {
+                                            root.overlay-bright = Math.round(self.value * 100) - 50;
+                                            root.overlay-bright-set(root.overlay-bright);
+                                        }
+                                        opacity: root.overlay-on ? 1.0 : 0.4;
+                                    }
+
+                                    Text {
+                                        width: 44px;
+                                        text: (root.overlay-bright > 0 ? "+" : "") + root.overlay-bright;
+                                        font-family: Theme.font-mono;
+                                        font-size: 11px;
+                                        color: Theme.fg-dim;
+                                        horizontal-alignment: right;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 12px;
+
+                                    Text {
+                                        width: 80px;
+                                        text: T.settings_pic_sat;
+                                        font-size: 12px;
+                                        color: Theme.fg;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Slider {
+                                        horizontal-stretch: 1;
+                                        height: 26px;
+                                        enabled: root.overlay-on;
+                                        value: root.overlay-sat / 200;
+                                        changed => {
+                                            root.overlay-sat = Math.round(self.value * 200);
+                                            root.overlay-sat-set(root.overlay-sat);
+                                        }
+                                        opacity: root.overlay-on ? 1.0 : 0.4;
+                                    }
+
+                                    Text {
+                                        width: 44px;
+                                        text: root.overlay-sat + "%";
+                                        font-family: Theme.font-mono;
+                                        font-size: 11px;
+                                        color: Theme.fg-dim;
+                                        horizontal-alignment: right;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 12px;
+
+                                    Text {
+                                        width: 80px;
+                                        text: T.settings_pic_contrast;
+                                        font-size: 12px;
+                                        color: Theme.fg;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Slider {
+                                        horizontal-stretch: 1;
+                                        height: 26px;
+                                        enabled: root.overlay-on;
+                                        value: (root.overlay-contrast - 50) / 100;
+                                        changed => {
+                                            root.overlay-contrast = Math.round(self.value * 100) + 50;
+                                            root.overlay-contrast-set(root.overlay-contrast);
+                                        }
+                                        opacity: root.overlay-on ? 1.0 : 0.4;
+                                    }
+
+                                    Text {
+                                        width: 44px;
+                                        text: root.overlay-contrast + "%";
+                                        font-family: Theme.font-mono;
+                                        font-size: 11px;
+                                        color: Theme.fg-dim;
+                                        horizontal-alignment: right;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
                         }
-                        Btn {
-                            label: T.settings_bg_reset;
-                            kind: 2;
-                            width: 110px;
-                            height: 30px;
-                            clicked => { root.splash-reset(); }
-                        }
-                        if root.splash-image-name != "" : Text {
-                            text: root.splash-image-name;
-                            font-family: Theme.font-mono;
-                            font-size: 11px;
-                            color: Theme.fg-dim;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            horizontal-stretch: 1;
+
+                        // ===== Профиль конфигурации: экспорт/импорт =====
+                        c-profile := Rectangle {
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: #ffffff17;
+                            border-radius: Theme.r-card;
+                            drop-shadow-blur: 24px;
+                            drop-shadow-color: #00000055;
+                            drop-shadow-offset-y: 4px;
+
+                            VerticalLayout {
+                                padding: 18px;
+                                spacing: 8px;
+
+                                Text {
+                                    text: T.settings_profile;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.settings_profile_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dimmer;
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Btn {
+                                        label: T.settings_profile_export;
+                                        kind: 0;
+                                        width: 110px;
+                                        height: 32px;
+                                        clicked => { root.cfg-export(); }
+                                    }
+                                    Btn {
+                                        label: T.settings_profile_import;
+                                        kind: 2;
+                                        width: 100px;
+                                        height: 32px;
+                                        clicked => { root.cfg-import(); }
+                                    }
+                                    if root.cfg-msg != "" : Text {
+                                        text: root.cfg-msg;
+                                        font-family: Theme.font-mono;
+                                        font-size: 12px;
+                                        height: 32px;
+                                        color: root.cfg-msg-err ? Theme.bad : Theme.good;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
-}

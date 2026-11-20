@@ -27,6 +27,12 @@ pub struct Config {
     pub discord_rp_time: bool,
     /// Discord RP: показывать надпись «ByteStrap».
     pub discord_rp_brand: bool,
+    /// Discord RP: кастомный статус (строка деталей/состояния).
+    pub discord_custom_status: String,
+    /// Discord RP: режим инкогнито (скрывать название плейса).
+    pub discord_incognito: bool,
+    /// Discord RP: показывать регион/сервер.
+    pub discord_show_server: bool,
     /// Открывать ссылки roblox:// (друзья, приватки, плейсы) через ByteStrap.
     pub deeplink: bool,
     /// Звуки интерфейса (клики, тумблеры, переходы).
@@ -67,7 +73,27 @@ pub struct Config {
     pub window_max: bool,
     pub win_w: f32,
     pub win_h: f32,
+    /// Центрировать окно лаунчера при запуске.
+    #[serde(default)]
+    pub center_window: bool,
+    /// Центрировать окно Roblox при запуске.
+    #[serde(default)]
+    pub center_game: bool,
+    /// Разрешение окна Roblox: 0 — Авто/Системное, 1 — 1920×1080, 2 — 1600×900, 3 — 1440×1080 (4:3), 4 — 1280×720, 5 — 1024×768 (4:3), 6 — Кастом.
+    #[serde(default)]
+    pub game_res_mode: i32,
+    #[serde(default = "default_res_w")]
+    pub game_res_w: u32,
+    #[serde(default = "default_res_h")]
+    pub game_res_h: u32,
+    /// Анимировать фон (GIF).
+    #[serde(default = "default_true")]
+    pub live_bg: bool,
 }
+
+fn default_res_w() -> u32 { 1920 }
+fn default_res_h() -> u32 { 1080 }
+fn default_true() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -86,6 +112,9 @@ impl Default for Config {
             discord_rp_place: true,
             discord_rp_time: true,
             discord_rp_brand: true,
+            discord_custom_status: String::new(),
+            discord_incognito: false,
+            discord_show_server: true,
             deeplink: true,
             sound: true,
             sound_volume: 70,
@@ -107,6 +136,12 @@ impl Default for Config {
             window_max: false,
             win_w: 1120.0,
             win_h: 700.0,
+            center_window: true,
+            center_game: false,
+            game_res_mode: 0,
+            game_res_w: 1920,
+            game_res_h: 1080,
+            live_bg: true,
         }
     }
 }

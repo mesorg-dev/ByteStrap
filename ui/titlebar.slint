@@ -54,7 +54,16 @@ export component TitleBar inherits Rectangle {
     callback close-request();
 
     height: Theme.titlebar-h;
-    background: transparent;
+    background: #070912f2;
+
+    // Нижняя граница titlebar
+    Rectangle {
+        x: 0;
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: #ffffff12;
+    }
 
     // Логотип: звезда в стеклянном квадрате с холодным ореолом.
     Rectangle {
@@ -105,7 +114,7 @@ export component TitleBar inherits Rectangle {
         height: parent.height;
         visible: root.status != "";
         text: root.status;
-        font-family: Theme.font-mono;
+        font-family: Theme.font;
         font-size: 11.5px;
         color: Theme.fg-dim;
         horizontal-alignment: center;

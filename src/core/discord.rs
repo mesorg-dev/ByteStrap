@@ -29,9 +29,12 @@ pub enum Update {
         details: Option<String>,
         state: Option<String>,
         start: Option<u64>,
+        large_text: Option<String>,
     },
     /// Лаунчер открыт, сессии нет — статус «в меню».
-    Launcher,
+    Launcher {
+        details: Option<String>,
+    },
     /// RP выключен/выход — снять активность и закрыть пайп.
     Idle,
 }
@@ -206,7 +209,7 @@ async fn worker(mut rx: UnboundedReceiver<Update>, status: UnboundedSender<Statu
                     }
                 }
                 // Статус лаунчера: достаточно отправить один раз.
-                Some(u @ Update::Launcher) => {
+                Some(u @ Update::Launcher { .. }) => {
                     let needs = match &last_sent {
                         None => true,
                         Some((prev, _)) => prev != u,
@@ -292,9 +295,14 @@ fn take_frame(buf: &mut Vec<u8>) -> Option<(u32, String)> {
 }
 
 fn set_activity_json(nonce: &std::sync::atomic::AtomicU64, u: &Update) -> String {
-    let (details, state, start) = match u {
-        Update::Session { details, state, start } => (details.clone(), state.clone(), *start),
-        Update::Launcher => (Some("В меню ByteStrap".to_string()), None, None),
+    let (details, state, start, large_text) = match u {
+        Update::Session { details, state, start, large_text } => {
+            (details.clone(), state.clone(), *start, large_text.clone())
+        }
+        Update::Launcher { details } => {
+            let d = details.clone().unwrap_or_else(|| "В меню ByteStrap".to_string());
+            (Some(d), None, None, Some("ByteStrap Launcher".to_string()))
+        }
         Update::Idle => return clear_activity_json(nonce),
     };
     let mut act = String::new();
@@ -309,6 +317,11 @@ fn set_activity_json(nonce: &std::sync::atomic::AtomicU64, u: &Update) -> String
     if let Some(t) = start {
         act.push_str(&format!(r#""timestamps":{{"start":{t}}},"#));
     }
+    let l_txt = large_text.unwrap_or_else(|| "ByteStrap".to_string());
+    act.push_str(&format!(
+        r#""assets":{{"large_image":"bytestrap","large_text":"{}"}},"#,
+        json_escape(&l_txt)
+    ));
     act.push_str(r#""instance":false"#);
     use std::sync::atomic::Ordering;
     let n = nonce.fetch_add(1, Ordering::Relaxed);
@@ -479,6 +492,7 @@ mod tests {
                 details: Some("ByteStrap".into()),
                 state: Some(r#"Место "x" №1"#.into()),
                 start: Some(1_700_000_000),
+                large_text: None,
             },
         );
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
@@ -502,6 +516,7 @@ mod tests {
                 details: None,
                 state: Some("Только место".into()),
                 start: None,
+                large_text: None,
             },
         );
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();

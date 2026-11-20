@@ -35,6 +35,19 @@ export struct ServerRow {
     players: string,
     /// «45 мс» или «—».
     ping: string,
+    /// Регион: «EU: Франкфурт».
+    region: string,
+    /// 0 — отличный (<80), 1 — средний (80-150), 2 — плохой (>150), 3 — неизвестно.
+    ping-kind: int,
+}
+
+/// Снимок экрана Roblox (Games → Галерея скриншотов).
+export struct ScreenshotRow {
+    path: string,
+    name: string,
+    date: string,
+    size: string,
+    selected: bool,
 }
 
 export struct VersionRow {
@@ -87,4 +100,26 @@ export struct PresetRow {
     on: bool,
     /// Все флаги пресета в allowlist Roblox.
     works: bool,
+}
+
+/// Друг онлайн (HomePage → Друзья).
+export struct FriendRow {
+    id: string,
+    name: string,
+    display-name: string,
+    status-text: string,
+    is-ingame: bool,
+    place-id: string,
+    game-id: string,
+    game-name: string,
+    initial: string,
+}
+
+/// Недавняя / избранная игра аккаунта (HomePage → Игры).
+export struct AccountGameRow {
+    place-id: string,
+    name: string,
+    creator: string,
+    is-fav: bool,
+    custom-res: string,
 }

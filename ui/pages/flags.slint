@@ -257,7 +257,7 @@ export component FlagsPage inherits PageFade {
                         y: 0;
                         width: parent.width - 190px;
                         height: 17px;
-                        text: p.works ? p.label : "⚠ " + p.label;
+                        text: p.label;
                         font-size: 13px;
                         font-weight: 600;
                         color: p.works ? Theme.fg : Theme.warn;
@@ -376,11 +376,20 @@ export component FlagsPage inherits PageFade {
                     width: 100%;
                     height: 26px;
                     background: r.selected
-                        ? Theme.glass
-                        : r.alt
-                            ? #ffffff04
-                            : (row-touch.has-hover ? #ffffff08 : transparent);
+                        ? Theme.glass-press
+                        : row-touch.has-hover
+                            ? Theme.glass-hover
+                            : (r.alt ? #ffffff05 : transparent);
                     animate background { duration: Theme.t-fast; }
+
+                    if r.selected : Rectangle {
+                        x: 0;
+                        y: 2px;
+                        width: 2px;
+                        height: parent.height - 4px;
+                        border-radius: 1px;
+                        background: Theme.accent;
+                    }
 
                     row-touch := TouchArea {
                         width: 100%;
@@ -417,7 +426,7 @@ export component FlagsPage inherits PageFade {
                         y: 0;
                         width: parent.width - 496px;
                         height: 26px;
-                        text: r.works ? r.desc : "⚠ " + r.desc;
+                        text: r.desc;
                         font-family: Theme.font-mono;
                         font-size: 11px;
                         color: r.works ? Theme.fg-dimmer : Theme.warn;

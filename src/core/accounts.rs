@@ -1,14 +1,168 @@
 //! Менеджер аккаунтов Roblox: хранение `.ROBLOSECURITY` и запуск клиента
 //! от имени выбранного аккаунта (auth-ticket → ссылка `roblox-player:`).
 //!
-//! Куки хранятся в открытом виде в `accounts.json` внутри папки ByteStrap —
-//! это локальный файл пользователя, как и у прочих менеджеров аккаунтов.
+//! Куки шифруются через Windows DPAPI (CryptProtectData/CryptUnprotectData)
+//! перед сохранением в `accounts.json` с префиксом `dpapi:<hex>`.
+//! В памяти кука расшифрована только для сетевых запросов к Roblox API.
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 const UA: &str = "ByteStrap/1.0 (+https://github.com/mesorg-dev/ByteStrap)";
+
+#[cfg(windows)]
+pub mod dpapi {
+    use std::ptr;
+
+    #[repr(C)]
+    struct DataBlob {
+        cb_data: u32,
+        pb_data: *mut u8,
+    }
+
+    #[link(name = "crypt32")]
+    extern "system" {
+        fn CryptProtectData(
+            p_data_in: *const DataBlob,
+            sz_data_descr: *const u16,
+            p_optional_entropy: *const DataBlob,
+            pv_reserved: *mut std::ffi::c_void,
+            p_prompt_struct: *mut std::ffi::c_void,
+            dw_flags: u32,
+            p_data_out: *mut DataBlob,
+        ) -> i32;
+
+        fn CryptUnprotectData(
+            p_data_in: *const DataBlob,
+            ppsz_data_descr: *mut *mut u16,
+            p_optional_entropy: *const DataBlob,
+            pv_reserved: *mut std::ffi::c_void,
+            p_prompt_struct: *mut std::ffi::c_void,
+            dw_flags: u32,
+            p_data_out: *mut DataBlob,
+        ) -> i32;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LocalFree(h_mem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+    }
+
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
+
+    pub fn encrypt_string(plaintext: &str) -> Result<String, String> {
+        let bytes = plaintext.as_bytes();
+        let in_blob = DataBlob {
+            cb_data: bytes.len() as u32,
+            pb_data: bytes.as_ptr() as *mut u8,
+        };
+        let mut out_blob = DataBlob {
+            cb_data: 0,
+            pb_data: ptr::null_mut(),
+        };
+
+        let res = unsafe {
+            CryptProtectData(
+                &in_blob,
+                ptr::null(),
+                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut out_blob,
+            )
+        };
+
+        if res == 0 || out_blob.pb_data.is_null() {
+            return Err("CryptProtectData failed".into());
+        }
+
+        let slice = unsafe {
+            std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize)
+        };
+        let hex = hex_encode(slice);
+
+        unsafe {
+            LocalFree(out_blob.pb_data as *mut _);
+        }
+
+        Ok(format!("dpapi:{hex}"))
+    }
+
+    pub fn decrypt_string(encrypted: &str) -> Result<String, String> {
+        let hex = encrypted.strip_prefix("dpapi:").unwrap_or(encrypted);
+        let Some(bytes) = hex_decode(hex) else {
+            return Err("Invalid hex in encrypted cookie".into());
+        };
+
+        let in_blob = DataBlob {
+            cb_data: bytes.len() as u32,
+            pb_data: bytes.as_ptr() as *mut u8,
+        };
+        let mut out_blob = DataBlob {
+            cb_data: 0,
+            pb_data: ptr::null_mut(),
+        };
+
+        let res = unsafe {
+            CryptUnprotectData(
+                &in_blob,
+                ptr::null_mut(),
+                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut out_blob,
+            )
+        };
+
+        if res == 0 || out_blob.pb_data.is_null() {
+            return Err("CryptUnprotectData failed".into());
+        }
+
+        let slice = unsafe {
+            std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize)
+        };
+        let decrypted = String::from_utf8(slice.to_vec())
+            .map_err(|e| format!("UTF-8 decode failed: {e}"))?;
+
+        unsafe {
+            LocalFree(out_blob.pb_data as *mut _);
+        }
+
+        Ok(decrypted)
+    }
+
+    fn hex_encode(bytes: &[u8]) -> String {
+        let mut s = String::with_capacity(bytes.len() * 2);
+        for b in bytes {
+            use std::fmt::Write;
+            let _ = write!(s, "{:02x}", b);
+        }
+        s
+    }
+
+    fn hex_decode(s: &str) -> Option<Vec<u8>> {
+        if s.len() % 2 != 0 {
+            return None;
+        }
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+            .collect()
+    }
+}
+
+#[cfg(not(windows))]
+pub mod dpapi {
+    pub fn encrypt_string(plaintext: &str) -> Result<String, String> {
+        Ok(plaintext.to_string())
+    }
+    pub fn decrypt_string(encrypted: &str) -> Result<String, String> {
+        Ok(encrypted.to_string())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
@@ -36,10 +190,24 @@ impl Accounts {
     }
 
     pub fn load(base: &Path) -> Self {
-        match std::fs::read_to_string(Self::file_path(base)) {
+        let mut loaded: Self = match std::fs::read_to_string(Self::file_path(base)) {
             Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
             Err(_) => Self::default(),
+        };
+
+        // Расшифровка куки из DPAPI в память
+        for a in &mut loaded.accounts {
+            if a.cookie.starts_with("dpapi:") {
+                match dpapi::decrypt_string(&a.cookie) {
+                    Ok(plain) => a.cookie = plain,
+                    Err(e) => {
+                        crate::core::logger::warn(format!("Ошибка DPAPI расшифровки для аккаунта {}: {e}", a.name));
+                    }
+                }
+            }
         }
+
+        loaded
     }
 
     pub fn save(&self, base: &Path) {
@@ -47,7 +215,18 @@ impl Accounts {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if let Ok(s) = serde_json::to_string_pretty(self) {
+
+        // Зашифровать куки через DPAPI перед записью на диск
+        let mut disk_accs = self.clone();
+        for a in &mut disk_accs.accounts {
+            if !a.cookie.is_empty() && !a.cookie.starts_with("dpapi:") {
+                if let Ok(enc) = dpapi::encrypt_string(&a.cookie) {
+                    a.cookie = enc;
+                }
+            }
+        }
+
+        if let Ok(s) = serde_json::to_string_pretty(&disk_accs) {
             let _ = std::fs::write(path, s);
         }
     }

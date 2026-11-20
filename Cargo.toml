@@ -26,13 +26,15 @@ serde_json = "1"
 zip = "9"
 dirs = "7"
 anyhow = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # Slint — единственный UI-слой (Фаза 2: egui удалён). Без фич — иначе
 # unstable-winit-030 не собирается под Android (см. секцию Windows ниже).
 slint = "1.18"
 
 [target.'cfg(windows)'.dependencies]
 rfd = "0.17"
-arboard = { version = "3", default-features = false }
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 winreg = "0.55"
 # Звуки интерфейса (клики, тумблеры) — WASAPI через rodio.
 rodio = "0.20"
@@ -46,6 +48,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_HiDpi",
     "Win32_UI_Magnification",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 # Winit-доступ для frameless-окна (drag/min/max); только Windows —
 # unstable-winit-030 в slint не собирается под android.

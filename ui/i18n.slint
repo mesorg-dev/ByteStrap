@@ -35,7 +35,32 @@ export global T {
     in-out property <string> home_link_paste: "Вставить";
     in-out property <string> home_chart: "ИГРЫ ЗА 14 ДНЕЙ · МИНУТЫ";
     in-out property <string> home_places: "ВРЕМЯ ПО МЕСТАМ";
+    in-out property <string> home_friends_title: "ДРУЗЬЯ В СЕТИ";
+    in-out property <string> home_friends_empty: "Нет друзей в сети";
+    in-out property <string> home_friends_join: "Войти";
+    in-out property <string> home_friends_ingame: "В игре";
+    in-out property <string> home_friends_online: "На сайте";
+    in-out property <string> home_recent_title: "ИГРЫ АККАУНТА";
+    in-out property <string> home_recent_empty: "Войдите в аккаунт, чтобы видеть игры";
     in-out property <string> home_account: "Аккаунт";
+    in-out property <string> home_account_active: "Активный профиль Roblox";
+    in-out property <string> home_account_guest: "Без аккаунта (гостевой запуск)";
+    in-out property <string> home_account_change: "Сменить…";
+    in-out property <string> home_account_select: "Выбрать…";
+    in-out property <string> home_account_quick: "Быстрый вход";
+    in-out property <string> home_account_add: "Добавить по куке";
+
+    // Quick Sign-In Modal
+    in-out property <string> quick_login_title: "Быстрый вход Roblox";
+    in-out property <string> quick_login_sub: "Отсканируйте QR-код в приложении Roblox или введите код на roblox.com/crossdevice";
+    in-out property <string> quick_login_code_label: "Одноразовый код:";
+    in-out property <string> quick_login_copy: "Скопировать код";
+    in-out property <string> quick_login_copied: "Скопировано!";
+    in-out property <string> quick_login_open_site: "Открыть в браузере";
+    in-out property <string> quick_login_waiting: "Ожидание подтверждения в мобильном приложении...";
+    in-out property <string> quick_login_linked: "Аккаунт подтверждён! Завершение входа...";
+    in-out property <string> quick_login_expired: "Срок действия кода истёк. Нажмите «Обновить»";
+    in-out property <string> quick_login_refresh: "Получить новый код";
 
     // Games
     in-out property <string> games_h1: "Игры";
@@ -56,6 +81,26 @@ export global T {
     in-out property <string> games_servers_players: "ИГРОКИ";
     in-out property <string> games_servers_ping: "ПИНГ";
     in-out property <string> games_servers_join: "Играть";
+    in-out property <string> games_servers_active_prefix: "Подключен к серверу: ";
+    in-out property <string> games_servers_ping_label: "Пинг";
+    in-out property <string> games_servers_sub: "Реальные дата-центры, пинг до серверов и прямой вход по JobId";
+    in-out property <string> games_servers_col_region: "РЕГИОН";
+    in-out property <string> games_servers_copy_job: "Копировать JobId";
+    in-out property <string> games_tab_places: "Плейсы";
+    in-out property <string> games_tab_shots: "Скриншоты";
+
+    // Скриншоты
+    in-out property <string> screenshots_h1: "Скриншоты Roblox";
+    in-out property <string> screenshots_sub: "Галерея снимков экрана: предпросмотр, быстрое копирование для Discord и папка";
+    in-out property <string> screenshots_count_prefix: "Снимков в папке Roblox: ";
+    in-out property <string> screenshots_open_folder: "Открыть папку";
+    in-out property <string> screenshots_refresh: "Обновить";
+    in-out property <string> screenshots_empty: "Скриншоты не найдены";
+    in-out property <string> screenshots_empty_desc: "Делайте снимки экрана во время игры в Roblox клавишами PrintScreen или F12";
+    in-out property <string> screenshots_recent: "НЕДАВНИЕ СНИМКИ";
+    in-out property <string> screenshots_copy_discord: "В Discord (Ctrl+V)";
+    in-out property <string> screenshots_open: "Открыть";
+    in-out property <string> screenshots_delete: "Удалить";
 
     // Логи
     in-out property <string> logs_h1: "Логи";
@@ -116,6 +161,8 @@ export global T {
     in-out property <string> settings_lang: "Язык";
     in-out property <string> settings_threads: "Потоки загрузки";
     in-out property <string> settings_threads_desc: "Сколько файлов качать одновременно (1–8)";
+    in-out property <string> settings_behavior: "Поведение";
+    in-out property <string> settings_behavior_desc: "Параметры запуска, интеграции и фоновые процессы";
     in-out property <string> settings_auto_update: "Автообновление лаунчера";
     in-out property <string> settings_auto_update_desc: "Проверять новые версии ByteStrap при запуске";
     in-out property <string> settings_close_on_launch: "Закрывать при запуске игры";
@@ -131,6 +178,12 @@ export global T {
     in-out property <string> settings_rp_place: "Название места";
     in-out property <string> settings_rp_time: "Время сессии";
     in-out property <string> settings_rp_brand: "Надпись ByteStrap";
+    in-out property <string> settings_rp_custom: "Свой статус:";
+    in-out property <string> settings_rp_custom_hint: "Текст в Discord (напр. В игре, AFK...)";
+    in-out property <string> settings_rp_incognito: "Режим инкогнито (скрывать место)";
+    in-out property <string> settings_rp_incognito_desc: "Показывать статус «В игре (инкогнито)»";
+    in-out property <string> settings_rp_server: "Регион сервера в статусе";
+    in-out property <string> settings_rp_server_desc: "Добавлять страну и флаг сервера в Discord";
     in-out property <string> settings_discord_wait: "Ожидание сессии…";
     in-out property <string> settings_discord_connected: "Подключено к Discord";
     in-out property <string> settings_discord_no_discord: "Не подключено";
@@ -154,6 +207,16 @@ export global T {
     in-out property <string> settings_bg: "Фон";
     in-out property <string> settings_bg_pick: "Свой фон…";
     in-out property <string> settings_bg_reset: "Сбросить";
+    in-out property <string> settings_center_win: "Центрировать лаунчер при запуске";
+    in-out property <string> settings_center_game: "Центрировать окно Roblox при запуске игры";
+    in-out property <string> settings_game_res: "Разрешение окна Roblox";
+    in-out property <string> settings_game_res_desc: "Размер окна игры (позволяет играть в 4:3 растянутом или фиксированном окне)";
+    in-out property <string> settings_res_auto: "Авто";
+    in-out property <string> settings_res_custom: "Своё";
+    in-out property <string> settings_res_w: "Ширина";
+    in-out property <string> settings_res_h: "Высота";
+    in-out property <string> settings_live_bg: "Живой анимированный фон (GIF)";
+    in-out property <string> settings_live_bg_desc: "Плавное воспроизведение кадров для .gif";
     in-out property <string> settings_path: "Папка установки";
     in-out property <string> settings_path_desc: "Пусто — стандартная папка ByteStrap";
     in-out property <string> settings_path_reset: "Сбросить";
