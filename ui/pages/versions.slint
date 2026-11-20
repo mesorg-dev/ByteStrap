@@ -149,9 +149,11 @@ export component VersionsPage inherits PageFade {
 
                     for v in root.versions : Rectangle {
                         height: 32px;
-                        background: root.selected-guid == v.guid ? Theme.glass
-                            : v.alt ? #ffffff04
-                            : (row-touch.has-hover ? #ffffff08 : transparent);
+                        background: root.selected-guid == v.guid
+                            ? Theme.glass-press
+                            : row-touch.has-hover
+                                ? Theme.glass-hover
+                                : (v.alt ? #ffffff05 : transparent);
                         animate background { duration: Theme.t-fast; }
 
                         // Активная версия — белая метка слева.

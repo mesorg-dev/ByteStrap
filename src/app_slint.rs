@@ -26,7 +26,7 @@ use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::places::{Places};
 use crate::core::flags::FlagError;
 use crate::core::overlay;
-use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, servers, updater, versions};
+use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, quick_login, roblox_link, screenshots, servers, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::tray;
 
@@ -55,7 +55,13 @@ pub enum AsyncEvent {
     LaunchTicket(Result<String, String>),
     /// Список серверов места: (placeId, результат).
     Servers((u64, Result<Vec<servers::ServerInfo>, String>)),
+    /// Пинг активного сервера Roblox.
+    ActiveServerPing(u32),
     Session(SessionEvent),
+    QuickLoginStarted(Result<quick_login::QuickLoginSession, String>),
+    QuickLoginProgress(quick_login::QuickLoginStatus),
+    FriendsLoaded(Vec<crate::core::roblox_api::OnlineFriend>),
+    RecentGamesLoaded(Vec<crate::core::roblox_api::RecentGame>),
 }
 
 /// Состояние карточки «обновление лаунчера» на странице About.
@@ -237,12 +243,23 @@ struct Ctx {
     servers: Vec<servers::ServerInfo>,
     servers_msg: Option<(String, bool)>,
     servers_busy: bool,
+    active_server: Option<servers::ActiveServer>,
+    active_server_ip: Option<String>,
+    screenshots: Vec<screenshots::ScreenshotItem>,
+    shot_selected: i32,
+    shot_status: Option<String>,
     /// (текст, ошибка) — статус экспорта/импорта конфигурации.
     cfg_msg: Option<(String, bool)>,
     /// Оверлей «Картинка клиента» поверх окна Roblox.
     overlay: overlay::Handle,
     /// Аккаунты Roblox (мультиаккаунт).
     accounts: Accounts,
+    quick_login_session: Option<quick_login::QuickLoginSession>,
+    quick_login_cancel: Option<Arc<AtomicBool>>,
+    friends: Vec<crate::core::roblox_api::OnlineFriend>,
+    friends_busy: bool,
+    recent_games: Vec<crate::core::roblox_api::RecentGame>,
+    gif_timer: Option<slint::Timer>,
 
     // — Сессия игры (Tick/End из playtime::watch_session) —
     session_active: bool,
@@ -454,6 +471,8 @@ impl Ctx {
                     Ok(()) => {
                         self.install.error = None;
                         logger::info("Клиент Roblox запущен");
+                        let pid = arg.and_then(crate::core::playtime::find_place_id).and_then(|s| s.parse::<u64>().ok());
+                        self.apply_game_geometry(pid);
                         self.start_session_watch();
                         if self.config.close_on_launch {
                             // На время игры окно уходит в трей (не закрываем
@@ -741,9 +760,135 @@ impl Ctx {
                     .map(|p| format!("{p} ms"))
                     .unwrap_or_else(|| "—".into())
                     .into(),
+                region: s.region.clone().into(),
+                ping_kind: s.ping_kind,
             })
             .collect();
         ui.set_games_servers(ModelRc::new(VecModel::from(srows)));
+
+        // Активный сервер во время игры
+        if let Some(srv) = &self.active_server {
+            ui.set_games_has_active_server(true);
+            ui.set_games_active_server_region(srv.region.clone().into());
+            ui.set_games_active_server_detail(srv.detail.clone().into());
+            let ping_str = srv
+                .ping_ms
+                .map(|p| format!("{p} ms"))
+                .unwrap_or_default();
+            ui.set_games_active_server_ping(ping_str.into());
+        } else {
+            ui.set_games_has_active_server(false);
+            ui.set_games_active_server_region("".into());
+            ui.set_games_active_server_detail("".into());
+            ui.set_games_active_server_ping("".into());
+        }
+
+        self.push_screenshots(ui);
+    }
+
+    fn push_screenshots(&self, ui: &AppWindow) {
+        let rows: Vec<ScreenshotRow> = self
+            .screenshots
+            .iter()
+            .enumerate()
+            .map(|(i, s)| ScreenshotRow {
+                path: s.path.clone().into(),
+                name: s.name.clone().into(),
+                date: s.date.clone().into(),
+                size: s.size.clone().into(),
+                selected: i as i32 == self.shot_selected,
+            })
+            .collect();
+        ui.set_shots(ModelRc::new(VecModel::from(rows)));
+        ui.set_shot_selected(self.shot_selected);
+        ui.set_shot_status(
+            self.shot_status
+                .as_ref()
+                .cloned()
+                .unwrap_or_default()
+                .into(),
+        );
+
+        if self.shot_selected >= 0 && (self.shot_selected as usize) < self.screenshots.len() {
+            let item = &self.screenshots[self.shot_selected as usize];
+            ui.set_shot_preview_path(item.path.clone().into());
+            ui.set_shot_preview_name(item.name.clone().into());
+            ui.set_shot_preview_date(item.date.clone().into());
+            ui.set_shot_preview_size(item.size.clone().into());
+            let ui_weak = ui.as_weak();
+            let path_buf = std::path::PathBuf::from(&item.path);
+            std::thread::spawn(move || {
+                let Ok(img) = image::open(&path_buf) else { return };
+                let rgba = img.into_rgba8();
+                let width = rgba.width();
+                let height = rgba.height();
+                let raw_pixels = rgba.into_raw();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                            &raw_pixels,
+                            width,
+                            height,
+                        );
+                        ui.set_shot_preview_img(slint::Image::from_rgba8(buffer));
+                    }
+                });
+            });
+        } else {
+            ui.set_shot_preview_path("".into());
+            ui.set_shot_preview_name("".into());
+            ui.set_shot_preview_date("".into());
+            ui.set_shot_preview_size("".into());
+            ui.set_shot_preview_img(slint::Image::default());
+        }
+    }
+
+    fn refresh_screenshots(&mut self) {
+        self.screenshots = screenshots::scan();
+        if self.shot_selected < 0 || (self.shot_selected as usize) >= self.screenshots.len() {
+            self.shot_selected = if self.screenshots.is_empty() { -1 } else { 0 };
+        }
+    }
+
+    fn select_screenshot(&mut self, idx: usize) {
+        if idx < self.screenshots.len() {
+            self.shot_selected = idx as i32;
+        }
+    }
+
+    fn copy_screenshot(&mut self, path: &str) {
+        match screenshots::copy_to_clipboard(path) {
+            Ok(()) => {
+                self.shot_status = Some("Скопировано в буфер! Вставьте в Discord (Ctrl+V)".into());
+            }
+            Err(e) => {
+                self.shot_status = Some(e);
+            }
+        }
+    }
+
+    fn open_screenshot(&mut self, path: &str) {
+        let _ = screenshots::open_image(path);
+    }
+
+    fn folder_screenshot(&mut self, path: &str) {
+        let _ = screenshots::open_folder(path);
+    }
+
+    fn delete_screenshot(&mut self, path: &str) {
+        let _ = screenshots::delete_image(path);
+        self.shot_status = Some("Скриншот удалён".into());
+        self.refresh_screenshots();
+    }
+
+    fn copy_server_id(&mut self, id: &str) {
+        #[cfg(windows)]
+        {
+            if let Ok(mut clip) = arboard::Clipboard::new() {
+                let _ = clip.set_text(id.to_string());
+            }
+        }
+        self.servers_msg = Some((format!("JobId скопирован: {id}"), false));
     }
 
     /// Тултип трея (главный поток): сессия или просто имя.
@@ -957,13 +1102,34 @@ impl Ctx {
             })
             .collect();
         tray::sync(tray::TrayData {
+            lang: self.lang,
             overlay_on: self.config.overlay_on,
+            overlay_bright: self.config.overlay_bright,
+            overlay_sat: self.config.overlay_sat,
+            overlay_contrast: self.config.overlay_contrast,
             flag_profiles,
             active_flag: self.config.active_flag_profile.clone(),
             mod_profiles,
             active_mod: self.config.active_mod_profile.clone(),
             games,
         });
+    }
+
+    /// Установить параметры ЦК из пресета или подстройки трея.
+    fn set_overlay_params(&mut self, bright: i32, sat: i32, contrast: i32) {
+        self.config.overlay_bright = bright.clamp(-50, 50);
+        self.config.overlay_sat = sat.clamp(0, 200);
+        self.config.overlay_contrast = contrast.clamp(50, 150);
+        self.config.overlay_on = true;
+        self.config.save();
+        self.overlay.update(push_overlay(self));
+        self.refresh_tray();
+        if let Some(ui) = self.weak.upgrade() {
+            ui.set_set_overlay_on(true);
+            ui.set_set_overlay_bright(self.config.overlay_bright);
+            ui.set_set_overlay_sat(self.config.overlay_sat);
+            ui.set_set_overlay_contrast(self.config.overlay_contrast);
+        }
     }
 
     /// Включить/выключить цветокоррекцию (из трея или UI) и сохранить.
@@ -975,12 +1141,23 @@ impl Ctx {
 
     /// Отправить в Discord активность по настройкам RP (что показывать).
     fn push_discord(&self, secs: u64) {
-        let details = self
-            .config
-            .discord_rp_brand
-            .then(|| "ByteStrap".to_string());
-        let state = if self.config.discord_rp_place {
-            self.session_display.clone()
+        let details = if !self.config.discord_custom_status.trim().is_empty() {
+            Some(self.config.discord_custom_status.trim().to_string())
+        } else if self.config.discord_rp_brand {
+            Some("ByteStrap".to_string())
+        } else {
+            None
+        };
+        let state = if self.config.discord_incognito {
+            Some("В игре (инкогнито)".to_string())
+        } else if self.config.discord_rp_place {
+            let mut s = self.session_display.clone().unwrap_or_else(|| "Roblox".to_string());
+            if self.config.discord_show_server {
+                if let Some(srv) = &self.active_server {
+                    s = format!("{s} • {}", srv.region);
+                }
+            }
+            Some(s)
         } else {
             None
         };
@@ -993,6 +1170,7 @@ impl Ctx {
                 details,
                 state,
                 start,
+                large_text: Some("ByteStrap Launcher".to_string()),
             }
         } else {
             discord::Update::Idle
@@ -1114,12 +1292,37 @@ impl Ctx {
                     }
                     tray::Action::Quit => {
                         self.quit = true;
+                        let _ = slint::quit_event_loop();
                     }
                     tray::Action::OverlayToggle => {
                         self.set_overlay_on(!self.config.overlay_on);
                         let ui = self.weak.clone().unwrap();
                         ui.set_set_overlay_on(self.config.overlay_on);
                         self.refresh_tray();
+                    }
+                    tray::Action::OverlayPreset(preset) => {
+                        match preset.as_str() {
+                            "vibrant" => self.set_overlay_params(10, 135, 110),
+                            "cinema" => self.set_overlay_params(-5, 115, 125),
+                            "night" => self.set_overlay_params(-15, 85, 95),
+                            "pvp" => self.set_overlay_params(20, 140, 115),
+                            _ => self.set_overlay_params(0, 100, 100),
+                        }
+                    }
+                    tray::Action::OverlayAdjust { bright, sat } => {
+                        let b = self.config.overlay_bright + bright;
+                        let s = self.config.overlay_sat + sat;
+                        let c = self.config.overlay_contrast;
+                        self.set_overlay_params(b, s, c);
+                    }
+                    tray::Action::OverlayReset => {
+                        self.set_overlay_params(0, 100, 100);
+                    }
+                    tray::Action::OverlaySettings => {
+                        let ui = self.weak.clone().unwrap();
+                        let _ = ui.show();
+                        winit_restore(&ui);
+                        ui.set_page(6); // Открыть страницу настроек с ползунками ЦК
                     }
                     tray::Action::FlagProfile(name) => {
                         self.apply_flag_profile(&name);
@@ -1161,6 +1364,20 @@ impl Ctx {
                         None => logger::warn("Аккаунт не найден"),
                     }
                     self.accounts.save(&self.config.base());
+                    self.refresh_roblox_data();
+                }
+                AsyncEvent::FriendsLoaded(list) => {
+                    self.friends = list;
+                    self.friends_busy = false;
+                    if let Some(ui) = self.weak.upgrade() {
+                        self.push_friends(&ui);
+                    }
+                }
+                AsyncEvent::RecentGamesLoaded(list) => {
+                    self.recent_games = list;
+                    if let Some(ui) = self.weak.upgrade() {
+                        self.push_recent_games(&ui);
+                    }
                 }
                 AsyncEvent::LaunchTicket(res) => match res {
                     Ok(uri) => self.play_direct(Some(&uri)),
@@ -1194,14 +1411,44 @@ impl Ctx {
                         }
                     }
                 }
+                AsyncEvent::ActiveServerPing(p) => {
+                    if let Some(srv) = &mut self.active_server {
+                        srv.ping_ms = Some(p);
+                    }
+                }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
                         place,
                         place_name,
+                        server,
                     } => {
                         self.session_secs = secs;
                         self.tray_tooltip();
+                        if let Some((ip, port)) = server {
+                            if self.active_server_ip.as_deref() != Some(&ip) {
+                                self.active_server_ip = Some(ip.clone());
+                                let (region, detail) = servers::resolve_ip_region(&ip);
+                                self.active_server = Some(servers::ActiveServer {
+                                    ip: ip.clone(),
+                                    port,
+                                    region,
+                                    detail,
+                                    ping_ms: None,
+                                });
+                                let tx = self.tx.clone();
+                                std::thread::spawn(move || {
+                                    let rt = tokio::runtime::Builder::new_current_thread()
+                                        .enable_all()
+                                        .build();
+                                    if let Ok(rt) = rt {
+                                        if let Some(p) = rt.block_on(servers::measure_ping(&ip, port)) {
+                                            let _ = tx.send(AsyncEvent::ActiveServerPing(p));
+                                        }
+                                    }
+                                });
+                            }
+                        }
                         // Discord RP: state = имя места (fallback — id).
                         self.session_display = place_name.or_else(|| place.clone());
                         if self.config.discord_rp {
@@ -1214,6 +1461,8 @@ impl Ctx {
                         self.session_secs = 0;
                         self.session_place = None;
                         self.session_display = None;
+                        self.active_server = None;
+                        self.active_server_ip = None;
                         // Anti-AFK больше не нужен.
                         if self.anti_afk.take().is_some() {
                             logger::info("Anti-AFK остановлен");
@@ -1236,6 +1485,96 @@ impl Ctx {
                         }
                     }
                 },
+                AsyncEvent::QuickLoginStarted(res) => {
+                    if let Some(ui) = self.weak.upgrade() {
+                        ui.set_quick_login_busy(false);
+                        match res {
+                            Ok(session) => {
+                                ui.set_quick_login_code(session.code.clone().into());
+                                if let Ok(img) = slint::Image::load_from_svg_data(session.qr_svg.as_bytes()) {
+                                    ui.set_quick_login_qr(img);
+                                }
+                                ui.set_quick_login_status(tr(self.lang, "Quick_Waiting").into());
+                                ui.set_quick_login_linked(false);
+                                ui.set_quick_login_code_expired(false);
+                                self.quick_login_session = Some(session.clone());
+
+                                let tx = self.tx.clone();
+                                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                                self.quick_login_cancel = Some(cancel.clone());
+                                let code = session.code;
+                                let priv_key = session.private_key;
+
+                                std::thread::spawn(move || {
+                                    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                                        Ok(rt) => rt,
+                                        Err(_) => return,
+                                    };
+                                    rt.block_on(async move {
+                                        for _ in 0..120 {
+                                            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                                                break;
+                                            }
+                                            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                                            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                                                break;
+                                            }
+                                            match crate::core::quick_login::check_status(&code, &priv_key).await {
+                                                Ok(st) => {
+                                                    let is_done = matches!(st, crate::core::quick_login::QuickLoginStatus::Success { .. } | crate::core::quick_login::QuickLoginStatus::Expired);
+                                                    let _ = tx.send(AsyncEvent::QuickLoginProgress(st));
+                                                    if is_done {
+                                                        break;
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    let _ = tx.send(AsyncEvent::QuickLoginProgress(crate::core::quick_login::QuickLoginStatus::Error(e)));
+                                                }
+                                            }
+                                        }
+                                    });
+                                });
+                            }
+                            Err(e) => {
+                                ui.set_quick_login_status(e.into());
+                                ui.set_quick_login_code_expired(true);
+                            }
+                        }
+                    }
+                }
+                AsyncEvent::QuickLoginProgress(st) => {
+                    if let Some(ui) = self.weak.upgrade() {
+                        match st {
+                            crate::core::quick_login::QuickLoginStatus::Waiting => {
+                                ui.set_quick_login_status(tr(self.lang, "Quick_Waiting").into());
+                            }
+                            crate::core::quick_login::QuickLoginStatus::Linked { name, .. } => {
+                                ui.set_quick_login_linked(true);
+                                let msg = if name.is_empty() {
+                                    tr(self.lang, "Quick_Linked").to_string()
+                                } else {
+                                    format!("Подтверждено: {name}! Завершение входа...")
+                                };
+                                ui.set_quick_login_status(msg.into());
+                            }
+                            crate::core::quick_login::QuickLoginStatus::Success { cookie, username } => {
+                                ui.set_quick_login_open(false);
+                                let acc_id = self.accounts.add(&cookie, &username);
+                                self.accounts.active = acc_id;
+                                self.accounts.save(&self.config.base());
+                                self.push_accounts(&ui);
+                                self.info_override = Some((format!("Вход выполнен: {username}"), Instant::now()));
+                            }
+                            crate::core::quick_login::QuickLoginStatus::Expired => {
+                                ui.set_quick_login_status(tr(self.lang, "Quick_Expired").into());
+                                ui.set_quick_login_code_expired(true);
+                            }
+                            crate::core::quick_login::QuickLoginStatus::Error(e) => {
+                                crate::core::logger::warn(format!("Quick login polling error: {e}"));
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -2177,8 +2516,9 @@ impl Ctx {
         } else if self.session_active && self.session_display.is_some() {
             self.push_discord(self.session_secs);
         } else {
-            // Лаунчер открыт, сессии нет — статус «в меню ByteStrap».
-            let _ = self.discord.send(discord::Update::Launcher);
+            let custom = (!self.config.discord_custom_status.trim().is_empty())
+                .then(|| self.config.discord_custom_status.trim().to_string());
+            let _ = self.discord.send(discord::Update::Launcher { details: custom });
         }
     }
 
@@ -2413,9 +2753,14 @@ impl Ctx {
         let mut days: Vec<i32> = Vec::with_capacity(14);
         let mut labels: Vec<SharedString> = Vec::with_capacity(14);
         let now = playtime::now_unix();
+        let mut max_val = 60i32;
         for i in (0..14).rev() {
             let key = playtime::day_key(now - (i as u64) * 86_400);
-            days.push((*self.playtime.days.get(&key).unwrap_or(&0) / 60) as i32);
+            let mins = (*self.playtime.days.get(&key).unwrap_or(&0) / 60) as i32;
+            if mins > max_val {
+                max_val = mins;
+            }
+            days.push(mins);
             if i == 0 || i == 13 {
                 labels.push(format!("{}.{}", &key[8..10], &key[5..7]).into());
             } else {
@@ -2424,6 +2769,7 @@ impl Ctx {
         }
         ui.set_play_days(ModelRc::new(VecModel::from(days)));
         ui.set_play_labels(ModelRc::new(VecModel::from(labels)));
+        ui.set_play_days_max(max_val);
 
         let rows: Vec<PlaceRow> = self
             .playtime
@@ -2440,10 +2786,237 @@ impl Ctx {
         ui.set_top_places(ModelRc::new(VecModel::from(rows)));
 
         // Аккаунты: список для выпадашки на Home.
+        self.push_accounts(ui);
+    }
+
+    fn push_accounts(&self, ui: &AppWindow) {
         let (items, sel, current) = self.account_ui();
         ui.set_account_items(ModelRc::new(VecModel::from(items)));
         ui.set_account_sel(sel);
         ui.set_account_name(current.as_str().into());
+        let initial = self
+            .accounts
+            .active()
+            .and_then(|a| a.name.chars().next())
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "○".to_string());
+        ui.set_account_initial(initial.into());
+        self.push_friends(ui);
+        self.push_recent_games(ui);
+    }
+
+    fn push_friends(&self, ui: &AppWindow) {
+        let rows: Vec<FriendRow> = self
+            .friends
+            .iter()
+            .map(|f| {
+                let initial = f
+                    .display_name
+                    .chars()
+                    .next()
+                    .or_else(|| f.name.chars().next())
+                    .map(|c| c.to_uppercase().to_string())
+                    .unwrap_or_else(|| "•".to_string());
+                let status_text = if f.presence_type == 2 {
+                    if !f.last_location.is_empty() {
+                        format!("В игре: {}", f.last_location)
+                    } else {
+                        "В игре".to_string()
+                    }
+                } else {
+                    "На сайте".to_string()
+                };
+                FriendRow {
+                    id: f.id.to_string().into(),
+                    name: f.name.clone().into(),
+                    display_name: f.display_name.clone().into(),
+                    status_text: status_text.into(),
+                    is_ingame: f.presence_type == 2,
+                    place_id: f.place_id.to_string().into(),
+                    game_id: f.game_id.clone().into(),
+                    game_name: f.last_location.clone().into(),
+                    initial: initial.into(),
+                }
+            })
+            .collect();
+        ui.set_home_friends(ModelRc::new(VecModel::from(rows)));
+        ui.set_home_friends_busy(self.friends_busy);
+    }
+
+    fn push_recent_games(&self, ui: &AppWindow) {
+        let mut rows: Vec<AccountGameRow> = Vec::new();
+        for g in &self.recent_games {
+            let p_entry = self.places.items.iter().find(|p| p.id == g.place_id);
+            let custom_res = p_entry
+                .filter(|p| p.custom_w > 0 && p.custom_h > 0)
+                .map(|p| format!("{}×{}", p.custom_w, p.custom_h))
+                .unwrap_or_default();
+            rows.push(AccountGameRow {
+                place_id: g.place_id.to_string().into(),
+                name: g.name.clone().into(),
+                creator: g.creator.clone().into(),
+                is_fav: g.is_fav,
+                custom_res: custom_res.into(),
+            });
+        }
+        for p in self.places.sorted() {
+            if !rows.iter().any(|r| r.place_id == p.id.to_string()) {
+                let custom_res = if p.custom_w > 0 && p.custom_h > 0 {
+                    format!("{}×{}", p.custom_w, p.custom_h)
+                } else {
+                    String::new()
+                };
+                let name = if p.name.is_empty() { format!("Place {}", p.id) } else { p.name.clone() };
+                rows.push(AccountGameRow {
+                    place_id: p.id.to_string().into(),
+                    name: name.into(),
+                    creator: String::new().into(),
+                    is_fav: p.fav,
+                    custom_res: custom_res.into(),
+                });
+            }
+        }
+        ui.set_home_recent_games(ModelRc::new(VecModel::from(rows)));
+    }
+
+    fn refresh_roblox_data(&mut self) {
+        let Some(active) = self.accounts.active() else {
+            self.friends.clear();
+            self.recent_games.clear();
+            self.friends_busy = false;
+            if let Some(ui) = self.weak.upgrade() {
+                self.push_friends(&ui);
+                self.push_recent_games(&ui);
+            }
+            return;
+        };
+
+        let cookie = active.cookie.clone();
+        if cookie.is_empty() {
+            return;
+        }
+
+        self.friends_busy = true;
+        if let Some(ui) = self.weak.upgrade() {
+            ui.set_home_friends_busy(true);
+        }
+
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build() else { return; };
+            let friends = rt.block_on(crate::core::roblox_api::fetch_online_friends(&cookie));
+            let _ = tx.send(AsyncEvent::FriendsLoaded(friends));
+            let games = rt.block_on(crate::core::roblox_api::fetch_account_games(&cookie));
+            let _ = tx.send(AsyncEvent::RecentGamesLoaded(games));
+        });
+    }
+
+    fn friend_join(&mut self, place_id: &str, game_id: &str) {
+        let Ok(pid) = place_id.parse::<u64>() else { return; };
+        let url = if !game_id.is_empty() {
+            format!("roblox://experiences/start?placeId={pid}&gameInstanceId={game_id}")
+        } else {
+            format!("roblox://placeId={pid}")
+        };
+        self.play(Some(&url));
+    }
+
+    fn recent_game_play(&mut self, place_id: &str) {
+        let Ok(pid) = place_id.parse::<u64>() else { return; };
+        self.launch_place(pid);
+    }
+
+    fn game_res_edit(&mut self, place_id: &str, name: &str) {
+        let Some(ui) = self.weak.upgrade() else { return; };
+        let pid: u64 = place_id.parse().unwrap_or(0);
+        let p_entry = self.places.items.iter().find(|p| p.id == pid);
+        let (mode, w, h) = if let Some(p) = p_entry {
+            if p.custom_w == 1920 && p.custom_h == 1080 {
+                (1, 1920, 1080)
+            } else if p.custom_w == 1600 && p.custom_h == 900 {
+                (2, 1600, 900)
+            } else if p.custom_w == 1440 && p.custom_h == 1080 {
+                (3, 1440, 1080)
+            } else if p.custom_w == 1280 && p.custom_h == 720 {
+                (4, 1280, 720)
+            } else if p.custom_w == 1024 && p.custom_h == 768 {
+                (5, 1024, 768)
+            } else if p.custom_w > 0 && p.custom_h > 0 {
+                (6, p.custom_w, p.custom_h)
+            } else {
+                (0, 1920, 1080)
+            }
+        } else {
+            (0, 1920, 1080)
+        };
+        ui.set_game_res_modal_place(place_id.into());
+        ui.set_game_res_modal_title(name.into());
+        ui.set_game_res_modal_mode(mode);
+        ui.set_game_res_modal_w(w.to_string().into());
+        ui.set_game_res_modal_h(h.to_string().into());
+        ui.set_game_res_modal_open(true);
+    }
+
+    fn game_res_modal_save(&mut self, place_id: &str, mode: i32, w: i32, h: i32) {
+        let pid: u64 = place_id.parse().unwrap_or(0);
+        if pid == 0 { return; }
+        let (final_w, final_h) = match mode {
+            1 => (1920, 1080),
+            2 => (1600, 900),
+            3 => (1440, 1080),
+            4 => (1280, 720),
+            5 => (1024, 768),
+            6 => (w.max(320) as u32, h.max(240) as u32),
+            _ => (0, 0),
+        };
+        self.places.set_resolution(pid, final_w, final_h, &self.config.base());
+        self.places.save(&self.config.base());
+        if let Some(ui) = self.weak.upgrade() {
+            ui.set_game_res_modal_open(false);
+            self.push_recent_games(&ui);
+        }
+    }
+
+    fn game_res_modal_close(&mut self) {
+        if let Some(ui) = self.weak.upgrade() {
+            ui.set_game_res_modal_open(false);
+        }
+    }
+
+    fn apply_theme(&mut self) {
+        if let Some(ui) = self.weak.upgrade() {
+            apply_theme(&ui, &self.config, &mut self.gif_timer);
+        }
+    }
+
+    fn apply_game_geometry(&self, place_id: Option<u64>) {
+        let place_override = place_id.and_then(|id| {
+            self.places.items.iter().find(|p| p.id == id).and_then(|p| {
+                if p.custom_w > 0 && p.custom_h > 0 {
+                    Some((p.custom_w, p.custom_h))
+                } else {
+                    None
+                }
+            })
+        });
+
+        let (target_w, target_h) = if let Some((w, h)) = place_override {
+            (Some(w), Some(h))
+        } else {
+            match self.config.game_res_mode {
+                1 => (Some(1920), Some(1080)),
+                2 => (Some(1600), Some(900)),
+                3 => (Some(1440), Some(1080)),
+                4 => (Some(1280), Some(720)),
+                5 => (Some(1024), Some(768)),
+                6 => (Some(self.config.game_res_w), Some(self.config.game_res_h)),
+                _ => (None, None),
+            }
+        };
+
+        crate::core::window_mgr::apply_geometry(target_w, target_h, self.config.center_game);
     }
 
     /// Пункты выпадающего списка аккаунтов: [0] — без аккаунта,
@@ -2453,7 +3026,7 @@ impl Ctx {
         let mut items: Vec<SharedString> = vec![tr(lang, "Acc_None").into()];
         let mut sel = 0i32;
         for (i, a) in self.accounts.accounts.iter().enumerate() {
-            items.push(a.name.as_str().into());
+            items.push(a.name.clone().into());
             if a.id == self.accounts.active {
                 sel = (i + 1) as i32;
             }
@@ -2478,12 +3051,14 @@ impl Ctx {
             self.accounts.active.clear();
             self.accounts.save(&self.config.base());
             logger::info("Запуск без аккаунта");
+            self.refresh_roblox_data();
         } else if index <= n {
             let id = self.accounts.accounts[index - 1].id.clone();
             self.accounts.active = id;
             self.accounts.save(&self.config.base());
             let name = self.accounts.accounts[index - 1].name.clone();
             logger::info(format!("Активный аккаунт: {name}"));
+            self.refresh_roblox_data();
         } else if index == n + 1 {
             self.open_save_dlg(Dlg::AccountCookie);
         } else if index == n + 2 {
@@ -2517,6 +3092,60 @@ impl Ctx {
             };
             let _ = tx.send(AsyncEvent::AccountAdded((id, name)));
         });
+    }
+
+    fn quick_login_start(&mut self) {
+        if let Some(c) = self.quick_login_cancel.take() {
+            c.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(ui) = self.weak.upgrade() {
+            ui.set_quick_login_open(true);
+            ui.set_quick_login_busy(true);
+            ui.set_quick_login_code("".into());
+            ui.set_quick_login_status(tr(self.lang, "Quick_Waiting").into());
+            ui.set_quick_login_linked(false);
+            ui.set_quick_login_code_expired(false);
+        }
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send(AsyncEvent::QuickLoginStarted(Err(e.to_string())));
+                    return;
+                }
+            };
+            let res = rt.block_on(crate::core::quick_login::create_session());
+            let _ = tx.send(AsyncEvent::QuickLoginStarted(res));
+        });
+    }
+
+    fn quick_login_cancel(&mut self) {
+        if let Some(c) = self.quick_login_cancel.take() {
+            c.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(ui) = self.weak.upgrade() {
+            ui.set_quick_login_open(false);
+        }
+    }
+
+    fn quick_login_copy(&mut self) {
+        if let Some(session) = &self.quick_login_session {
+            #[cfg(windows)]
+            if let Ok(mut clip) = arboard::Clipboard::new() {
+                let _ = clip.set_text(session.code.clone());
+            }
+            if let Some(ui) = self.weak.upgrade() {
+                ui.set_quick_login_status(tr(self.lang, "Quick_Copied").into());
+            }
+        }
+    }
+
+    fn quick_login_open_site(&mut self) {
+        if let Some(session) = &self.quick_login_session {
+            let url = format!("https://www.roblox.com/crossdevice?code={}", session.code);
+            open_url(&url);
+        }
     }
 
     fn push_versions(&self, ui: &AppWindow) {
@@ -2630,12 +3259,21 @@ impl Ctx {
         ui.set_set_auto_update(self.config.auto_update);
         ui.set_set_close_launch(self.config.close_on_launch);
         ui.set_set_close_tray(self.config.close_to_tray);
+        ui.set_set_center_window(self.config.center_window);
+        ui.set_set_center_game(self.config.center_game);
+        ui.set_set_game_res_mode(self.config.game_res_mode);
+        ui.set_set_game_res_w(self.config.game_res_w.to_string().into());
+        ui.set_set_game_res_h(self.config.game_res_h.to_string().into());
+        ui.set_set_live_bg(self.config.live_bg);
         ui.set_set_auto_clean(self.config.auto_clean);
         ui.set_set_show_logs(self.config.show_logs);
         ui.set_set_discord_rp(self.config.discord_rp);
         ui.set_set_rp_place(self.config.discord_rp_place);
         ui.set_set_rp_time(self.config.discord_rp_time);
         ui.set_set_rp_brand(self.config.discord_rp_brand);
+        ui.set_set_rp_incognito(self.config.discord_incognito);
+        ui.set_set_rp_server(self.config.discord_show_server);
+        ui.set_set_discord_custom(self.config.discord_custom_status.as_str().into());
 
         let (dsk, dst) = match &self.discord_status {
             discord::Status::Connected => {
@@ -2871,7 +3509,7 @@ impl Ctx {
                     let mut text = format!("{} · {} · {}", info.category, flags::hint(info), info.desc);
                     if !flags::is_allowlisted(name) {
                         text.push_str(&format!(
-                            " · ⚠ {}",
+                            " · {}",
                             tr(self.lang, "Flags_NotAllowlisted")
                         ));
                     }
@@ -3265,6 +3903,28 @@ fn clamp_window_to_screen(ui: &AppWindow) {
 fn clamp_window_to_screen(_ui: &AppWindow) {}
 
 #[cfg(windows)]
+fn center_window_on_screen(ui: &AppWindow) {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
+    let mut rc: RECT = unsafe { std::mem::zeroed() };
+    let ok = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut rc as *mut _ as *mut _, 0) };
+    if ok == 0 {
+        return;
+    }
+    let screen_w = (rc.right - rc.left) as i32;
+    let screen_h = (rc.bottom - rc.top) as i32;
+    let _ = ui.window().with_winit_window(|win| {
+        let size = win.outer_size();
+        let x = rc.left + (screen_w - size.width as i32) / 2;
+        let y = rc.top + (screen_h - size.height as i32) / 2;
+        win.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
+    });
+}
+
+#[cfg(not(windows))]
+fn center_window_on_screen(_ui: &AppWindow) {}
+
+#[cfg(windows)]
 fn winit_min(ui: &AppWindow) {
     let _ = ui.window().with_winit_window(|x| x.set_minimized(true));
 }
@@ -3338,8 +3998,8 @@ fn rgb(c: (u8, u8, u8)) -> slint::Color {
     slint::Color::from_rgb_u8(c.0, c.1, c.2)
 }
 
-/// Применить оформление: акцент, фон, пользовательскую картинку.
-fn apply_theme(ui: &AppWindow, cfg: &Config) {
+/// Применить оформление: акцент, фон, пользовательскую картинку / живой фон.
+fn apply_theme(ui: &AppWindow, cfg: &Config, gif_timer: &mut Option<slint::Timer>) {
     let theme = ui.global::<Theme>();
     let a = ACCENTS[(cfg.theme_accent as usize) % ACCENTS.len()];
     theme.set_accent(rgb(a));
@@ -3351,11 +4011,50 @@ fn apply_theme(ui: &AppWindow, cfg: &Config) {
     theme.set_bg_deep(rgb(deep));
     theme.set_sidebar(rgb(sb));
 
+    apply_bg(ui, cfg, gif_timer);
+}
+
+fn apply_bg(ui: &AppWindow, cfg: &Config, gif_timer: &mut Option<slint::Timer>) {
+    *gif_timer = None;
+
     let path = cfg.bg_image.trim();
     let on = !path.is_empty();
-    let img = if on { load_bg(path) } else { slint::Image::default() };
+    if !on {
+        ui.set_bg_image(slint::Image::default());
+        ui.set_bg_image_on(false);
+        return;
+    }
+
+    ui.set_bg_image_on(true);
+
+    #[cfg(windows)]
+    if cfg.live_bg && path.to_lowercase().ends_with(".gif") {
+        let frames = load_gif_frames(path);
+        if !frames.is_empty() {
+            ui.set_bg_image(frames[0].0.clone());
+            if frames.len() > 1 {
+                let weak = ui.as_weak();
+                let frames_rc = std::rc::Rc::new(frames);
+                let mut frame_idx = 0usize;
+                let timer = slint::Timer::default();
+                let interval = frames_rc[0].1 as u64;
+                timer.start(
+                    slint::TimerMode::Repeated,
+                    std::time::Duration::from_millis(interval),
+                    move || {
+                        let Some(ui) = weak.upgrade() else { return; };
+                        frame_idx = (frame_idx + 1) % frames_rc.len();
+                        ui.set_bg_image(frames_rc[frame_idx].0.clone());
+                    },
+                );
+                *gif_timer = Some(timer);
+                return;
+            }
+        }
+    }
+
+    let img = load_bg(path);
     ui.set_bg_image(img);
-    ui.set_bg_image_on(on);
 }
 
 /// Загрузить пользовательский фон (декодеры картинок включены только на Windows).
@@ -3377,6 +4076,28 @@ fn load_image(path: &str) -> slint::Image {
 #[cfg(not(windows))]
 fn load_image(_path: &str) -> slint::Image {
     slint::Image::default()
+}
+
+#[cfg(windows)]
+fn load_gif_frames(path: &str) -> Vec<(slint::Image, u32)> {
+    use image::codecs::gif::GifDecoder;
+    use image::AnimationDecoder;
+    let Ok(file) = std::fs::File::open(path) else { return Vec::new(); };
+    let reader = std::io::BufReader::new(file);
+    let Ok(decoder) = GifDecoder::new(reader) else { return Vec::new(); };
+    let Ok(frames) = decoder.into_frames().collect_frames() else { return Vec::new(); };
+    let mut out = Vec::new();
+    for frame in frames {
+        let (num, denom) = frame.delay().numer_denom_ms();
+        let delay_ms = if denom == 0 || num == 0 { 80 } else { (num / denom).clamp(20, 1000) };
+        let buffer = frame.into_buffer();
+        let width = buffer.width();
+        let height = buffer.height();
+        let raw = buffer.into_raw();
+        let slint_buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&raw, width, height);
+        out.push((slint::Image::from_rgba8(slint_buf), delay_ms));
+    }
+    out
 }
 
 // ===== Перевод строк =====
@@ -3408,7 +4129,40 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_home_link_paste(tr(lang, "Home_LinkPaste").into());
     t.set_home_chart(tr(lang, "Home_Chart").into());
     t.set_home_places(tr(lang, "Home_Places").into());
+    t.set_home_friends_title(tr(lang, "Home_Friends_Title").into());
+    t.set_home_friends_empty(tr(lang, "Home_Friends_Empty").into());
+    t.set_home_friends_join(tr(lang, "Home_Friends_Join").into());
+    t.set_home_friends_ingame(tr(lang, "Home_Friends_InGame").into());
+    t.set_home_friends_online(tr(lang, "Home_Friends_Online").into());
+    t.set_home_recent_title(tr(lang, "Home_Recent_Title").into());
+    t.set_home_recent_empty(tr(lang, "Home_Recent_Empty").into());
+    t.set_settings_center_win(tr(lang, "Settings_CenterWin").into());
+    t.set_settings_center_game(tr(lang, "Settings_CenterGame").into());
+    t.set_settings_game_res(tr(lang, "Settings_GameRes").into());
+    t.set_settings_game_res_desc(tr(lang, "Settings_GameResDesc").into());
+    t.set_settings_res_auto(tr(lang, "Settings_ResAuto").into());
+    t.set_settings_res_custom(tr(lang, "Settings_ResCustom").into());
+    t.set_settings_res_w(tr(lang, "Settings_ResW").into());
+    t.set_settings_res_h(tr(lang, "Settings_ResH").into());
+    t.set_settings_live_bg(tr(lang, "Settings_LiveBg").into());
+    t.set_settings_live_bg_desc(tr(lang, "Settings_LiveBgDesc").into());
     t.set_home_account(tr(lang, "Home_Account").into());
+    t.set_home_account_active(tr(lang, "Home_Account_Active").into());
+    t.set_home_account_guest(tr(lang, "Home_Account_Guest").into());
+    t.set_home_account_change(tr(lang, "Home_Account_Change").into());
+    t.set_home_account_select(tr(lang, "Home_Account_Select").into());
+    t.set_home_account_quick(tr(lang, "Home_Account_Quick").into());
+    t.set_home_account_add(tr(lang, "Home_Account_Add").into());
+    t.set_quick_login_title(tr(lang, "Quick_Title").into());
+    t.set_quick_login_sub(tr(lang, "Quick_Sub").into());
+    t.set_quick_login_code_label(tr(lang, "Quick_CodeLabel").into());
+    t.set_quick_login_copy(tr(lang, "Quick_Copy").into());
+    t.set_quick_login_copied(tr(lang, "Quick_Copied").into());
+    t.set_quick_login_open_site(tr(lang, "Quick_OpenSite").into());
+    t.set_quick_login_waiting(tr(lang, "Quick_Waiting").into());
+    t.set_quick_login_linked(tr(lang, "Quick_Linked").into());
+    t.set_quick_login_expired(tr(lang, "Quick_Expired").into());
+    t.set_quick_login_refresh(tr(lang, "Quick_Refresh").into());
     t.set_games_h1(tr(lang, "Games_H1").into());
     t.set_games_sub(tr(lang, "Games_Sub").into());
     t.set_games_hint(tr(lang, "Games_Hint").into());
@@ -3427,6 +4181,24 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_games_servers_players(tr(lang, "Games_Servers_Players").into());
     t.set_games_servers_ping(tr(lang, "Games_Servers_Ping").into());
     t.set_games_servers_join(tr(lang, "Games_Servers_Join").into());
+    t.set_games_servers_active_prefix(tr(lang, "Games_Servers_Active").into());
+    t.set_games_servers_ping_label(tr(lang, "Games_Servers_PingLabel").into());
+    t.set_games_servers_sub(tr(lang, "Games_Servers_Sub").into());
+    t.set_games_servers_col_region(tr(lang, "Games_Servers_ColRegion").into());
+    t.set_games_servers_copy_job(tr(lang, "Games_Servers_CopyJob").into());
+    t.set_games_tab_places(tr(lang, "Games_Tab_Places").into());
+    t.set_games_tab_shots(tr(lang, "Games_Tab_Shots").into());
+    t.set_screenshots_h1(tr(lang, "Screenshots_H1").into());
+    t.set_screenshots_sub(tr(lang, "Screenshots_Sub").into());
+    t.set_screenshots_count_prefix(tr(lang, "Screenshots_CountPrefix").into());
+    t.set_screenshots_open_folder(tr(lang, "Screenshots_OpenFolder").into());
+    t.set_screenshots_refresh(tr(lang, "Screenshots_Refresh").into());
+    t.set_screenshots_empty(tr(lang, "Screenshots_Empty").into());
+    t.set_screenshots_empty_desc(tr(lang, "Screenshots_EmptyDesc").into());
+    t.set_screenshots_recent(tr(lang, "Screenshots_Recent").into());
+    t.set_screenshots_copy_discord(tr(lang, "Screenshots_CopyDiscord").into());
+    t.set_screenshots_open(tr(lang, "Screenshots_Open").into());
+    t.set_screenshots_delete(tr(lang, "Screenshots_Delete").into());
     t.set_logs_h1(tr(lang, "Logs_H1").into());
     t.set_logs_sub(tr(lang, "Logs_Sub").into());
     t.set_logs_launcher(tr(lang, "Logs_Launcher").into());
@@ -3476,6 +4248,8 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_lang(tr(lang, "Settings_Lang").into());
     t.set_settings_threads(tr(lang, "Settings_Threads").into());
     t.set_settings_threads_desc(tr(lang, "Settings_ThreadsDesc").into());
+    t.set_settings_behavior(tr(lang, "Settings_Behavior").into());
+    t.set_settings_behavior_desc(tr(lang, "Settings_BehaviorDesc").into());
     t.set_settings_auto_update(tr(lang, "Settings_AutoUpdate").into());
     t.set_settings_auto_update_desc(tr(lang, "Settings_AutoUpdateDesc").into());
     t.set_settings_close_on_launch(tr(lang, "Settings_CloseOnLaunch").into());
@@ -3491,6 +4265,12 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_rp_place(tr(lang, "Settings_DiscordRP_Place").into());
     t.set_settings_rp_time(tr(lang, "Settings_DiscordRP_Time").into());
     t.set_settings_rp_brand(tr(lang, "Settings_DiscordRP_Brand").into());
+    t.set_settings_rp_custom(tr(lang, "Settings_DiscordRP_Custom").into());
+    t.set_settings_rp_custom_hint(tr(lang, "Settings_DiscordRP_CustomHint").into());
+    t.set_settings_rp_incognito(tr(lang, "Settings_DiscordRP_Incognito").into());
+    t.set_settings_rp_incognito_desc(tr(lang, "Settings_DiscordRP_IncognitoDesc").into());
+    t.set_settings_rp_server(tr(lang, "Settings_DiscordRP_Server").into());
+    t.set_settings_rp_server_desc(tr(lang, "Settings_DiscordRP_ServerDesc").into());
     t.set_settings_discord_wait(tr(lang, "Settings_DiscordRP_Wait").into());
     t.set_settings_discord_connected(tr(lang, "Settings_DiscordRP_Connected").into());
     t.set_settings_discord_no_discord(tr(lang, "Settings_DiscordRP_NoDiscord").into());
@@ -3705,6 +4485,63 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.push_games(&weak.unwrap());
         });
     }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_server_copy_id(move |id: SharedString| {
+            ctx.borrow_mut().copy_server_id(&id);
+            let c = ctx.borrow();
+            c.push_games(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_shot_select(move |idx: i32| {
+            ctx.borrow_mut().select_screenshot(idx.max(0) as usize);
+            let c = ctx.borrow();
+            c.push_screenshots(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_shot_copy(move |p: SharedString| {
+            ctx.borrow_mut().copy_screenshot(&p);
+            let c = ctx.borrow();
+            c.push_screenshots(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_shot_open(move |p: SharedString| {
+            ctx.borrow_mut().open_screenshot(&p);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_shot_folder(move |p: SharedString| {
+            ctx.borrow_mut().folder_screenshot(&p);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_shot_delete(move |p: SharedString| {
+            ctx.borrow_mut().delete_screenshot(&p);
+            let c = ctx.borrow();
+            c.push_screenshots(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_shot_refresh(move || {
+            ctx.borrow_mut().refresh_screenshots();
+            let c = ctx.borrow();
+            c.push_screenshots(&weak.unwrap());
+        });
+    }
 
     // — Home —
     {
@@ -3790,6 +4627,51 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let ui = weak.unwrap();
             c.push_home(&ui);
             c.push_dlg(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_friend_join(move |pid: SharedString, jid: SharedString| {
+            ctx.borrow_mut().friend_join(&pid, &jid);
+            let c = ctx.borrow();
+            c.push_home(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_friends_refresh(move || {
+            ctx.borrow_mut().refresh_roblox_data();
+            let c = ctx.borrow();
+            c.push_home(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_recent_game_play(move |pid: SharedString| {
+            ctx.borrow_mut().recent_game_play(&pid);
+            let c = ctx.borrow();
+            c.push_home(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_game_res_edit(move |pid: SharedString, name: SharedString| {
+            ctx.borrow_mut().game_res_edit(&pid, &name);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_game_res_modal_save(move |pid: SharedString, mode: i32, w: i32, h: i32| {
+            ctx.borrow_mut().game_res_modal_save(&pid, mode, w, h);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_game_res_modal_close(move || {
+            ctx.borrow_mut().game_res_modal_close();
         });
     }
 
@@ -3982,6 +4864,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             let lang = {
                 let mut c = ctx.borrow_mut();
                 c.set_lang(Lang::resolve(if i == 1 { "en" } else { "ru" }));
+                c.refresh_tray();
                 c.lang
             };
             let ui = weak.unwrap();
@@ -4035,6 +4918,48 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             {
                 let mut c = ctx.borrow_mut();
                 c.config.discord_rp = v;
+                c.config.save();
+                c.sync_discord();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_rp_incognito_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.discord_incognito = v;
+                c.config.save();
+                c.sync_discord();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_rp_server_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.discord_show_server = v;
+                c.config.save();
+                c.sync_discord();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_discord_custom_set(move |s: SharedString| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.discord_custom_status = s.to_string();
                 c.config.save();
                 c.sync_discord();
             }
@@ -4167,59 +5092,39 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     }
     {
         let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
         ui.on_overlay_bright_set(move |v: i32| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.overlay_bright = v.clamp(-50, 50);
-                c.config.save();
-                c.overlay.update(push_overlay(&c));
-            }
-            let c = ctx.borrow();
-            c.push_settings(&weak.unwrap());
+            let mut c = ctx.borrow_mut();
+            c.config.overlay_bright = v.clamp(-50, 50);
+            c.config.save();
+            c.overlay.update(push_overlay(&c));
         });
     }
     {
         let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
         ui.on_overlay_sat_set(move |v: i32| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.overlay_sat = v.clamp(0, 200);
-                c.config.save();
-                c.overlay.update(push_overlay(&c));
-            }
-            let c = ctx.borrow();
-            c.push_settings(&weak.unwrap());
+            let mut c = ctx.borrow_mut();
+            c.config.overlay_sat = v.clamp(0, 200);
+            c.config.save();
+            c.overlay.update(push_overlay(&c));
         });
     }
     {
         let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
         ui.on_overlay_contrast_set(move |v: i32| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.overlay_contrast = v.clamp(50, 150);
-                c.config.save();
-                c.overlay.update(push_overlay(&c));
-            }
-            let c = ctx.borrow();
-            c.push_settings(&weak.unwrap());
+            let mut c = ctx.borrow_mut();
+            c.config.overlay_contrast = v.clamp(50, 150);
+            c.config.save();
+            c.overlay.update(push_overlay(&c));
         });
     }
     {
         let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
         let audio = crate::audio::global();
         ui.on_sound_vol_set(move |v: i32| {
             audio.set_volume(v.clamp(0, 100) as u32);
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.sound_volume = v.clamp(0, 100) as u32;
-                c.config.save();
-            }
-            let c = ctx.borrow();
-            c.push_settings(&weak.unwrap());
+            let mut c = ctx.borrow_mut();
+            c.config.sound_volume = v.clamp(0, 100) as u32;
+            c.config.save();
         });
     }
     // — Трей и профиль конфигурации —
@@ -4262,11 +5167,10 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 let mut c = ctx.borrow_mut();
                 c.config.theme_accent = i.max(0) as u32;
                 c.config.save();
+                c.apply_theme();
             }
             let c = ctx.borrow();
-            let ui = weak.unwrap();
-            apply_theme(&ui, &c.config);
-            c.push_settings(&ui);
+            c.push_settings(&weak.unwrap());
         });
     }
     {
@@ -4277,11 +5181,10 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 let mut c = ctx.borrow_mut();
                 c.config.theme_bg = i.max(0) as u32;
                 c.config.save();
+                c.apply_theme();
             }
             let c = ctx.borrow();
-            let ui = weak.unwrap();
-            apply_theme(&ui, &c.config);
-            c.push_settings(&ui);
+            c.push_settings(&weak.unwrap());
         });
     }
     {
@@ -4291,11 +5194,10 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             {
                 let mut c = ctx.borrow_mut();
                 c.pick_bg_image();
+                c.apply_theme();
             }
             let c = ctx.borrow();
-            let ui = weak.unwrap();
-            apply_theme(&ui, &c.config);
-            c.push_settings(&ui);
+            c.push_settings(&weak.unwrap());
         });
     }
     {
@@ -4306,11 +5208,77 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 let mut c = ctx.borrow_mut();
                 c.config.bg_image.clear();
                 c.config.save();
+                c.apply_theme();
             }
             let c = ctx.borrow();
-            let ui = weak.unwrap();
-            apply_theme(&ui, &c.config);
-            c.push_settings(&ui);
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_live_bg_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.live_bg = v;
+                c.config.save();
+                c.apply_theme();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_center_window_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.center_window = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_center_game_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.center_game = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_game_res_mode_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.game_res_mode = m;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_game_res_custom_set(move |w: i32, h: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.game_res_w = w.max(320) as u32;
+                c.config.game_res_h = h.max(240) as u32;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
         });
     }
     {
@@ -4587,6 +5555,30 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.push_dlg_input(&weak.unwrap());
         });
     }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_quick_login_start(move || {
+            ctx.borrow_mut().quick_login_start();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_quick_login_cancel(move || {
+            ctx.borrow_mut().quick_login_cancel();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_quick_login_copy(move || {
+            ctx.borrow_mut().quick_login_copy();
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_quick_login_open_site(move || {
+            ctx.borrow_mut().quick_login_open_site();
+        });
+    }
 
     // — FastFlags —
     {
@@ -4832,9 +5824,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
     clamp_window_to_screen(&ui);
     let config = Config::load();
+    if config.center_window {
+        center_window_on_screen(&ui);
+    }
     let lang = Lang::resolve(&config.language);
     apply_i18n(&ui, lang);
-    apply_theme(&ui, &config);
+    let mut initial_gif_timer: Option<slint::Timer> = None;
+    apply_theme(&ui, &config, &mut initial_gif_timer);
 
     // Splash-экран: показывается при старте, fade-out через 1.4 с (если включён).
     if config.splash_on {
@@ -4844,11 +5840,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
             ui.set_splash_img_on(true);
         }
         let splash_weak = ui.as_weak();
-        let splash_timer = Timer::default();
-        splash_timer.start(TimerMode::SingleShot, Duration::from_millis(1400), move || {
-            if let Some(ui) = splash_weak.upgrade() {
-                ui.set_splash_open(false);
-            }
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1400));
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = splash_weak.upgrade() {
+                    ui.set_splash_open(false);
+                }
+            });
         });
     }
 
@@ -4881,7 +5879,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let (discord, discord_rx) = discord::spawn();
     // RP: сразу показываем статус лаунчера (если включено).
     if config.discord_rp {
-        let _ = discord.send(discord::Update::Launcher);
+        let custom = (!config.discord_custom_status.trim().is_empty())
+            .then(|| config.discord_custom_status.trim().to_string());
+        let _ = discord.send(discord::Update::Launcher { details: custom });
     }
 
     let (tx, rx) = mpsc::channel();
@@ -4961,9 +5961,20 @@ pub fn run() -> Result<(), slint::PlatformError> {
         servers: Vec::new(),
         servers_msg: None,
         servers_busy: false,
+        active_server: None,
+        active_server_ip: None,
+        screenshots: screenshots::scan(),
+        shot_selected: 0,
+        shot_status: None,
         cfg_msg: None,
         overlay,
         accounts,
+        quick_login_session: None,
+        quick_login_cancel: None,
+        friends: Vec::new(),
+        friends_busy: false,
+        recent_games: Vec::new(),
+        gif_timer: initial_gif_timer,
         session_active: false,
         session_secs: 0,
         session_place: None,
@@ -5010,6 +6021,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         ctx.borrow_mut().check_updates(false);
     }
     ctx.borrow().push_home(&ui);
+    ctx.borrow_mut().refresh_roblox_data();
 
     // Клик по roblox:// в командной строке (друзья, приватки, плейсы):
     // сразу запускаем игру с этой ссылкой (счётчик сессии и RP работают).
@@ -5120,7 +6132,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
         });
     }
 
-    let res = ui.run();
+    ui.show()?;
+    let _tick = tick;
+    let _logs_timer = logs_timer;
+    let res = slint::run_event_loop_until_quit();
 
     ctx.borrow().config.save();
     logger::info("Интерфейс Slint завершён");
@@ -5193,6 +6208,7 @@ mod shots {
         ui.set_play_labels(strings(&[
             "12.11", "", "", "", "", "", "", "", "", "", "", "", "", "30.10",
         ]));
+        ui.set_play_days_max(76);
 
         // ---- Games ----
         ui.set_games_rows(rows(vec![
@@ -5207,10 +6223,10 @@ mod shots {
         ui.set_games_servers_msg("Серверов: 4".into());
         ui.set_games_servers_busy(false);
         ui.set_games_servers(rows(vec![
-            ServerRow { id: "3a9f1c2b-77de-4e01-9c3a-a1b2c3d4e5f6".into(), place: "920587237".into(), players: "38/50".into(), ping: "24 ms".into() },
-            ServerRow { id: "8f2b0d4a-1e33-4c77-b0aa-112233445566".into(), place: "920587237".into(), players: "50/50".into(), ping: "31 ms".into() },
-            ServerRow { id: "c1d2e3f4-a5b6-4c7d-8e9f-001122334455".into(), place: "920587237".into(), players: "12/50".into(), ping: "78 ms".into() },
-            ServerRow { id: "d4e5f6a7-b8c9-4d0e-9f1a-223344556677".into(), place: "920587237".into(), players: "45/50".into(), ping: "—".into() },
+            ServerRow { id: "3a9f1c2b-77de-4e01-9c3a-a1b2c3d4e5f6".into(), place: "920587237".into(), players: "38/50".into(), ping: "24 ms".into(), region: "EU: Франкфурт".into(), ping_kind: 0 },
+            ServerRow { id: "8f2b0d4a-1e33-4c77-b0aa-112233445566".into(), place: "920587237".into(), players: "50/50".into(), ping: "31 ms".into(), region: "EU: Франкфурт".into(), ping_kind: 0 },
+            ServerRow { id: "c1d2e3f4-a5b6-4c7d-8e9f-001122334455".into(), place: "920587237".into(), players: "12/50".into(), ping: "78 ms".into(), region: "US: Ashburn".into(), ping_kind: 1 },
+            ServerRow { id: "d4e5f6a7-b8c9-4d0e-9f1a-223344556677".into(), place: "920587237".into(), players: "45/50".into(), ping: "—".into(), region: "Cloud".into(), ping_kind: 3 },
         ]));
 
         // ---- Flags ----

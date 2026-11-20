@@ -3,7 +3,7 @@
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { PageFade, Btn, ProgressBar } from "../widgets.slint";
-import { IconStar } from "../icons.slint";
+import { IconStar, IconExternal } from "../icons.slint";
 
 export component AboutPage inherits PageFade {
     in-out property <string> app-version;
@@ -80,7 +80,7 @@ export component AboutPage inherits PageFade {
                     }
 
                     Rectangle {
-                        height: 22px;
+                        height: 26px;
                         HorizontalLayout {
                             spacing: 8px;
                             Text {
@@ -89,12 +89,35 @@ export component AboutPage inherits PageFade {
                                 color: Theme.fg-dim;
                                 vertical-alignment: center;
                             }
-                            Text {
-                                text: "mesorg-dev/ByteStrap";
-                                font-family: Theme.font-mono;
-                                font-size: 12px;
-                                color: repo-touch.has-hover ? #ffffff : #ffffffb3;
-                                vertical-alignment: center;
+                            Rectangle {
+                                border-radius: 4px;
+                                background: repo-touch.has-hover ? #ffffff14 : #ffffff08;
+                                border-width: 1px;
+                                border-color: repo-touch.has-hover ? #ffffff33 : #ffffff14;
+                                animate background { duration: Theme.t-fast; }
+                                animate border-color { duration: Theme.t-fast; }
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 6px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: "mesorg-dev/ByteStrap";
+                                        font-family: Theme.font-mono;
+                                        font-size: 12px;
+                                        color: repo-touch.has-hover ? Theme.fg : Theme.fg-dim;
+                                        vertical-alignment: center;
+                                    }
+
+                                    IconExternal {
+                                        width: 12px;
+                                        height: 12px;
+                                        c: repo-touch.has-hover ? Theme.fg : Theme.fg-dim;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
                             }
                         }
                         repo-touch := TouchArea {

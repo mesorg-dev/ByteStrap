@@ -12,7 +12,7 @@ import "../assets/fonts/Unbounded-Bold.ttf";
 import { Theme } from "theme.slint";
 import { Snd } from "snd.slint";
 import { T } from "i18n.slint";
-export { T, Theme, Snd }
+export { T, Theme, Snd, ScreenshotRow }
 import { TitleBar } from "titlebar.slint";
 import { Btn, TextField, Dd } from "widgets.slint";
 import { SideBar } from "sidebar.slint";
@@ -25,7 +25,8 @@ import { ModsPage } from "pages/mods.slint";
 import { FlagsPage } from "pages/flags.slint";
 import { GamesPage } from "pages/games.slint";
 import { AboutPage } from "pages/about.slint";
-import { PlaceRow, GameRow, ServerRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
+import { IconCross } from "icons.slint";
+import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow, FriendRow, AccountGameRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -69,6 +70,7 @@ export component AppWindow inherits Window {
     /// Минуты по последним 14 дням (старые → новые) + подписи DD.MM.
     in-out property <[int]> play-days: [];
     in-out property <[string]> play-labels: [];
+    in-out property <int> play-days-max: 60;
 
     // Games (page 1)
     in-out property <[GameRow]> games-rows: [];
@@ -77,11 +79,26 @@ export component AppWindow inherits Window {
     in-out property <[ServerRow]> games-servers: [];
     in-out property <string> games-servers-msg: "";
     in-out property <bool> games-servers-busy: false;
+    in-out property <bool> games-has-active-server: false;
+    in-out property <string> games-active-server-region: "";
+    in-out property <string> games-active-server-detail: "";
+    in-out property <string> games-active-server-ping: "";
+
+    // Screenshots
+    in-out property <[ScreenshotRow]> shots: [];
+    in-out property <int> shot-selected: 0;
+    in-out property <string> shot-preview-path: "";
+    in-out property <string> shot-preview-name: "";
+    in-out property <string> shot-preview-date: "";
+    in-out property <string> shot-preview-size: "";
+    in-out property <image> shot-preview-img;
+    in-out property <string> shot-status: "";
 
     // Аккаунты (Home)
     in-out property <[string]> account-items: [];
     in-out property <int> account-sel: 0;
     in-out property <string> account-name: "";
+    in-out property <string> account-initial: "○";
 
     in-out property <[LogLine]> log-lines: [];
     in-out property <[string]> log-files: [];
@@ -162,6 +179,9 @@ export component AppWindow inherits Window {
     in-out property <bool> set-rp-place: true;
     in-out property <bool> set-rp-time: true;
     in-out property <bool> set-rp-brand: true;
+    in-out property <bool> set-rp-incognito: false;
+    in-out property <bool> set-rp-server: true;
+    in-out property <string> set-discord-custom: "";
     in-out property <int> set-discord-status: 0;
     in-out property <string> set-discord-text: "";
     in-out property <bool> set-deeplink: true;
@@ -187,6 +207,35 @@ export component AppWindow inherits Window {
     in-out property <string> set-bg-image-name: "";
     in-out property <bool> set-splash-on: true;
     in-out property <string> set-splash-image-name: "";
+    in-out property <bool> set-center-window: true;
+    in-out property <bool> set-center-game: false;
+    in-out property <int> set-game-res-mode: 0;
+    in-out property <string> set-game-res-w: "1920";
+    in-out property <string> set-game-res-h: "1080";
+    in-out property <bool> set-live-bg: true;
+
+    // Друзья и недавние игры (HomePage)
+    in-out property <[FriendRow]> home-friends: [];
+    in-out property <[AccountGameRow]> home-recent-games: [];
+    in-out property <bool> home-friends-busy: false;
+
+    // Кастомное разрешение для конкретной игры (Modal)
+    in-out property <bool> game-res-modal-open: false;
+    in-out property <string> game-res-modal-place: "";
+    in-out property <string> game-res-modal-title: "";
+    in-out property <int> game-res-modal-mode: 0;
+    in-out property <string> game-res-modal-w: "1920";
+    in-out property <string> game-res-modal-h: "1080";
+
+    // Quick Sign-In (Roblox Cross-Device Login)
+    in-out property <bool> quick-login-open: false;
+    in-out property <string> quick-login-code: "";
+    in-out property <image> quick-login-qr;
+    in-out property <string> quick-login-status: "";
+    in-out property <bool> quick-login-busy: false;
+    in-out property <bool> quick-login-linked: false;
+    in-out property <bool> quick-login-code-expired: false;
+
     /// Тело модального подтверждения ("" — закрыто).
     in-out property <string> confirm-body: "";
 
@@ -216,6 +265,13 @@ export component AppWindow inherits Window {
     callback games-servers-refresh(string);
     callback games-servers-best(string);
     callback games-server-join(string, string);
+    callback games-server-copy-id(string);
+    callback shot-select(int);
+    callback shot-copy(string);
+    callback shot-open(string);
+    callback shot-folder(string);
+    callback shot-delete(string);
+    callback shot-refresh();
     callback log-select(int);
     callback log-refresh();
     callback log-copy();
@@ -243,6 +299,9 @@ export component AppWindow inherits Window {
     callback cfg-import();
     callback discord-rp-set(bool);
     callback rp-opt-set(int, bool);
+    callback rp-incognito-set(bool);
+    callback rp-server-set(bool);
+    callback discord-custom-set(string);
     callback deeplink-set(bool);
     callback anti-afk-set(bool);
     callback path-edited(string);
@@ -279,6 +338,21 @@ export component AppWindow inherits Window {
     callback dlg-edited(string);
     callback dlg-ok(string);
     callback dlg-cancel();
+    callback quick-login-start();
+    callback quick-login-cancel();
+    callback quick-login-copy();
+    callback quick-login-open-site();
+    callback friend-join(string, string);
+    callback friends-refresh();
+    callback recent-game-play(string);
+    callback game-res-edit(string, string);
+    callback game-res-modal-save(string, int, int, int);
+    callback game-res-modal-close();
+    callback center-window-set(bool);
+    callback center-game-set(bool);
+    callback game-res-mode-set(int);
+    callback game-res-custom-set(int, int);
+    callback live-bg-set(bool);
     callback flags-search-edited(string);
     callback flags-add();
     callback flags-save();
@@ -384,11 +458,21 @@ export component AppWindow inherits Window {
                     top-places: root.top-places;
                     play-days: root.play-days;
                     play-labels: root.play-labels;
+                    play-days-max: root.play-days-max;
                     share: root.win-share;
                     account-items: root.account-items;
                     account-sel: root.account-sel;
                     account-name: root.account-name;
+                    account-initial: root.account-initial;
+                    friends: root.home-friends;
+                    recent-games: root.home-recent-games;
+                    friends-busy: root.home-friends-busy;
                     account-pick(i) => { root.account-pick(i); }
+                    quick-login => { root.quick-login-start(); }
+                    friend-join(pid, jid) => { root.friend-join(pid, jid); }
+                    friends-refresh => { root.friends-refresh(); }
+                    recent-game-play(pid) => { root.recent-game-play(pid); }
+                    game-res-edit(pid, name) => { root.game-res-edit(pid, name); }
                     primary => { root.primary(); }
                     update-client => { root.update-client(); }
                     cancel => { root.cancel-install(); }
@@ -406,6 +490,17 @@ export component AppWindow inherits Window {
                     servers: root.games-servers;
                     servers-msg: root.games-servers-msg;
                     servers-busy: root.games-servers-busy;
+                    has-active-server: root.games-has-active-server;
+                    active-server-region: root.games-active-server-region;
+                    active-server-detail: root.games-active-server-detail;
+                    active-server-ping: root.games-active-server-ping;
+                    shots: root.shots;
+                    shot-preview-path: root.shot-preview-path;
+                    shot-preview-name: root.shot-preview-name;
+                    shot-preview-date: root.shot-preview-date;
+                    shot-preview-size: root.shot-preview-size;
+                    shot-preview-img: root.shot-preview-img;
+                    shot-status: root.shot-status;
                     add(t) => { root.games-add(t); }
                     launch(id) => { root.games-launch(id); }
                     fav(id) => { root.games-fav(id); }
@@ -413,6 +508,13 @@ export component AppWindow inherits Window {
                     servers-refresh(p) => { root.games-servers-refresh(p); }
                     servers-best(p) => { root.games-servers-best(p); }
                     server-join(p, j) => { root.games-server-join(p, j); }
+                    server-copy-id(id) => { root.games-server-copy-id(id); }
+                    shot-select(idx) => { root.shot-select(idx); }
+                    shot-copy(p) => { root.shot-copy(p); }
+                    shot-open(p) => { root.shot-open(p); }
+                    shot-folder(p) => { root.shot-folder(p); }
+                    shot-delete(p) => { root.shot-delete(p); }
+                    shot-refresh => { root.shot-refresh(); }
                 }
 
                 if root.page == 5 : LogsPage {
@@ -531,12 +633,21 @@ export component AppWindow inherits Window {
                     auto-update: root.set-auto-update;
                     close-launch: root.set-close-launch;
                     close-tray: root.set-close-tray;
+                    center-window: root.set-center-window;
+                    center-game: root.set-center-game;
+                    game-res-mode: root.set-game-res-mode;
+                    game-res-w: root.set-game-res-w;
+                    game-res-h: root.set-game-res-h;
+                    live-bg: root.set-live-bg;
                     auto-clean: root.set-auto-clean;
                     show-logs: root.set-show-logs;
                     discord-rp: root.set-discord-rp;
                     rp-place: root.set-rp-place;
                     rp-time: root.set-rp-time;
                     rp-brand: root.set-rp-brand;
+                    rp-incognito: root.set-rp-incognito;
+                    rp-server: root.set-rp-server;
+                    discord-custom: root.set-discord-custom;
                     discord-status: root.set-discord-status;
                     discord-text: root.set-discord-text;
                     deeplink: root.set-deeplink;
@@ -568,12 +679,20 @@ export component AppWindow inherits Window {
                     auto-update-set(v) => { root.auto-update-set(v); }
                     close-launch-set(v) => { root.close-launch-set(v); }
                     close-tray-set(v) => { root.close-tray-set(v); }
+                    center-window-set(v) => { root.center-window-set(v); }
+                    center-game-set(v) => { root.center-game-set(v); }
+                    game-res-mode-set(m) => { root.game-res-mode-set(m); }
+                    game-res-custom-set(w, h) => { root.game-res-custom-set(w, h); }
+                    live-bg-set(v) => { root.live-bg-set(v); }
                     auto-clean-set(v) => { root.auto-clean-set(v); }
                     show-logs-set(v) => { root.show-logs-set(v); }
                     cfg-export => { root.cfg-export(); }
                     cfg-import => { root.cfg-import(); }
                     discord-rp-set(v) => { root.discord-rp-set(v); }
                     rp-opt-set(k, v) => { root.rp-opt-set(k, v); }
+                    rp-incognito-set(v) => { root.rp-incognito-set(v); }
+                    rp-server-set(v) => { root.rp-server-set(v); }
+                    discord-custom-set(s) => { root.discord-custom-set(s); }
                     deeplink-set(v) => { root.deeplink-set(v); }
                     anti-afk-set(v) => { root.anti-afk-set(v); }
                     path-edited(t) => { root.path-edited(t); }
@@ -672,6 +791,201 @@ export component AppWindow inherits Window {
                         width: 90px;
                         height: 34px;
                         clicked => { root.confirm-no(); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== Модальное окно кастомного разрешения плейса =====
+    if root.game-res-modal-open : Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #000000b3;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.game-res-modal-close(); }
+        }
+
+        modal-res := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 440px;
+            height: 310px;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: #ffffff29;
+            border-radius: Theme.r-card;
+            drop-shadow-blur: 32px;
+            drop-shadow-color: #00000088;
+            clip: true;
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 14px;
+
+                HorizontalLayout {
+                    Text {
+                        text: "Разрешение окна игры";
+                        font-family: Theme.font-display;
+                        font-weight: 700;
+                        font-size: 16px;
+                        color: Theme.fg;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Theme.r-soft;
+                        background: res-x-touch.has-hover ? #ffffff24 : transparent;
+                        animate background { duration: Theme.t-fast; }
+
+                        IconCross {
+                            width: 12px;
+                            height: 12px;
+                            c: Theme.fg;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+
+                        res-x-touch := TouchArea {
+                            clicked => { root.game-res-modal-close(); }
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.game-res-modal-title;
+                    font-size: 12.5px;
+                    color: Theme.accent;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Btn {
+                        label: "По умолчанию";
+                        kind: 2;
+                        active: root.game-res-modal-mode == 0;
+                        width: 120px;
+                        height: 28px;
+                        clicked => { root.game-res-modal-mode = 0; }
+                    }
+                    Btn {
+                        label: "1920×1080";
+                        kind: 2;
+                        active: root.game-res-modal-mode == 1;
+                        width: 110px;
+                        height: 28px;
+                        clicked => { root.game-res-modal-mode = 1; }
+                    }
+                    Btn {
+                        label: "1440×1080 (4:3)";
+                        kind: 2;
+                        active: root.game-res-modal-mode == 3;
+                        width: 140px;
+                        height: 28px;
+                        clicked => { root.game-res-modal-mode = 3; }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    Btn {
+                        label: "1280×720";
+                        kind: 2;
+                        active: root.game-res-modal-mode == 4;
+                        width: 110px;
+                        height: 28px;
+                        clicked => { root.game-res-modal-mode = 4; }
+                    }
+                    Btn {
+                        label: "1024×768 (4:3)";
+                        kind: 2;
+                        active: root.game-res-modal-mode == 5;
+                        width: 130px;
+                        height: 28px;
+                        clicked => { root.game-res-modal-mode = 5; }
+                    }
+                    Btn {
+                        label: "Своё W×H";
+                        kind: 2;
+                        active: root.game-res-modal-mode == 6;
+                        width: 110px;
+                        height: 28px;
+                        clicked => { root.game-res-modal-mode = 6; }
+                    }
+                }
+
+                if root.game-res-modal-mode == 6 : HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "Ширина:";
+                        font-size: 12px;
+                        color: Theme.fg-dim;
+                        vertical-alignment: center;
+                    }
+                    m-res-w := TextField {
+                        width: 80px;
+                        height: 28px;
+                        text: root.game-res-modal-w;
+                        edited => { root.game-res-modal-w = self.text; }
+                    }
+                    Text {
+                        text: "×";
+                        font-size: 13px;
+                        color: Theme.fg-dim;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: "Высота:";
+                        font-size: 12px;
+                        color: Theme.fg-dim;
+                        vertical-alignment: center;
+                    }
+                    m-res-h := TextField {
+                        width: 80px;
+                        height: 28px;
+                        text: root.game-res-modal-h;
+                        edited => { root.game-res-modal-h = self.text; }
+                    }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+
+                    Btn {
+                        label: "Отмена";
+                        kind: 2;
+                        width: 90px;
+                        height: 32px;
+                        clicked => { root.game-res-modal-close(); }
+                    }
+
+                    Btn {
+                        label: "Сохранить";
+                        kind: 0;
+                        width: 110px;
+                        height: 32px;
+                        clicked => {
+                            root.game-res-modal-save(
+                                root.game-res-modal-place,
+                                root.game-res-modal-mode,
+                                root.game-res-modal-w.to-float(),
+                                root.game-res-modal-h.to-float()
+                            );
+                        }
                     }
                 }
             }
