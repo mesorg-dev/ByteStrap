@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 #[cfg(windows)]
-pub use imp::{spawn, Handle, Params};
+pub use imp::{find_game_hwnd, spawn, Handle, Params};
 
 #[cfg(not(windows))]
 pub use stub::*;
@@ -351,7 +351,7 @@ mod imp {
     }
 
     /// Окно Roblox: видимое топ-левел окно процесса RobloxPlayerBeta.
-    fn find_game_hwnd() -> HWND {
+    pub(crate) fn find_game_hwnd() -> HWND {
         extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> i32 {
             unsafe {
                 let out = lparam as *mut HWND;
@@ -462,5 +462,9 @@ mod stub {
 
     pub fn spawn(_initial: Params) -> Handle {
         Handle
+    }
+
+    pub fn find_game_hwnd() -> *mut std::ffi::c_void {
+        std::ptr::null_mut()
     }
 }

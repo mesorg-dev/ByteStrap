@@ -139,13 +139,23 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
     let mut log_path = newest_log();
 
     loop {
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(Duration::from_millis(500));
         if !player_running() {
             break;
         }
-        if log_path.is_none() {
-            log_path = newest_log();
+
+        // Если появился более новый лог игрока, переключаемся на него
+        if let Some(newer) = newest_log() {
+            if log_path.as_ref() != Some(&newer) {
+                crate::core::logger::info(format!(
+                    "Обнаружен новый активный лог Roblox: {:?}",
+                    newer.file_name().unwrap_or_default()
+                ));
+                log_path = Some(newer);
+                log_offset = 0;
+            }
         }
+
         if let Some(p) = &log_path {
             let (found_place, found_server) = scan_log_events(p, &mut log_offset);
             if let Some(id) = found_place {
@@ -188,21 +198,31 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
     let _ = tx.send(SessionEvent::End { total, places });
 }
 
-/// Есть ли живой процесс плеера.
-fn player_running() -> bool {
+/// Есть ли живой процесс плеера Roblox.
+pub fn player_running() -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq RobloxPlayerBeta.exe", "/NH"])
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW — без всплывающих консолей
-            .output()
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .to_ascii_lowercase()
-                    .contains("robloxplayerbeta")
-            })
-            .unwrap_or(false)
+        // 1. Быстрая проверка окна клиента через FindWindowW (0 мс, без порождения процессов)
+        let class_name: Vec<u16> = "WINDOWSCLIENT"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let hwnd = unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(
+                class_name.as_ptr(),
+                std::ptr::null(),
+            )
+        };
+        if !hwnd.is_null() {
+            return true;
+        }
+
+        // 2. Проверка через find_game_hwnd (по имени исполняемого файла robloxplayerbeta.exe)
+        if !crate::core::overlay::find_game_hwnd().is_null() {
+            return true;
+        }
+
+        false
     }
     #[cfg(not(windows))]
     {
@@ -217,13 +237,21 @@ pub(crate) fn logs_dir() -> PathBuf {
         .join("logs")
 }
 
-/// Самый свежий *.log в логах Roblox.
-fn newest_log() -> Option<PathBuf> {
+/// Самый свежий *.log клиента Roblox (исключая CrashHandler и Studio).
+pub(crate) fn newest_log() -> Option<PathBuf> {
     let dir = logs_dir();
     let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
     for e in std::fs::read_dir(&dir).ok()?.flatten() {
         let p = e.path();
-        if p.extension()?.to_str()? != "log" {
+        let fname = match p.file_name().and_then(|n| n.to_str()) {
+            Some(f) => f,
+            None => continue,
+        };
+        // Только реальные логи клиента: должны содержать "_Player_" и не быть CrashHandler
+        if !fname.contains("_Player_") || fname.contains("CrashHandler") {
+            continue;
+        }
+        if p.extension().and_then(|ext| ext.to_str()) != Some("log") {
             continue;
         }
         let m = e.metadata().ok()?.modified().ok()?;

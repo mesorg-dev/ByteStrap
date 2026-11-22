@@ -16,7 +16,12 @@ pub use stub::*;
 #[cfg(not(windows))]
 mod stub {
     pub fn show_server_toast(_title: &str, _body: &str) {}
-    pub fn show_server_join(_region: &str, _ping_ms: Option<u32>, _lang: crate::i18n::Lang) {}
+    pub fn show_server_join(
+        _place_name: Option<&str>,
+        _region: &str,
+        _ping_ms: Option<u32>,
+        _lang: crate::i18n::Lang,
+    ) {}
 }
 
 #[cfg(windows)]
@@ -36,12 +41,12 @@ mod imp {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetSystemMetrics,
-        GetWindowLongPtrW, IsWindow, PeekMessageW, PostMessageW, RegisterClassExW,
-        SetLayeredWindowAttributes, SetWindowLongPtrW, ShowWindow, SystemParametersInfoW,
-        TranslateMessage, CREATESTRUCTW, GWLP_USERDATA, LWA_ALPHA, MSG, PM_REMOVE, SM_CXSCREEN,
-        SM_CYSCREEN, SPI_GETWORKAREA, SW_SHOWNOACTIVATE, WM_CLOSE, WM_CREATE, WM_DESTROY,
-        WM_ERASEBKGND, WM_PAINT, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+        GetWindowLongPtrW, GetWindowRect, IsWindow, IsWindowVisible, PeekMessageW, PostMessageW,
+        RegisterClassExW, SetLayeredWindowAttributes, SetWindowLongPtrW, ShowWindow,
+        SystemParametersInfoW, TranslateMessage, CREATESTRUCTW, GWLP_USERDATA, LWA_ALPHA, MSG,
+        PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SPI_GETWORKAREA, SW_SHOWNOACTIVATE, WM_CLOSE,
+        WM_CREATE, WM_DESTROY, WM_ERASEBKGND, WM_PAINT, WNDCLASSEXW, WS_EX_LAYERED,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
     };
 
     const CLASS_NAME: &[u16] = &[
@@ -204,34 +209,45 @@ mod imp {
                 let _ = RegisterClassExW(&wc);
             });
 
-            let width = 380;
-            let height = 74;
+            let width = 400;
+            let height = 76;
 
-            let mut rc = RECT {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 0,
-            };
-            let (screen_w, screen_h) = if SystemParametersInfoW(
-                SPI_GETWORKAREA,
-                0,
-                &mut rc as *mut _ as *mut _,
-                0,
-            ) != 0
-                && rc.right > rc.left
-                && rc.bottom > rc.top
-            {
-                (rc.right, rc.bottom)
+            // Определяем окно Roblox, чтобы расположить плашку прямо на мониторе игры
+            let game_hwnd = crate::core::overlay::find_game_hwnd();
+            let mut target_rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let has_game = if !game_hwnd.is_null() && IsWindowVisible(game_hwnd) != 0 {
+                GetWindowRect(game_hwnd, &mut target_rc) != 0 && target_rc.right > target_rc.left
             } else {
-                (
-                    GetSystemMetrics(SM_CXSCREEN),
-                    GetSystemMetrics(SM_CYSCREEN),
-                )
+                false
             };
 
-            let x = screen_w - width - 24;
-            let y = screen_h - height - 24;
+            let (x, y) = if has_game {
+                (target_rc.right - width - 24, target_rc.bottom - height - 24)
+            } else {
+                let mut rc = RECT {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                };
+                let (screen_w, screen_h) = if SystemParametersInfoW(
+                    SPI_GETWORKAREA,
+                    0,
+                    &mut rc as *mut _ as *mut _,
+                    0,
+                ) != 0
+                    && rc.right > rc.left
+                    && rc.bottom > rc.top
+                {
+                    (rc.right, rc.bottom)
+                } else {
+                    (
+                        GetSystemMetrics(SM_CXSCREEN),
+                        GetSystemMetrics(SM_CYSCREEN),
+                    )
+                };
+                (screen_w - width - 24, screen_h - height - 24)
+            };
 
             let data = Box::into_raw(Box::new(ToastData {
                 title: encode_wide(title),
@@ -327,6 +343,9 @@ mod imp {
 
     /// Показать всплывающее уведомление с заголовком и телом.
     pub fn show_server_toast(title: &str, body: &str) {
+        crate::core::logger::info(format!(
+            "Показ HUD-уведомления: title='{title}', body='{body}'"
+        ));
         let title = title.to_string();
         let body = body.to_string();
         std::thread::Builder::new()
@@ -337,18 +356,28 @@ mod imp {
             .ok();
     }
 
-    /// Вспомогательная функция для отображения региона сервера и пинга.
-    pub fn show_server_join(region: &str, ping_ms: Option<u32>, lang: crate::i18n::Lang) {
-        let title = match lang {
-            crate::i18n::Lang::Ru => "🌐 ByteStrap  •  Подключено к серверу",
-            _ => "🌐 ByteStrap  •  Connected to server",
+    /// Вспомогательная функция для отображения региона сервера, пинга и названия плейса.
+    pub fn show_server_join(
+        place_name: Option<&str>,
+        region: &str,
+        ping_ms: Option<u32>,
+        lang: crate::i18n::Lang,
+    ) {
+        let title = if let Some(name) = place_name.filter(|n| !n.trim().is_empty()) {
+            format!("🎮 {name}")
+        } else {
+            match lang {
+                crate::i18n::Lang::Ru => "🌐 ByteStrap  •  Подключено к серверу".to_string(),
+                _ => "🌐 ByteStrap  •  Connected to server".to_string(),
+            }
         };
+
         let body = if let Some(p) = ping_ms {
             format!("{region}  •  {p} ms")
         } else {
             region.to_string()
         };
-        show_server_toast(title, &body);
+        show_server_toast(&title, &body);
     }
 }
 
@@ -358,7 +387,12 @@ mod tests {
 
     #[test]
     fn test_toast_smoke() {
-        show_server_join("🇩🇪 Германия, Франкфурт", Some(28), crate::i18n::Lang::Ru);
-        show_server_join("🇺🇸 US, Miami", Some(110), crate::i18n::Lang::En);
+        show_server_join(
+            Some("Violence District"),
+            "🇩🇪 Германия, Франкфурт",
+            Some(28),
+            crate::i18n::Lang::Ru,
+        );
+        show_server_join(None, "🇺🇸 US, Miami", Some(110), crate::i18n::Lang::En);
     }
 }

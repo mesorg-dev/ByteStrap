@@ -264,6 +264,8 @@ struct Ctx {
     hidden_for_game: bool,
     /// Запущенный поток Anti-AFK (пока идёт сессия).
     anti_afk: Option<crate::core::antiafk::Handle>,
+    /// Счётчик тиков для периодического авто-обнаружения клиента Roblox.
+    session_poll_ticks: u32,
 
     tx: Sender<AsyncEvent>,
     rx: Receiver<AsyncEvent>,
@@ -1074,6 +1076,21 @@ impl Ctx {
         });
     }
 
+    /// Авто-обнаружение сессии Roblox (если запущено из браузера или стороннего ярлыка).
+    fn check_external_session(&mut self) {
+        if !self.session_active && crate::core::playtime::player_running() {
+            logger::info("Обнаружен запущенный клиент Roblox — запуск отслеживания сессии");
+            self.start_session_watch();
+        }
+    }
+
+    fn poll_external_session(&mut self) {
+        self.session_poll_ticks = self.session_poll_ticks.wrapping_add(1);
+        if self.session_poll_ticks % 10 == 0 {
+            self.check_external_session();
+        }
+    }
+
     /// Пересборка меню трея: оверлей, профили флагов/модов, топ-3 игр.
     fn refresh_tray(&self) {
         let base = self.config.base();
@@ -1390,7 +1407,8 @@ impl Ctx {
                         self.tray_tooltip();
 
                         if self.config.notify_server {
-                            crate::core::toast::show_server_join(&region, ping_ms, self.lang);
+                            let place_name = self.session_display.as_deref();
+                            crate::core::toast::show_server_join(place_name, &region, ping_ms, self.lang);
                         }
                     }
                 }
@@ -1413,6 +1431,12 @@ impl Ctx {
                     } => {
                         self.session_secs = secs;
                         self.tray_tooltip();
+                        // Discord RP и плашка: имя места (fallback — id).
+                        self.session_display = place_name.or_else(|| place.clone());
+                        if self.config.discord_rp {
+                            self.push_discord(secs);
+                        }
+                        self.session_place = place;
                         if let Some((ip, port)) = server {
                             if self.active_server_ip.as_deref() != Some(&ip) {
                                 self.active_server_ip = Some(ip.clone());
@@ -1449,12 +1473,6 @@ impl Ctx {
                                 });
                             }
                         }
-                        // Discord RP: state = имя места (fallback — id).
-                        self.session_display = place_name.or_else(|| place.clone());
-                        if self.config.discord_rp {
-                            self.push_discord(secs);
-                        }
-                        self.session_place = place;
                     }
                     SessionEvent::End { total, places } => {
                         self.session_active = false;
@@ -5511,6 +5529,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         session_display: None,
         hidden_for_game: false,
         anti_afk: None,
+        session_poll_ticks: 0,
         tx,
         rx,
         cancel: None,
@@ -5594,6 +5613,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         tick.start(TimerMode::Repeated, Duration::from_millis(100), move || {
             let mut c = ctx.borrow_mut();
             c.drain();
+            c.poll_external_session();
             if c.quit {
                 let _ = slint::quit_event_loop();
                 return;
