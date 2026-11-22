@@ -33,6 +33,9 @@ pub struct Config {
     pub discord_incognito: bool,
     /// Discord RP: показывать регион/сервер.
     pub discord_show_server: bool,
+    /// Показывать всплывающее уведомление с регионом и пингом при подключении к серверу.
+    #[serde(default = "default_true")]
+    pub notify_server: bool,
     /// Открывать ссылки roblox:// (друзья, приватки, плейсы) через ByteStrap.
     pub deeplink: bool,
     /// Звуки интерфейса (клики, тумблеры, переходы).
@@ -115,6 +118,7 @@ impl Default for Config {
             discord_custom_status: String::new(),
             discord_incognito: false,
             discord_show_server: true,
+            notify_server: true,
             deeplink: true,
             sound: true,
             sound_volume: 70,

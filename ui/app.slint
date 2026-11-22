@@ -169,6 +169,8 @@ export component AppWindow inherits Window {
     in-out property <bool> set-auto-clean: false;
     /// Показывать вкладку «Логи» в сайдбаре.
     in-out property <bool> set-show-logs: true;
+    /// Всплывающее уведомление о сервере и пинге при подключении.
+    in-out property <bool> set-notify-server: true;
     in-out property <bool> set-discord-rp: true;
     in-out property <bool> set-rp-place: true;
     in-out property <bool> set-rp-time: true;
@@ -274,6 +276,7 @@ export component AppWindow inherits Window {
     callback close-tray-set(bool);
     callback auto-clean-set(bool);
     callback show-logs-set(bool);
+    callback notify-server-set(bool);
     callback cfg-export();
     callback cfg-import();
     callback discord-rp-set(bool);
@@ -599,6 +602,7 @@ export component AppWindow inherits Window {
                     live-bg: root.set-live-bg;
                     auto-clean: root.set-auto-clean;
                     show-logs: root.set-show-logs;
+                    notify-server: root.set-notify-server;
                     discord-rp: root.set-discord-rp;
                     rp-place: root.set-rp-place;
                     rp-time: root.set-rp-time;
@@ -644,6 +648,7 @@ export component AppWindow inherits Window {
                     live-bg-set(v) => { root.live-bg-set(v); }
                     auto-clean-set(v) => { root.auto-clean-set(v); }
                     show-logs-set(v) => { root.show-logs-set(v); }
+                    notify-server-set(v) => { root.notify-server-set(v); }
                     cfg-export => { root.cfg-export(); }
                     cfg-import => { root.cfg-import(); }
                     discord-rp-set(v) => { root.discord-rp-set(v); }

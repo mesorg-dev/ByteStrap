@@ -52,11 +52,12 @@ pub enum AsyncEvent {
     Servers((u64, Result<Vec<servers::ServerInfo>, String>)),
     /// Пинг активного сервера Roblox.
     ActiveServerPing(u32),
-    /// Геолокация активного сервера: страна, флаг, город.
+    /// Геолокация активного сервера: страна, флаг, город, пинг.
     ActiveServerResolved {
         ip: String,
         region: String,
         detail: String,
+        ping_ms: Option<u32>,
     },
     Session(SessionEvent),
 }
@@ -869,7 +870,26 @@ impl Ctx {
         #[cfg(windows)]
         {
             let text = if self.session_active {
-                format!("ByteStrap — {}", tr(self.lang, "Home_Status_Ready"))
+                let mut parts = Vec::new();
+                if let Some(disp) = &self.session_display {
+                    parts.push(disp.clone());
+                } else if let Some(p) = &self.session_place {
+                    parts.push(p.clone());
+                }
+                if let Some(srv) = &self.active_server {
+                    if !srv.region.is_empty() && !srv.region.starts_with("Определение") {
+                        if let Some(p) = srv.ping_ms {
+                            parts.push(format!("{} ({} ms)", srv.region, p));
+                        } else {
+                            parts.push(srv.region.clone());
+                        }
+                    }
+                }
+                if parts.is_empty() {
+                    format!("ByteStrap — {}", tr(self.lang, "Home_Status_Ready"))
+                } else {
+                    format!("ByteStrap — {}", parts.join(" • "))
+                }
             } else {
                 "ByteStrap".to_string()
             };
@@ -1346,17 +1366,31 @@ impl Ctx {
                         }
                     }
                 }
-                AsyncEvent::ActiveServerResolved { ip, region, detail } => {
+                AsyncEvent::ActiveServerResolved {
+                    ip,
+                    region,
+                    detail,
+                    ping_ms,
+                } => {
                     if self.active_server_ip.as_deref() == Some(&ip) {
                         if let Some(srv) = &mut self.active_server {
-                            srv.region = region;
+                            srv.region = region.clone();
                             srv.detail = detail;
+                            if ping_ms.is_some() {
+                                srv.ping_ms = ping_ms;
+                            }
                         }
                         if let Some(ui) = self.weak.upgrade() {
                             self.push_games(&ui);
+                            self.push_home(&ui);
                         }
                         if self.config.discord_rp {
                             self.push_discord(self.session_secs);
+                        }
+                        self.tray_tooltip();
+
+                        if self.config.notify_server {
+                            crate::core::toast::show_server_join(&region, ping_ms, self.lang);
                         }
                     }
                 }
@@ -1366,7 +1400,9 @@ impl Ctx {
                     }
                     if let Some(ui) = self.weak.upgrade() {
                         self.push_games(&ui);
+                        self.push_home(&ui);
                     }
+                    self.tray_tooltip();
                 }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
@@ -1398,18 +1434,18 @@ impl Ctx {
                                         Ok(r) => r,
                                         Err(_) => return,
                                     };
-                                    let (region, detail) =
-                                        rt.block_on(servers::resolve_ip_location(&ip_clone));
+                                    let (loc, ping) = rt.block_on(async {
+                                        let loc_fut = servers::resolve_ip_location(&ip_clone);
+                                        let ping_fut = servers::measure_ping(&ip_clone, port);
+                                        tokio::join!(loc_fut, ping_fut)
+                                    });
+                                    let (region, detail) = loc;
                                     let _ = tx.send(AsyncEvent::ActiveServerResolved {
                                         ip: ip_clone.clone(),
                                         region,
                                         detail,
+                                        ping_ms: ping,
                                     });
-                                    if let Some(p) =
-                                        rt.block_on(servers::measure_ping(&ip_clone, port))
-                                    {
-                                        let _ = tx.send(AsyncEvent::ActiveServerPing(p));
-                                    }
                                 });
                             }
                         }
@@ -2610,16 +2646,29 @@ impl Ctx {
         ui.set_flags_count(self.flags_count.to_string().as_str().into());
         ui.set_hours_count((self.playtime.total_secs / 3600).to_string().as_str().into());
 
-        // Живая сессия: «в игре {0} · место {1}» (пусто — не играем).
+        // Живая сессия: «в игре {0} · место {1} • {регион} ({пинг})» (пусто — не играем).
         let session_text = if self.session_active {
-            fmt(
+            let base = fmt(
                 lang,
                 "Home_Session",
                 &[
                     &playtime::fmt_duration(self.session_secs),
                     self.session_place.as_deref().unwrap_or("…"),
                 ],
-            )
+            );
+            if let Some(srv) = &self.active_server {
+                if !srv.region.is_empty() && !srv.region.starts_with("Определение") {
+                    if let Some(p) = srv.ping_ms {
+                        format!("{base} • {} ({p} ms)", srv.region)
+                    } else {
+                        format!("{base} • {}", srv.region)
+                    }
+                } else {
+                    base
+                }
+            } else {
+                base
+            }
         } else {
             String::new()
         };
@@ -2840,6 +2889,7 @@ impl Ctx {
         ui.set_set_live_bg(self.config.live_bg);
         ui.set_set_auto_clean(self.config.auto_clean);
         ui.set_set_show_logs(self.config.show_logs);
+        ui.set_set_notify_server(self.config.notify_server);
         ui.set_set_discord_rp(self.config.discord_rp);
         ui.set_set_rp_place(self.config.discord_rp_place);
         ui.set_set_rp_time(self.config.discord_rp_time);
@@ -3814,6 +3864,8 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_rp_incognito_desc(tr(lang, "Settings_DiscordRP_IncognitoDesc").into());
     t.set_settings_rp_server(tr(lang, "Settings_DiscordRP_Server").into());
     t.set_settings_rp_server_desc(tr(lang, "Settings_DiscordRP_ServerDesc").into());
+    t.set_settings_notify_server(tr(lang, "Settings_NotifyServer").into());
+    t.set_settings_notify_server_desc(tr(lang, "Settings_NotifyServerDesc").into());
     t.set_settings_discord_wait(tr(lang, "Settings_DiscordRP_Wait").into());
     t.set_settings_discord_connected(tr(lang, "Settings_DiscordRP_Connected").into());
     t.set_settings_discord_no_discord(tr(lang, "Settings_DiscordRP_NoDiscord").into());
@@ -4653,6 +4705,19 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 ui.set_page(0);
             }
             c.push_settings(&ui);
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_notify_server_set(move |v: bool| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.notify_server = v;
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
         });
     }
     {
@@ -5849,6 +5914,7 @@ mod shots {
         ui.set_set_threads(4);
         ui.set_set_auto_update(true);
         ui.set_set_close_launch(false);
+        ui.set_set_notify_server(true);
         ui.set_set_discord_rp(true);
         ui.set_set_rp_place(true);
         ui.set_set_rp_time(true);

@@ -17,6 +17,7 @@ pub mod roblox_link;
 pub mod screenshots;
 pub mod servers;
 pub mod share;
+pub mod toast;
 pub mod updater;
 pub mod versions;
 pub mod window_mgr;
