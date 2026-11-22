@@ -26,7 +26,7 @@ import { FlagsPage } from "pages/flags.slint";
 import { GamesPage } from "pages/games.slint";
 import { AboutPage } from "pages/about.slint";
 import { IconCross } from "icons.slint";
-import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow } from "models.slint";
+import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow, RegionPingRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -83,6 +83,9 @@ export component AppWindow inherits Window {
     in-out property <string> games-active-server-region: "";
     in-out property <string> games-active-server-detail: "";
     in-out property <string> games-active-server-ping: "";
+    in-out property <[RegionPingRow]> games-region-pings: [];
+    in-out property <bool> games-ping-busy: false;
+    in-out property <int> games-region-filter: 0;
 
     // Screenshots
     in-out property <[ScreenshotRow]> shots: [];
@@ -124,6 +127,11 @@ export component AppWindow inherits Window {
     in-out property <int> mods-profile-sel-index: -1;
     in-out property <bool> mods-profile-sel-valid: false;
     in-out property <bool> mods-profiles-empty: false;
+    in-out property <int> mods-death-sound-mode: 0;
+    in-out property <string> mods-death-sound-path: "";
+    in-out property <int> mods-cursor-mode: 0;
+    in-out property <int> mods-font-mode: 0;
+    in-out property <string> mods-font-path: "";
 
     // Flags (page 2)
     in-out property <bool> flags-has-client: false;
@@ -205,6 +213,7 @@ export component AppWindow inherits Window {
     in-out property <string> set-splash-image-name: "";
     in-out property <bool> set-center-window: true;
     in-out property <bool> set-center-game: false;
+    in-out property <int> set-pref-region: 0;
     in-out property <int> set-game-res-mode: 0;
     in-out property <string> set-game-res-w: "1920";
     in-out property <string> set-game-res-h: "1080";
@@ -247,6 +256,8 @@ export component AppWindow inherits Window {
     callback games-servers-best(string);
     callback games-server-join(string, string);
     callback games-server-copy-id(string);
+    callback games-region-filter-set(int);
+    callback games-ping-test();
     callback shot-select(int);
     callback shot-copy(string);
     callback shot-open(string);
@@ -277,6 +288,7 @@ export component AppWindow inherits Window {
     callback auto-clean-set(bool);
     callback show-logs-set(bool);
     callback notify-server-set(bool);
+    callback pref-region-set(int);
     callback cfg-export();
     callback cfg-import();
     callback discord-rp-set(bool);
@@ -308,6 +320,11 @@ export component AppWindow inherits Window {
     callback mods-refresh();
     callback mods-apply();
     callback mods-revert();
+    callback mods-death-sound-set(int);
+    callback mods-death-sound-pick();
+    callback mods-cursor-set(int);
+    callback mods-font-set(int);
+    callback mods-font-pick();
     callback mods-toggle-mod(string, bool);
     callback mods-move-mod(string, int);
     callback mods-open-mod-folder(string);
@@ -451,6 +468,9 @@ export component AppWindow inherits Window {
                     servers: root.games-servers;
                     servers-msg: root.games-servers-msg;
                     servers-busy: root.games-servers-busy;
+                    region-filter: root.games-region-filter;
+                    region-pings: root.games-region-pings;
+                    ping-busy: root.games-ping-busy;
                     has-active-server: root.games-has-active-server;
                     active-server-region: root.games-active-server-region;
                     active-server-detail: root.games-active-server-detail;
@@ -470,6 +490,8 @@ export component AppWindow inherits Window {
                     servers-best(p) => { root.games-servers-best(p); }
                     server-join(p, j) => { root.games-server-join(p, j); }
                     server-copy-id(id) => { root.games-server-copy-id(id); }
+                    region-filter-set(f) => { root.games-region-filter-set(f); }
+                    ping-test => { root.games-ping-test(); }
                     shot-select(idx) => { root.shot-select(idx); }
                     shot-copy(p) => { root.shot-copy(p); }
                     shot-open(p) => { root.shot-open(p); }
@@ -566,6 +588,16 @@ export component AppWindow inherits Window {
                     profile-sel-index: root.mods-profile-sel-index;
                     profile-sel-valid: root.mods-profile-sel-valid;
                     profiles-empty: root.mods-profiles-empty;
+                    death-sound-mode: root.mods-death-sound-mode;
+                    death-sound-path: root.mods-death-sound-path;
+                    cursor-mode: root.mods-cursor-mode;
+                    font-mode: root.mods-font-mode;
+                    font-path: root.mods-font-path;
+                    death-sound-set(m) => { root.mods-death-sound-set(m); }
+                    death-sound-pick => { root.mods-death-sound-pick(); }
+                    cursor-set(m) => { root.mods-cursor-set(m); }
+                    font-set(m) => { root.mods-font-set(m); }
+                    font-pick => { root.mods-font-pick(); }
                     open-folder => { root.mods-open-folder(); }
                     refresh => { root.mods-refresh(); }
                     apply => { root.mods-apply(); }
@@ -603,6 +635,7 @@ export component AppWindow inherits Window {
                     auto-clean: root.set-auto-clean;
                     show-logs: root.set-show-logs;
                     notify-server: root.set-notify-server;
+                    pref-region: root.set-pref-region;
                     discord-rp: root.set-discord-rp;
                     rp-place: root.set-rp-place;
                     rp-time: root.set-rp-time;
@@ -649,6 +682,7 @@ export component AppWindow inherits Window {
                     auto-clean-set(v) => { root.auto-clean-set(v); }
                     show-logs-set(v) => { root.show-logs-set(v); }
                     notify-server-set(v) => { root.notify-server-set(v); }
+                    pref-region-set(r) => { root.pref-region-set(r); }
                     cfg-export => { root.cfg-export(); }
                     cfg-import => { root.cfg-import(); }
                     discord-rp-set(v) => { root.discord-rp-set(v); }

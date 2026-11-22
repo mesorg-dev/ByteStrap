@@ -59,6 +59,8 @@ pub enum AsyncEvent {
         detail: String,
         ping_ms: Option<u32>,
     },
+    /// Результаты замера пинга до дата-центров Roblox.
+    RegionPings(Vec<crate::core::servers::RegionPing>),
     Session(SessionEvent),
 }
 
@@ -244,6 +246,9 @@ struct Ctx {
     servers: Vec<servers::ServerInfo>,
     servers_msg: Option<(String, bool)>,
     servers_busy: bool,
+    region_filter: i32,
+    region_pings: Vec<servers::RegionPing>,
+    ping_busy: bool,
     active_server: Option<servers::ActiveServer>,
     active_server_ip: Option<String>,
     screenshots: Vec<screenshots::ScreenshotItem>,
@@ -442,6 +447,8 @@ impl Ctx {
                 // FastFlags: гарантированно на месте непосредственно перед
                 // запуском (после любых проверок/обновлений клиента).
                 self.ensure_flags_before_launch(&guid);
+                // Кастомизация клиента (звуки смерти, курсоры, шрифты)
+                crate::core::customization::apply_all(&self.config.base(), &self.config).ok();
                 match launcher::launch(&exe, arg) {
                     Ok(()) => {
                         self.install.error = None;
@@ -629,13 +636,39 @@ impl Ctx {
         });
     }
 
-    /// «Лучший сервер»: заходить в сервер с наименьшим пингом.
+    /// «Лучший сервер»: заходить в сервер с наименьшим пингом (с учётом фильтра/предпочитаемого региона).
     fn server_best(&mut self, input: &str) {
         if self.servers.is_empty() {
             self.refresh_servers(input);
             return;
         }
-        match servers::best(&self.servers) {
+
+        // Фильтрация по выбранному региону в браузере или в настройках
+        let filter = if self.region_filter != 0 {
+            self.region_filter
+        } else {
+            match self.config.preferred_region {
+                1 | 2 => 1, // Европа
+                3 | 4 => 2, // США
+                5 => 3,     // Азия
+                _ => 0,
+            }
+        };
+
+        let list: Vec<servers::ServerInfo> = self
+            .servers
+            .iter()
+            .filter(|s| match filter {
+                1 => s.region.contains("EU") || s.region.contains("Германия") || s.region.contains("Франкфурт") || s.region.contains("Лондон"),
+                2 => s.region.contains("US") || s.region.contains("США") || s.region.contains("Америка"),
+                3 => s.region.contains("Asia") || s.region.contains("Азия") || s.region.contains("Сингапур") || s.region.contains("Токио"),
+                _ => true,
+            })
+            .cloned()
+            .collect();
+
+        let target_list = if list.is_empty() { &self.servers } else { &list };
+        match servers::best(target_list) {
             Some(s) => {
                 let id = s.id.clone();
                 self.server_join(&self.servers_place.to_string(), &id);
@@ -645,6 +678,62 @@ impl Ctx {
             }
         }
     }
+
+    /// Замер пинга до дата-центров Roblox по всему миру.
+    fn test_regions_ping(&mut self) {
+        if self.ping_busy {
+            return;
+        }
+        self.ping_busy = true;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            if let Ok(rt) = rt {
+                let pings = rt.block_on(servers::measure_regions_ping());
+                let _ = tx.send(AsyncEvent::RegionPings(pings));
+            }
+        });
+    }
+
+    #[cfg(windows)]
+    fn pick_death_sound(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Звук смерти Roblox")
+            .add_filter("Аудио", &["ogg", "mp3", "wav"])
+            .pick_file()
+        {
+            let p = path.to_string_lossy().to_string();
+            self.config.death_sound_path = p.clone();
+            self.config.death_sound_mode = 4;
+            self.config.save();
+            let _ = crate::core::customization::apply_death_sound(&self.config.base(), 4, &p);
+            logger::info(format!("Пользовательский звук смерти: {p}"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn pick_death_sound(&mut self) {}
+
+    #[cfg(windows)]
+    fn pick_font(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Пользовательский шрифт Roblox")
+            .add_filter("Шрифты", &["ttf", "otf"])
+            .pick_file()
+        {
+            let p = path.to_string_lossy().to_string();
+            self.config.font_path = p.clone();
+            self.config.font_mode = 4;
+            self.config.save();
+            let _ = crate::core::customization::apply_font(&self.config.base(), 4, &p);
+            logger::info(format!("Пользовательский шрифт: {p}"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn pick_font(&mut self) {}
 
     /// Запуск клиента в конкретный сервер места (по JobId).
     fn server_join(&mut self, place: &str, job: &str) {
@@ -724,9 +813,22 @@ impl Ctx {
                 .into(),
         );
         ui.set_games_servers_busy(self.servers_busy);
-        let srows: Vec<ServerRow> = self
+        ui.set_games_region_filter(self.region_filter);
+        ui.set_games_ping_busy(self.ping_busy);
+
+        let filtered_servers: Vec<&servers::ServerInfo> = self
             .servers
             .iter()
+            .filter(|s| match self.region_filter {
+                1 => s.region.contains("EU") || s.region.contains("Германия") || s.region.contains("Франкфурт") || s.region.contains("Лондон"),
+                2 => s.region.contains("US") || s.region.contains("США") || s.region.contains("Америка"),
+                3 => s.region.contains("Asia") || s.region.contains("Азия") || s.region.contains("Сингапур") || s.region.contains("Токио"),
+                _ => true,
+            })
+            .collect();
+
+        let srows: Vec<ServerRow> = filtered_servers
+            .into_iter()
             .map(|s| ServerRow {
                 id: s.id.clone().into(),
                 place: self.servers_place.to_string().into(),
@@ -741,6 +843,29 @@ impl Ctx {
             })
             .collect();
         ui.set_games_servers(ModelRc::new(VecModel::from(srows)));
+
+        let rp_rows: Vec<RegionPingRow> = self
+            .region_pings
+            .iter()
+            .map(|r| {
+                let kind = match r.ping_ms {
+                    Some(p) if p <= 80 => 0,
+                    Some(p) if p <= 150 => 1,
+                    _ => 2,
+                };
+                let ping_text = r
+                    .ping_ms
+                    .map(|p| format!("{p} ms"))
+                    .unwrap_or_else(|| "таймаут".into());
+                RegionPingRow {
+                    flag: r.flag.clone().into(),
+                    name: r.name.clone().into(),
+                    ping: ping_text.into(),
+                    ping_kind: kind,
+                }
+            })
+            .collect();
+        ui.set_games_region_pings(ModelRc::new(VecModel::from(rp_rows)));
 
         // Активный сервер во время игры
         if let Some(srv) = &self.active_server {
@@ -1422,6 +1547,13 @@ impl Ctx {
                     }
                     self.tray_tooltip();
                 }
+                AsyncEvent::RegionPings(pings) => {
+                    self.region_pings = pings;
+                    self.ping_busy = false;
+                    if let Some(ui) = self.weak.upgrade() {
+                        self.push_games(&ui);
+                    }
+                }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
@@ -1542,12 +1674,13 @@ impl Ctx {
                 self.install = InstallUi::default();
                 self.cancel = None;
                 self.integrity = None;
-                // Моды: после чистой установки накладываем заново.
+                // Моды и кастомизация: после чистой установки накладываем заново.
                 if !already {
                     self.refresh_mods();
                     if self.mods_list.iter().any(|m| m.enabled) {
                         self.start_mods_apply();
                     }
+                    crate::core::customization::apply_all(&self.config.base(), &self.config).ok();
                     self.refresh_counters();
                     self.mods_dirty = true;
                 }
@@ -2951,6 +3084,7 @@ impl Ctx {
 
         ui.set_set_overlay_on(self.config.overlay_on);
         ui.set_set_overlay_bright(self.config.overlay_bright);
+        ui.set_set_pref_region(self.config.preferred_region);
         ui.set_set_overlay_sat(self.config.overlay_sat);
         ui.set_set_overlay_contrast(self.config.overlay_contrast);
 
@@ -3031,6 +3165,24 @@ impl Ctx {
 
         let mods_dir = base.join("Mods").to_string_lossy().to_string();
         ui.set_mods_path(mods_dir.as_str().into());
+
+        ui.set_mods_death_sound_mode(self.config.death_sound_mode);
+        ui.set_mods_death_sound_path(
+            Path::new(self.config.death_sound_path.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(self.config.death_sound_path.as_str())
+                .into(),
+        );
+        ui.set_mods_cursor_mode(self.config.cursor_mode);
+        ui.set_mods_font_mode(self.config.font_mode);
+        ui.set_mods_font_path(
+            Path::new(self.config.font_path.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(self.config.font_path.as_str())
+                .into(),
+        );
 
         let rows: Vec<ModRow> = self
             .mods_list
@@ -3942,6 +4094,21 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_mods_st_clean(tr(lang, "Mods_StClean").into());
     t.set_mods_profiles(tr(lang, "Mods_Profiles").into());
     t.set_mods_profiles_empty(tr(lang, "Mods_ProfilesEmpty").into());
+    t.set_mods_customization_h1(tr(lang, "Mods_Custom_H1").into());
+    t.set_mods_customization_sub(tr(lang, "Mods_Custom_Sub").into());
+    t.set_mods_death_sound(tr(lang, "Mods_DeathSound").into());
+    t.set_mods_death_sound_desc(tr(lang, "Mods_DeathSound_Desc").into());
+    t.set_mods_cursor(tr(lang, "Mods_Cursor").into());
+    t.set_mods_cursor_desc(tr(lang, "Mods_Cursor_Desc").into());
+    t.set_mods_font(tr(lang, "Mods_Font").into());
+    t.set_mods_font_desc(tr(lang, "Mods_Font_Desc").into());
+    t.set_mods_pick_file(tr(lang, "Mods_PickFile").into());
+    t.set_games_region_filter(tr(lang, "Games_RegionFilter").into());
+    t.set_games_ping_test(tr(lang, "Games_PingTest").into());
+    t.set_games_ping_test_btn(tr(lang, "Games_PingTestBtn").into());
+    t.set_games_ping_testing(tr(lang, "Games_PingTesting").into());
+    t.set_settings_pref_region(tr(lang, "Settings_PrefRegion").into());
+    t.set_settings_pref_region_desc(tr(lang, "Settings_PrefRegionDesc").into());
     t.set_prof_select(tr(lang, "Prof_Select").into());
     t.set_prof_load(tr(lang, "Prof_Load").into());
     t.set_prof_save_as(tr(lang, "Prof_SaveAs").into());
@@ -4104,6 +4271,24 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
         ui.on_games_server_copy_id(move |id: SharedString| {
             ctx.borrow_mut().copy_server_id(&id);
             let c = ctx.borrow();
+            c.push_games(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_region_filter_set(move |f: i32| {
+            let mut c = ctx.borrow_mut();
+            c.region_filter = f;
+            c.push_games(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_games_ping_test(move || {
+            let mut c = ctx.borrow_mut();
+            c.test_regions_ping();
             c.push_games(&weak.unwrap());
         });
     }
@@ -4741,6 +4926,19 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     {
         let ctx = Rc::clone(ctx);
         let weak = weak.clone();
+        ui.on_pref_region_set(move |r: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.preferred_region = r.max(0);
+                c.config.save();
+            }
+            let c = ctx.borrow();
+            c.push_settings(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
         ui.on_theme_accent_set(move |i: i32| {
             {
                 let mut c = ctx.borrow_mut();
@@ -4973,7 +5171,9 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
         let weak = weak.clone();
         ui.on_mods_apply(move || {
             {
-                ctx.borrow_mut().start_mods_apply();
+                let mut c = ctx.borrow_mut();
+                crate::core::customization::apply_all(&c.config.base(), &c.config).ok();
+                c.start_mods_apply();
             }
             let c = ctx.borrow();
             c.push_mods(&weak.unwrap());
@@ -4986,6 +5186,72 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             ctx.borrow_mut().confirm = Some(Confirm::RevertMods);
             let c = ctx.borrow();
             c.push_confirm(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_death_sound_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.death_sound_mode = m.max(0);
+                c.config.save();
+                let _ = crate::core::customization::apply_death_sound(&c.config.base(), m.max(0), &c.config.death_sound_path);
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_death_sound_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_death_sound();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_cursor_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.cursor_mode = m.max(0);
+                c.config.save();
+                let _ = crate::core::customization::apply_cursor(&c.config.base(), m.max(0));
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_font_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.font_mode = m.max(0);
+                c.config.save();
+                let _ = crate::core::customization::apply_font(&c.config.base(), m.max(0), &c.config.font_path);
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_font_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_font();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
         });
     }
     {
@@ -5515,6 +5781,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         servers: Vec::new(),
         servers_msg: None,
         servers_busy: false,
+        region_filter: 0,
+        region_pings: Vec::new(),
+        ping_busy: false,
         active_server: None,
         active_server_ip: None,
         screenshots: screenshots::scan(),

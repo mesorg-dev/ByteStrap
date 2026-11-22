@@ -474,6 +474,56 @@ pub async fn measure_ping(ip: &str, port: u16) -> Option<u32> {
     None
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RegionPing {
+    pub id: i32,
+    pub name: String,
+    pub flag: String,
+    pub ip: String,
+    pub ping_ms: Option<u32>,
+}
+
+/// Замер задержки до ключевых дата-центров Roblox по всему миру.
+pub async fn measure_regions_ping() -> Vec<RegionPing> {
+    let targets = [
+        (1, "Германия (Франкфурт)", "🇩🇪", "128.116.5.33"),
+        (2, "Великобритания (Лондон)", "🇬🇧", "128.116.6.1"),
+        (3, "Нидерланды (Амстердам)", "🇳🇱", "128.116.12.1"),
+        (4, "Франция (Париж)", "🇫🇷", "128.116.14.1"),
+        (5, "США Восток (Нью-Йорк)", "🇺🇸", "128.116.0.1"),
+        (6, "США Восток (Ашберн)", "🇺🇸", "128.116.1.1"),
+        (7, "США Центр (Чикаго)", "🇺🇸", "128.116.2.1"),
+        (8, "США Запад (Лос-Анджелес)", "🇺🇸", "128.116.8.1"),
+        (9, "Сингапур", "🇸🇬", "128.116.20.1"),
+        (10, "Япония (Токио)", "🇯🇵", "128.116.22.1"),
+        (11, "Австралия (Сидней)", "🇦🇺", "128.116.24.1"),
+    ];
+
+    let mut handles = Vec::new();
+    for (id, name, flag, ip) in targets {
+        handles.push(tokio::spawn(async move {
+            let ping = measure_ping(ip, 443).await;
+            RegionPing {
+                id,
+                name: name.to_string(),
+                flag: flag.to_string(),
+                ip: ip.to_string(),
+                ping_ms: ping,
+            }
+        }));
+    }
+
+    let mut results = Vec::new();
+    for h in handles {
+        if let Ok(res) = h.await {
+            results.push(res);
+        }
+    }
+    // Сортировка: сначала доступные с наименьшим пингом
+    results.sort_by_key(|r| r.ping_ms.unwrap_or(9999));
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

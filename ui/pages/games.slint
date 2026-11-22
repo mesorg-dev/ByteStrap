@@ -6,7 +6,7 @@ import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Snd } from "../snd.slint";
 import { PageFade, Btn, TextField, GlyphBtn } from "../widgets.slint";
-import { GameRow, ServerRow, ScreenshotRow } from "../models.slint";
+import { GameRow, ServerRow, ScreenshotRow, RegionPingRow } from "../models.slint";
 import { IconGamepad, IconCamera, IconGlobe, IconLightning, IconCross, IconCopy, IconRefresh, IconFolder } from "../icons.slint";
 
 export component GamesPage inherits PageFade {
@@ -21,6 +21,11 @@ export component GamesPage inherits PageFade {
     in-out property <[ServerRow]> servers: [];
     in-out property <string> servers-msg: "";
     in-out property <bool> servers-busy: false;
+    in-out property <int> region-filter: 0;
+
+    /// Тест пинга до дата-центров Roblox.
+    in-out property <[RegionPingRow]> region-pings: [];
+    in-out property <bool> ping-busy: false;
 
     /// Активный сервер во время игры.
     in-out property <bool> has-active-server: false;
@@ -46,6 +51,8 @@ export component GamesPage inherits PageFade {
     callback servers-best(string);
     callback server-join(string, string);
     callback server-copy-id(string);
+    callback region-filter-set(int);
+    callback ping-test();
 
     callback shot-select(int);
     callback shot-copy(string);
@@ -472,6 +479,46 @@ export component GamesPage inherits PageFade {
                             }
                         }
 
+                        // Фильтр по регионам серверов
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Text {
+                                text: T.games_region_filter + ":";
+                                font-size: 11.5px;
+                                color: Theme.fg-dim;
+                                vertical-alignment: center;
+                            }
+                            Btn {
+                                label: "Все регионы";
+                                kind: 2;
+                                active: root.region-filter == 0;
+                                height: 26px;
+                                clicked => { root.region-filter-set(0); }
+                            }
+                            Btn {
+                                label: "🇩🇪 Европа";
+                                kind: 2;
+                                active: root.region-filter == 1;
+                                height: 26px;
+                                clicked => { root.region-filter-set(1); }
+                            }
+                            Btn {
+                                label: "🇺🇸 Америка";
+                                kind: 2;
+                                active: root.region-filter == 2;
+                                height: 26px;
+                                clicked => { root.region-filter-set(2); }
+                            }
+                            Btn {
+                                label: "🇸🇬 Азия";
+                                kind: 2;
+                                active: root.region-filter == 3;
+                                height: 26px;
+                                clicked => { root.region-filter-set(3); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
                         // Шапка таблицы серверов.
                         if root.servers.length > 0 : Rectangle {
                             height: 16px;
@@ -620,6 +667,87 @@ export component GamesPage inherits PageFade {
                                     height: 26px;
                                     vertical-stretch: 0;
                                     clicked => { root.server-join(s.place, s.id); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ===== Тест задержки до дата-центров Roblox =====
+                Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
+                    clip: true;
+
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 12px;
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text {
+                                    text: T.games_ping_test;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: "Замер реального пинга до серверных узлов Roblox (Германия, Англия, США, Азия)";
+                                    font-size: 11px;
+                                    color: Theme.fg-dimmer;
+                                }
+                            }
+
+                            Btn {
+                                label: root.ping-busy ? T.games_ping_testing : T.games_ping_test_btn;
+                                kind: 0;
+                                width: 160px;
+                                height: 30px;
+                                enabled: !root.ping-busy;
+                                clicked => { root.ping-test(); }
+                            }
+                        }
+
+                        if root.region-pings.length > 0 : VerticalLayout {
+                            spacing: 4px;
+                            for rp in root.region-pings : Rectangle {
+                                height: 28px;
+                                border-radius: Theme.r-soft;
+                                background: #ffffff08;
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    spacing: 8px;
+
+                                    Text {
+                                        text: rp.flag;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: rp.name;
+                                        font-size: 12px;
+                                        color: Theme.fg;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                    Text {
+                                        text: rp.ping;
+                                        font-family: Theme.font-mono;
+                                        font-size: 11.5px;
+                                        font-weight: 600;
+                                        color: rp.ping-kind == 0 ? #34d399 : (rp.ping-kind == 1 ? #fbbf24 : #f87171);
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
                         }

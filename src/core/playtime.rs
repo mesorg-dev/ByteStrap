@@ -138,10 +138,28 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
     let mut log_offset: u64 = 0;
     let mut log_path = newest_log();
 
+    // Ожидание старта процесса Roblox (до 30 сек при запуске из лаунчера)
+    let startup = Instant::now();
+    while !player_running() {
+        if startup.elapsed() > Duration::from_secs(30) {
+            let _ = tx.send(SessionEvent::End { total: 0, places: Vec::new() });
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+
+    let mut not_running_streak: u32 = 0;
     loop {
         std::thread::sleep(Duration::from_millis(500));
         if !player_running() {
-            break;
+            not_running_streak += 1;
+            // Клиент считается закрытым, если окно отсутствует несколько секунд подряд
+            // (защита от ложных срабатываний при телепортах между серверами и альт-табе)
+            if not_running_streak >= 6 {
+                break;
+            }
+        } else {
+            not_running_streak = 0;
         }
 
         // Если появился более новый лог игрока, переключаемся на него

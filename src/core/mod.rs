@@ -1,6 +1,7 @@
 pub mod antiafk;
 pub mod cleanup;
 pub mod config;
+pub mod customization;
 pub mod deep_link;
 pub mod deploy;
 pub mod discord;

@@ -36,6 +36,7 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> show-logs: true;
     /// Всплывающее уведомление о сервере и пинге при подключении.
     in-out property <bool> notify-server: true;
+    in-out property <int> pref-region: 0;
     in-out property <bool> discord-rp: true;
     in-out property <bool> rp-place: true;
     in-out property <bool> rp-time: true;
@@ -112,6 +113,7 @@ export component SettingsPage inherits PageFade {
     callback close-tray-set(bool);
     callback show-logs-set(bool);
     callback notify-server-set(bool);
+    callback pref-region-set(int);
     callback auto-clean-set(bool);
     callback cfg-export();
     callback cfg-import();
@@ -413,6 +415,71 @@ export component SettingsPage inherits PageFade {
                             desc: T.settings_notify_server_desc;
                             checked: root.notify-server;
                             toggled(v) => { root.notify-server-set(v); }
+                        }
+
+                        // Предпочитаемый регион игровых серверов
+                        VerticalLayout {
+                            spacing: 6px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
+
+                            Text {
+                                text: T.settings_pref_region;
+                                font-weight: 500;
+                                font-size: 12.5px;
+                                color: Theme.fg;
+                            }
+                            Text {
+                                text: T.settings_pref_region_desc;
+                                font-size: 11px;
+                                color: Theme.fg-dim;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                Btn {
+                                    label: "Авто (быстрый)";
+                                    kind: 2;
+                                    active: root.pref-region == 0;
+                                    height: 26px;
+                                    clicked => { root.pref-region-set(0); }
+                                }
+                                Btn {
+                                    label: "🇩🇪 Германия";
+                                    kind: 2;
+                                    active: root.pref-region == 1;
+                                    height: 26px;
+                                    clicked => { root.pref-region-set(1); }
+                                }
+                                Btn {
+                                    label: "🇬🇧 Лондон";
+                                    kind: 2;
+                                    active: root.pref-region == 2;
+                                    height: 26px;
+                                    clicked => { root.pref-region-set(2); }
+                                }
+                                Btn {
+                                    label: "🇺🇸 США Восток";
+                                    kind: 2;
+                                    active: root.pref-region == 3;
+                                    height: 26px;
+                                    clicked => { root.pref-region-set(3); }
+                                }
+                                Btn {
+                                    label: "🇺🇸 США Запад";
+                                    kind: 2;
+                                    active: root.pref-region == 4;
+                                    height: 26px;
+                                    clicked => { root.pref-region-set(4); }
+                                }
+                                Btn {
+                                    label: "🇸🇬 Азия";
+                                    kind: 2;
+                                    active: root.pref-region == 5;
+                                    height: 26px;
+                                    clicked => { root.pref-region-set(5); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
                         }
                         OptionRow {
                             title: T.settings_discord_rp;

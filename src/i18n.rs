@@ -438,6 +438,22 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Tray_Games" => "Игры",
     "Tray_NoData" => "Нет данных",
     "Tray_Quit" => "Выход",
+    // Customization & Regions
+    "Mods_Custom_H1" => "Кастомизация клиента",
+    "Mods_Custom_Sub" => "Звуки смерти, стили курсоров и пользовательские шрифты Roblox",
+    "Mods_DeathSound" => "Звук смерти",
+    "Mods_DeathSound_Desc" => "Воспроизводится при сбросе или гибели персонажа (ouch.ogg)",
+    "Mods_Cursor" => "Стиль курсора",
+    "Mods_Cursor_Desc" => "Игровой указатель мыши в Roblox",
+    "Mods_Font" => "Шрифт интерфейса",
+    "Mods_Font_Desc" => "Глобальная замена текста в меню и игре",
+    "Mods_PickFile" => "Выбрать файл…",
+    "Games_RegionFilter" => "Регион",
+    "Games_PingTest" => "Тест дата-центров Roblox",
+    "Games_PingTestBtn" => "Проверить пинг",
+    "Games_PingTesting" => "Измерение задержки…",
+    "Settings_PrefRegion" => "Предпочитаемый регион серверов",
+    "Settings_PrefRegionDesc" => "Приоритетный регион при быстром входе и поиске лучших серверов",
 });
 
 static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict! {
@@ -814,6 +830,22 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Tray_Games" => "Games",
     "Tray_NoData" => "No data",
     "Tray_Quit" => "Quit",
+    // Customization & Regions
+    "Mods_Custom_H1" => "Client Customization",
+    "Mods_Custom_Sub" => "Death sounds, mouse cursors, and custom fonts for Roblox",
+    "Mods_DeathSound" => "Death Sound",
+    "Mods_DeathSound_Desc" => "Played on reset or character death (ouch.ogg)",
+    "Mods_Cursor" => "Mouse Cursor",
+    "Mods_Cursor_Desc" => "In-game mouse pointer in Roblox",
+    "Mods_Font" => "Interface Font",
+    "Mods_Font_Desc" => "Global font replacement in menus and game",
+    "Mods_PickFile" => "Select File…",
+    "Games_RegionFilter" => "Region",
+    "Games_PingTest" => "Roblox Datacenters Ping",
+    "Games_PingTestBtn" => "Check Ping",
+    "Games_PingTesting" => "Testing latency…",
+    "Settings_PrefRegion" => "Preferred Server Region",
+    "Settings_PrefRegionDesc" => "Priority region for quick connect and server matching",
 });
 
 pub fn tr(lang: Lang, key: &'static str) -> &'static str {

@@ -92,6 +92,22 @@ pub struct Config {
     /// Анимировать фон (GIF).
     #[serde(default = "default_true")]
     pub live_bg: bool,
+    /// Режим звука смерти: 0 — По умолчанию, 1 — Oof, 2 — Minecraft, 3 — Без звука, 4 — Кастом.
+    #[serde(default)]
+    pub death_sound_mode: i32,
+    #[serde(default)]
+    pub death_sound_path: String,
+    /// Режим курсора мыши: 0 — По умолчанию, 1 — 2006-2013, 2 — 2013-2020, 3 — Прицел/Точка.
+    #[serde(default)]
+    pub cursor_mode: i32,
+    /// Режим шрифта: 0 — По умолчанию, 1 — JetBrains Mono, 2 — Inter, 3 — Unbounded, 4 — Кастом.
+    #[serde(default)]
+    pub font_mode: i32,
+    #[serde(default)]
+    pub font_path: String,
+    /// Предпочитаемый регион: 0 — Авто, 1 — DE Германия, 2 — GB Лондон, 3 — US Восток, 4 — US Запад, 5 — SG Азия.
+    #[serde(default)]
+    pub preferred_region: i32,
 }
 
 fn default_res_w() -> u32 { 1920 }
@@ -146,6 +162,12 @@ impl Default for Config {
             game_res_w: 1920,
             game_res_h: 1080,
             live_bg: true,
+            death_sound_mode: 0,
+            death_sound_path: String::new(),
+            cursor_mode: 0,
+            font_mode: 0,
+            font_path: String::new(),
+            preferred_region: 0,
         }
     }
 }
