@@ -49,7 +49,7 @@ mod imp {
         b't' as u16, 0,
     ];
 
-    static ACTIVE_TOAST: Mutex<Option<HWND>> = Mutex::new(None);
+    static ACTIVE_TOAST: Mutex<Option<isize>> = Mutex::new(None);
     static REGISTER_ONCE: std::sync::Once = std::sync::Once::new();
 
     struct ToastData {
@@ -68,7 +68,7 @@ mod imp {
             return false;
         }
         if let Ok(lock) = ACTIVE_TOAST.lock() {
-            *lock == Some(hwnd)
+            *lock == Some(hwnd as isize)
         } else {
             false
         }
@@ -98,7 +98,7 @@ mod imp {
             WM_PAINT => {
                 let mut ps: PAINTSTRUCT = std::mem::zeroed();
                 let hdc = BeginPaint(hwnd, &mut ps);
-                if hdc != 0 {
+                if !hdc.is_null() {
                     let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const ToastData;
                     if !ptr.is_null() {
                         let data = &*ptr;
@@ -259,23 +259,24 @@ mod imp {
                 data as *const _ as *const std::ffi::c_void,
             );
 
-            if hwnd == 0 {
+            if hwnd.is_null() {
                 drop(Box::from_raw(data));
                 return;
             }
 
             let rgn = CreateRoundRectRgn(0, 0, width, height, 16, 16);
-            if rgn != 0 {
+            if !rgn.is_null() {
                 SetWindowRgn(hwnd, rgn, 1);
             }
 
             if let Ok(mut lock) = ACTIVE_TOAST.lock() {
-                if let Some(old_hwnd) = lock.take() {
+                if let Some(old_val) = lock.take() {
+                    let old_hwnd = old_val as HWND;
                     if IsWindow(old_hwnd) != 0 {
                         PostMessageW(old_hwnd, WM_CLOSE, 0, 0);
                     }
                 }
-                *lock = Some(hwnd);
+                *lock = Some(hwnd as isize);
             }
 
             ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -311,7 +312,7 @@ mod imp {
             }
 
             if let Ok(mut lock) = ACTIVE_TOAST.lock() {
-                if *lock == Some(hwnd) {
+                if *lock == Some(hwnd as isize) {
                     *lock = None;
                 }
             }
