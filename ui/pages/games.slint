@@ -74,36 +74,37 @@ export component GamesPage inherits PageFade {
 
             // Заголовок страницы и переключатель вкладок
             HorizontalLayout {
-                height: 48px;
+                height: 44px;
                 spacing: 16px;
+                alignment: center;
 
                 VerticalLayout {
                     horizontal-stretch: 1;
-                    spacing: 3px;
+                    spacing: 2px;
+                    alignment: center;
                     Text {
                         text: root.active-tab == 0 ? T.games_h1 : T.screenshots_h1;
                         font-family: Theme.font-display;
                         font-weight: 700;
-                        font-size: 22px;
-                        letter-spacing: 0.5px;
+                        font-size: 20px;
                         color: Theme.fg;
                     }
                     Text {
                         text: root.active-tab == 0 ? T.games_sub : T.screenshots_sub;
-                        font-size: 12px;
+                        font-size: 11px;
                         color: Theme.fg-dim;
                     }
                 }
 
-                // Переключатель вкладок (Селектор)
+                // Переключатель вкладок
                 Rectangle {
-                    width: 280px;
+                    width: 250px;
                     height: 34px;
                     border-radius: Theme.r-soft;
-                    background: #ffffff0d;
+                    background: Theme.panel;
                     border-width: 1px;
-                    border-color: #ffffff14;
-                    vertical-stretch: 0;
+                    border-color: #ffffff1f;
+                    clip: true;
 
                     HorizontalLayout {
                         padding: 3px;
@@ -112,26 +113,25 @@ export component GamesPage inherits PageFade {
                         // Вкладка 0: Игры и Серверы
                         Rectangle {
                             horizontal-stretch: 1;
-                            border-radius: 6px;
-                            background: root.active-tab == 0 ? Theme.glass : transparent;
+                            border-radius: 5px;
+                            background: root.active-tab == 0 ? #ffffff1c : transparent;
+                            border-width: root.active-tab == 0 ? 1px : 0px;
+                            border-color: #ffffff22;
                             animate background { duration: Theme.t-fast; }
 
                             HorizontalLayout {
                                 alignment: center;
-                                spacing: 7px;
+                                spacing: 6px;
 
-                                VerticalLayout {
-                                    alignment: center;
-                                    IconGamepad {
-                                        width: 15px;
-                                        height: 15px;
-                                        c: root.active-tab == 0 ? Theme.fg : Theme.fg-dim;
-                                    }
+                                IconGamepad {
+                                    width: 14px;
+                                    height: 14px;
+                                    c: root.active-tab == 0 ? Theme.fg : Theme.fg-dim;
                                 }
 
                                 Text {
                                     text: T.games_tab_places;
-                                    font-size: 12px;
+                                    font-size: 11.5px;
                                     font-weight: root.active-tab == 0 ? 600 : 400;
                                     color: root.active-tab == 0 ? Theme.fg : Theme.fg-dim;
                                     vertical-alignment: center;
@@ -149,26 +149,25 @@ export component GamesPage inherits PageFade {
                         // Вкладка 1: Скриншоты
                         Rectangle {
                             horizontal-stretch: 1;
-                            border-radius: 6px;
-                            background: root.active-tab == 1 ? Theme.glass : transparent;
+                            border-radius: 5px;
+                            background: root.active-tab == 1 ? #ffffff1c : transparent;
+                            border-width: root.active-tab == 1 ? 1px : 0px;
+                            border-color: #ffffff22;
                             animate background { duration: Theme.t-fast; }
 
                             HorizontalLayout {
                                 alignment: center;
-                                spacing: 7px;
+                                spacing: 6px;
 
-                                VerticalLayout {
-                                    alignment: center;
-                                    IconCamera {
-                                        width: 15px;
-                                        height: 15px;
-                                        c: root.active-tab == 1 ? Theme.fg : Theme.fg-dim;
-                                    }
+                                IconCamera {
+                                    width: 14px;
+                                    height: 14px;
+                                    c: root.active-tab == 1 ? Theme.fg : Theme.fg-dim;
                                 }
 
                                 Text {
                                     text: T.games_tab_shots;
-                                    font-size: 12px;
+                                    font-size: 11.5px;
                                     font-weight: root.active-tab == 1 ? 600 : 400;
                                     color: root.active-tab == 1 ? Theme.fg : Theme.fg-dim;
                                     vertical-alignment: center;
@@ -194,48 +193,6 @@ export component GamesPage inherits PageFade {
             // =========================================================
             if root.active-tab == 0 : VerticalLayout {
                 spacing: 14px;
-
-                // ===== Ввод: placeId или ссылка roblox.com/games/… =====
-                Rectangle {
-                    background: Theme.panel;
-                    border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #00000055;
-                    drop-shadow-offset-y: 4px;
-
-                    VerticalLayout {
-                        padding: 22px;
-                        spacing: 12px;
-
-                        HorizontalLayout {
-                            spacing: 8px;
-
-                            go-input := TextField {
-                                height: 30px;
-                                placeholder: T.games_hint;
-                                horizontal-stretch: 1;
-                                accepted => { root.add(go-input.text); }
-                            }
-
-                            Btn {
-                                label: T.games_add;
-                                kind: 0;
-                                width: 120px;
-                                height: 30px;
-                                horizontal-stretch: 0;
-                                clicked => { root.add(go-input.text); }
-                            }
-                        }
-
-                        if root.msg != "" : Text {
-                            text: root.msg;
-                            font-size: 11px;
-                            color: root.msg-err ? Theme.bad : Theme.good;
-                        }
-                    }
-                }
 
                 // ===== Список мест =====
                 Rectangle {
@@ -458,7 +415,7 @@ export component GamesPage inherits PageFade {
                                 width: 130px;
                                 height: 30px;
                                 enabled: !root.servers-busy;
-                                clicked => { root.servers-refresh(go-input.text); }
+                                clicked => { root.servers-refresh(""); }
                             }
                             Btn {
                                 label: T.games_servers_best;
@@ -466,7 +423,7 @@ export component GamesPage inherits PageFade {
                                 width: 165px;
                                 height: 30px;
                                 enabled: !root.servers-busy && root.servers.length > 0;
-                                clicked => { root.servers-best(go-input.text); }
+                                clicked => { root.servers-best(""); }
                             }
                             if root.servers-msg != "" : Text {
                                 text: root.servers-msg;

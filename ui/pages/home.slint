@@ -40,6 +40,7 @@ export component HomePage inherits PageFade {
     callback primary();
     callback update-client();
     callback cancel();
+    callback studio();
     callback link-go(string);
     callback link-paste();
     callback link-changed();
@@ -146,10 +147,19 @@ export component HomePage inherits PageFade {
                                 clicked => { root.primary(); }
                             }
 
+                            if !root.busy : Btn {
+                                label: "Roblox Studio";
+                                kind: 2;
+                                width: 130px;
+                                height: 48px;
+                                horizontal-stretch: 0;
+                                clicked => { root.studio(); }
+                            }
+
                             if !root.busy && !root.show-update : Btn {
                                 label: root.primary-label;
                                 kind: 0;
-                                width: 220px;
+                                width: 200px;
                                 height: 48px;
                                 horizontal-stretch: 0;
                                 clicked => { root.primary(); }

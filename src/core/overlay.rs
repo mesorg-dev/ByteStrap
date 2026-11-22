@@ -19,7 +19,7 @@ mod imp {
     use std::time::{Duration, Instant};
 
     use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
-    use windows_sys::Win32::Graphics::Gdi::CreateSolidBrush;
+    use windows_sys::Win32::Graphics::Gdi::{CreateSolidBrush, InvalidateRect};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -260,6 +260,7 @@ mod imp {
                     if dirty {
                         let mut m = MAGCOLOREFFECT { transform: params.matrix() };
                         MagSetColorEffect(child, &mut m);
+                        InvalidateRect(child, std::ptr::null(), 0);
                         dirty = false;
                     }
                 }
@@ -300,15 +301,11 @@ mod imp {
 
             let w = rc.right - rc.left;
             let h = rc.bottom - rc.top;
-            let ex = if mag_ok {
-                WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
-            } else {
-                WS_EX_TOPMOST
-                    | WS_EX_TRANSPARENT
-                    | WS_EX_NOACTIVATE
-                    | WS_EX_TOOLWINDOW
-                    | WS_EX_LAYERED
-            };
+            let ex = WS_EX_TOPMOST
+                | WS_EX_TRANSPARENT
+                | WS_EX_NOACTIVATE
+                | WS_EX_TOOLWINDOW
+                | WS_EX_LAYERED;
             let host = CreateWindowExW(
                 ex,
                 CLASS_NAME.as_ptr(),
@@ -325,6 +322,10 @@ mod imp {
             );
             if host.is_null() {
                 return (std::ptr::null_mut(), std::ptr::null_mut());
+            }
+
+            if mag_ok {
+                SetLayeredWindowAttributes(host, 0, 255, LWA_ALPHA);
             }
 
             let child = if mag_ok {
@@ -350,12 +351,35 @@ mod imp {
         }
     }
 
-    /// Окно Roblox: видимое топ-левел окно процесса RobloxPlayerBeta.
+    /// Окно Roblox: видимое главное окно процесса RobloxPlayerBeta.
     pub fn find_game_hwnd() -> HWND {
+        // 1. Быстрый поиск по стандартному классу окна клиента Roblox
+        let class_name: Vec<u16> = "WINDOWSCLIENT"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let hwnd = unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW(
+                class_name.as_ptr(),
+                std::ptr::null(),
+            )
+        };
+        if !hwnd.is_null() && unsafe { IsWindowVisible(hwnd) } != 0 {
+            let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            if unsafe { GetWindowRect(hwnd, &mut rc) } != 0 && rc.right > rc.left && rc.bottom > rc.top {
+                return hwnd;
+            }
+        }
+
+        // 2. Перебор окон процесса RobloxPlayerBeta (только полноразмерные окна)
         extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> i32 {
             unsafe {
                 let out = lparam as *mut HWND;
                 if IsWindowVisible(hwnd) == 0 {
+                    return 1;
+                }
+                let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                if GetWindowRect(hwnd, &mut rc) == 0 || (rc.right - rc.left) < 150 || (rc.bottom - rc.top) < 150 {
                     return 1;
                 }
                 let mut pid: u32 = 0;

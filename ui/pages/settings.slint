@@ -3,7 +3,7 @@
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
-import { PageFade, Btn, TextField, OptionRow, StatusDot, Slider } from "../widgets.slint";
+import { PageFade, Btn, TextField, OptionRow, StatusDot, Slider, Combo } from "../widgets.slint";
 import { Snd } from "../snd.slint";
 
 export component SettingsPage inherits PageFade {
@@ -18,6 +18,24 @@ export component SettingsPage inherits PageFade {
     /// 0 — ru, 1 — en.
     in-out property <int> lang-code: 0;
     in-out property <int> threads: 4;
+
+    in-out property <[string]> region-options: [
+        "Автоматически (наименьший пинг)",
+        "🇩🇪 Германия (Франкфурт)",
+        "🇬🇧 Великобритания (Лондон)",
+        "🇺🇸 США Восток (Нью-Йорк / Ашберн)",
+        "🇺🇸 США Запад (Лос-Анджелес)",
+        "🇸🇬 Азия (Сингапур / Токио)"
+    ];
+
+    pure function region-label(r: int) -> string {
+        r == 1 ? "🇩🇪 Германия (Франкфурт)" :
+        r == 2 ? "🇬🇧 Великобритания (Лондон)" :
+        r == 3 ? "🇺🇸 США Восток (Нью-Йорк / Ашберн)" :
+        r == 4 ? "🇺🇸 США Запад (Лос-Анджелес)" :
+        r == 5 ? "🇸🇬 Азия (Сингапур / Токио)" :
+        "Автоматически (наименьший пинг)"
+    }
     in-out property <bool> auto-update: true;
     in-out property <bool> close-launch: false;
     /// Сворачивать в трей вместо выхода (Windows).
@@ -418,67 +436,35 @@ export component SettingsPage inherits PageFade {
                         }
 
                         // Предпочитаемый регион игровых серверов
-                        VerticalLayout {
-                            spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            alignment: center;
                             padding-top: 4px;
                             padding-bottom: 4px;
 
-                            Text {
-                                text: T.settings_pref_region;
-                                font-weight: 500;
-                                font-size: 12.5px;
-                                color: Theme.fg;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text {
+                                    text: T.settings_pref_region;
+                                    font-weight: 500;
+                                    font-size: 12.5px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.settings_pref_region_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
                             }
-                            Text {
-                                text: T.settings_pref_region_desc;
-                                font-size: 11px;
-                                color: Theme.fg-dim;
-                            }
-                            HorizontalLayout {
-                                spacing: 6px;
-                                Btn {
-                                    label: "Авто (быстрый)";
-                                    kind: 2;
-                                    active: root.pref-region == 0;
-                                    height: 26px;
-                                    clicked => { root.pref-region-set(0); }
-                                }
-                                Btn {
-                                    label: "🇩🇪 Германия";
-                                    kind: 2;
-                                    active: root.pref-region == 1;
-                                    height: 26px;
-                                    clicked => { root.pref-region-set(1); }
-                                }
-                                Btn {
-                                    label: "🇬🇧 Лондон";
-                                    kind: 2;
-                                    active: root.pref-region == 2;
-                                    height: 26px;
-                                    clicked => { root.pref-region-set(2); }
-                                }
-                                Btn {
-                                    label: "🇺🇸 США Восток";
-                                    kind: 2;
-                                    active: root.pref-region == 3;
-                                    height: 26px;
-                                    clicked => { root.pref-region-set(3); }
-                                }
-                                Btn {
-                                    label: "🇺🇸 США Запад";
-                                    kind: 2;
-                                    active: root.pref-region == 4;
-                                    height: 26px;
-                                    clicked => { root.pref-region-set(4); }
-                                }
-                                Btn {
-                                    label: "🇸🇬 Азия";
-                                    kind: 2;
-                                    active: root.pref-region == 5;
-                                    height: 26px;
-                                    clicked => { root.pref-region-set(5); }
-                                }
-                                Rectangle { horizontal-stretch: 1; }
+
+                            Combo {
+                                width: 280px;
+                                dd-id: 303;
+                                items: root.region-options;
+                                selected: root.pref-region;
+                                current-text: root.region-label(root.pref-region);
+                                pick(i) => { root.pref-region-set(i); }
                             }
                         }
                         OptionRow {

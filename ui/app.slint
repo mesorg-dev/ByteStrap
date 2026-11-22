@@ -19,7 +19,6 @@ import { SideBar } from "sidebar.slint";
 import { Starfield } from "stars.slint";
 import { HomePage } from "pages/home.slint";
 import { LogsPage } from "pages/logs.slint";
-import { VersionsPage } from "pages/versions.slint";
 import { SettingsPage } from "pages/settings.slint";
 import { ModsPage } from "pages/mods.slint";
 import { FlagsPage } from "pages/flags.slint";
@@ -244,6 +243,7 @@ export component AppWindow inherits Window {
     callback win-max();
     callback titlebar-drag();
     callback primary();
+    callback studio();
     callback update-client();
     callback cancel-install();
     callback link-go(string);
@@ -452,6 +452,7 @@ export component AppWindow inherits Window {
                     play-days-max: root.play-days-max;
                     share: root.win-share;
                     primary => { root.primary(); }
+                    studio => { root.studio(); }
                     update-client => { root.update-client(); }
                     cancel => { root.cancel-install(); }
                     link-go(url) => { root.link-go(url); }
@@ -555,22 +556,6 @@ export component AppWindow inherits Window {
                     profile-delete => { root.flags-profile-delete(); }
                     profile-export => { root.flags-profile-export(); }
                     profile-import => { root.flags-profile-import(); }
-                }
-                if root.page == 3 : VersionsPage {
-                    width: 100%;
-                    height: 100%;
-                    busy: root.busy;
-                    installed-guid: root.ver-installed-guid;
-                    selected-guid: root.ver-selected-guid;
-                    versions: root.ver-versions;
-                    integrity-text: root.ver-integrity-text;
-                    integrity-kind: root.ver-integrity-kind;
-                    checked-text: root.ver-checked-text;
-                    select(g) => { root.ver-select(g); }
-                    activate => { root.ver-activate(); }
-                    delete-version => { root.ver-delete(); }
-                    check-integrity => { root.ver-check(); }
-                    repair => { root.ver-repair(); }
                 }
                 if root.page == 4 : ModsPage {
                     width: 100%;
@@ -1223,6 +1208,16 @@ export component AppWindow inherits Window {
                     if Dd.owner >= 0 && Dd.owner < 100 { root.preset-pick(Dd.owner, i); }
                     else if Dd.owner == 100 { root.flags-profile-pick(i); }
                     else if Dd.owner == 200 { root.mods-profile-pick(i); }
+                    else if Dd.owner == 300 {
+                        root.mods-death-sound-set(i);
+                        if i == 4 { root.mods-death-sound-pick(); }
+                    }
+                    else if Dd.owner == 301 { root.mods-cursor-set(i); }
+                    else if Dd.owner == 302 {
+                        root.mods-font-set(i);
+                        if i == 4 { root.mods-font-pick(); }
+                    }
+                    else if Dd.owner == 303 { root.pref-region-set(i); }
                 }
             }
         }

@@ -80,7 +80,7 @@ export component FlagsPage inherits PageFade {
         Rectangle { height: 5px; }
         Text {
             text: T.flags_sub;
-            font-size: 12.5px;
+            font-size: 12px;
             color: Theme.fg-dim;
         }
         Rectangle { height: 16px; }
@@ -225,9 +225,9 @@ export component FlagsPage inherits PageFade {
                 width: 100%;
                 height: 15px;
                 text: T.flags_presets;
-                font-family: Theme.font-mono;
-                font-size: 10px;
-                letter-spacing: 1.5px;
+                font-family: Theme.font;
+                font-weight: 600;
+                font-size: 11px;
                 color: Theme.fg-dimmer;
             }
 
@@ -338,9 +338,9 @@ export component FlagsPage inherits PageFade {
                     width: 290px;
                     height: 22px;
                     text: T.flags_col_name;
-                    font-family: Theme.font-mono;
-                    font-size: 10px;
-                    letter-spacing: 1.5px;
+                    font-family: Theme.font;
+                    font-weight: 600;
+                    font-size: 11px;
                     color: Theme.fg-dimmer;
                     vertical-alignment: center;
                 }
@@ -350,9 +350,9 @@ export component FlagsPage inherits PageFade {
                     width: 170px;
                     height: 22px;
                     text: T.flags_col_value;
-                    font-family: Theme.font-mono;
-                    font-size: 10px;
-                    letter-spacing: 1.5px;
+                    font-family: Theme.font;
+                    font-weight: 600;
+                    font-size: 11px;
                     color: Theme.fg-dimmer;
                     vertical-alignment: center;
                 }
@@ -362,9 +362,9 @@ export component FlagsPage inherits PageFade {
                     width: parent.width - 498px;
                     height: 22px;
                     text: T.flags_col_desc;
-                    font-family: Theme.font-mono;
-                    font-size: 10px;
-                    letter-spacing: 1.5px;
+                    font-family: Theme.font;
+                    font-weight: 600;
+                    font-size: 11px;
                     color: Theme.fg-dimmer;
                     vertical-alignment: center;
                     overflow: elide;
@@ -427,7 +427,7 @@ export component FlagsPage inherits PageFade {
                         width: parent.width - 496px;
                         height: 26px;
                         text: r.desc;
-                        font-family: Theme.font-mono;
+                        font-family: Theme.font;
                         font-size: 11px;
                         color: r.works ? Theme.fg-dimmer : Theme.warn;
                         vertical-alignment: center;
@@ -469,9 +469,9 @@ export component FlagsPage inherits PageFade {
 
                     Text {
                         text: T.flags_profiles;
-                        font-family: Theme.font-mono;
-                        font-size: 10px;
-                        letter-spacing: 1.5px;
+                        font-family: Theme.font;
+                        font-weight: 600;
+                        font-size: 11px;
                         color: Theme.fg-dimmer;
                     }
 

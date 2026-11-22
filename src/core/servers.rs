@@ -448,30 +448,94 @@ pub fn find_server_ip(line: &str) -> Option<(String, u16)> {
     None
 }
 
-/// Замер реального пинга до IP-адреса сервера через быстрое TCP-подключение.
+/// Замер реального пинга до IP-адреса игрового сервера или дата-центра.
+/// 1. Сначала пробует RakNet UDP ping (нативный игровой протокол Roblox).
+///    TUN/fakeip прокси не могут сымитировать UDP-ответ, поэтому пакет уходит на реальный сервер.
+/// 2. Если UDP не ответил — проверяет TCP с отправкой HTTP-запроса HEAD (заставляет туннель
+///    выполнить реальный обмен данными с удалённым хостом вместо мгновенного локального 1-2 мс ответа).
 pub async fn measure_ping(ip: &str, port: u16) -> Option<u32> {
+    // 1. Попытка RakNet UDP ping для игрового порта
+    if port > 0 && port != 80 && port != 443 {
+        if let Some(ms) = measure_raknet_udp_ping(ip, port).await {
+            return Some(ms);
+        }
+    }
+
+    // 2. TCP/HTTP замер с обменом полезной нагрузкой
+    measure_tcp_data_ping(ip, port).await
+}
+
+async fn measure_raknet_udp_ping(ip: &str, port: u16) -> Option<u32> {
+    use tokio::net::UdpSocket;
+    let sock = UdpSocket::bind("0.0.0.0:0").await.ok()?;
+    sock.connect((ip, port)).await.ok()?;
+
+    let mut ping_pkt = [0u8; 33];
+    ping_pkt[0] = 0x01; // ID_UNCONNECTED_PING
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    ping_pkt[1..9].copy_from_slice(&now_ms.to_be_bytes());
+    // RakNet offline message ID magic
+    ping_pkt[9..25].copy_from_slice(&[
+        0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 0xfe,
+        0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78,
+    ]);
+    ping_pkt[25..33].copy_from_slice(&123456789u64.to_be_bytes());
+
     let start = std::time::Instant::now();
-    let addr = format!("{}:{}", ip, port);
-    if let Ok(Ok(_)) = tokio::time::timeout(
-        Duration::from_millis(1200),
+    sock.send(&ping_pkt).await.ok()?;
+
+    let mut buf = [0u8; 128];
+    let res = tokio::time::timeout(Duration::from_millis(1500), sock.recv(&mut buf)).await;
+    if let Ok(Ok(n)) = res {
+        if n > 0 {
+            let elapsed = start.elapsed().as_millis() as u32;
+            return Some(elapsed);
+        }
+    }
+    None
+}
+
+async fn measure_tcp_data_ping(ip: &str, port: u16) -> Option<u32> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let target_port = if port == 0 || (port != 80 && port != 443) {
+        443
+    } else {
+        port
+    };
+
+    let start = std::time::Instant::now();
+    let addr = format!("{}:{}", ip, target_port);
+    let mut stream = tokio::time::timeout(
+        Duration::from_millis(1500),
         tokio::net::TcpStream::connect(&addr),
     )
     .await
-    {
-        return Some(start.elapsed().as_millis() as u32);
+    .ok()?
+    .ok()?;
+
+    // Отправляем реальный запрос — локальный TUN прокси не может ответить без связи с сервером
+    let req = format!("HEAD / HTTP/1.1\r\nHost: {}\r\nUser-Agent: ByteStrap\r\nConnection: close\r\n\r\n", ip);
+    let _ = stream.write_all(req.as_bytes()).await;
+
+    let mut buf = [0u8; 16];
+    let res = tokio::time::timeout(Duration::from_millis(1500), stream.read(&mut buf)).await;
+    if let Ok(Ok(n)) = res {
+        if n > 0 {
+            let elapsed = start.elapsed().as_millis() as u32;
+            return Some(elapsed);
+        }
     }
-    // Если игровой порт принимает только UDP, измеряем TCP RTT до веб/портов сервера
-    let fallback = format!("{}:443", ip);
-    let start2 = std::time::Instant::now();
-    if let Ok(Ok(_)) = tokio::time::timeout(
-        Duration::from_millis(1200),
-        tokio::net::TcpStream::connect(&fallback),
-    )
-    .await
-    {
-        return Some(start2.elapsed().as_millis() as u32);
+
+    let elapsed = start.elapsed().as_millis() as u32;
+    if elapsed >= 10 {
+        Some(elapsed)
+    } else {
+        None // Отсеиваем локальные ложные срабатывания 0-2 мс
     }
-    None
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

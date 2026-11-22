@@ -1534,6 +1534,25 @@ impl Ctx {
                         if self.config.notify_server {
                             let place_name = self.session_display.as_deref();
                             crate::core::toast::show_server_join(place_name, &region, ping_ms, self.lang);
+
+                            // Подсказка, если найден сервер значительно быстрее
+                            if let Some(cur_p) = ping_ms {
+                                if let Some(best) = servers::best(&self.servers) {
+                                    if let Some(best_p) = best.ping_ms {
+                                        if cur_p > 75 && best_p + 30 <= cur_p {
+                                            let msg = match self.lang {
+                                                crate::i18n::Lang::Ru => format!("Найден сервер быстрее: {} ({} мс против {} мс)", best.region, best_p, cur_p),
+                                                _ => format!("Faster server found: {} ({} ms vs {} ms)", best.region, best_p, cur_p),
+                                            };
+                                            let title = match self.lang {
+                                                crate::i18n::Lang::Ru => "⚡ Оптимизация сети Roblox",
+                                                _ => "⚡ Roblox Network Optimization",
+                                            };
+                                            crate::core::toast::show_server_toast(title, &msg);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -4359,6 +4378,18 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             }
             let c = ctx.borrow();
             c.push_home(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        ui.on_studio(move || {
+            let base = ctx.borrow().config.base();
+            std::thread::spawn(move || {
+                match crate::core::launcher::launch_or_install_studio(&base) {
+                    Ok(()) => logger::info("Roblox Studio запущен"),
+                    Err(e) => logger::error(format!("Ошибка запуска/установки Studio: {e}")),
+                }
+            });
         });
     }
     {

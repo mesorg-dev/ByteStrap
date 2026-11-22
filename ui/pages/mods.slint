@@ -30,6 +30,50 @@ export component ModsPage inherits PageFade {
     in-out property <int> font-mode: 0;
     in-out property <string> font-path: "";
 
+    in-out property <[string]> death-sound-options: [
+        "Roblox (по умолчанию)",
+        "Классический «OOF» (2006–2022)",
+        "Minecraft (удар)",
+        "Без звука (тишина)",
+        "Свой аудиофайл…"
+    ];
+    in-out property <[string]> cursor-options: [
+        "Стандартный Roblox (2020+)",
+        "Ретро-указатель (2006–2013)",
+        "Классический (2013–2020)",
+        "Киберспорт / Прицел (точка)"
+    ];
+    in-out property <[string]> font-options: [
+        "Roblox (Source Sans Pro)",
+        "JetBrains Mono (моноширинный)",
+        "Inter (гротеск)",
+        "Unbounded (акцидентный)",
+        "Свой файл шрифта…"
+    ];
+
+    pure function death-sound-label(mode: int, p: string) -> string {
+        mode == 1 ? "Классический «OOF» (2006–2022)" :
+        mode == 2 ? "Minecraft (удар)" :
+        mode == 3 ? "Без звука (тишина)" :
+        mode == 4 ? (p != "" ? ("Свой: " + p) : "Свой аудиофайл…") :
+        "Roblox (по умолчанию)"
+    }
+
+    pure function cursor-label(mode: int) -> string {
+        mode == 1 ? "Ретро-указатель (2006–2013)" :
+        mode == 2 ? "Классический (2013–2020)" :
+        mode == 3 ? "Киберспорт / Прицел (точка)" :
+        "Стандартный Roblox (2020+)"
+    }
+
+    pure function font-label(mode: int, p: string) -> string {
+        mode == 1 ? "JetBrains Mono (моноширинный)" :
+        mode == 2 ? "Inter (гротеск)" :
+        mode == 3 ? "Unbounded (акцидентный)" :
+        mode == 4 ? (p != "" ? ("Свой: " + p) : "Свой файл шрифта…") :
+        "Roblox (Source Sans Pro)"
+    }
+
     callback death-sound-set(int);
     callback death-sound-pick();
     callback cursor-set(int);
@@ -115,171 +159,121 @@ export component ModsPage inherits PageFade {
                     Rectangle { height: 1px; background: #ffffff0d; }
 
                     // 1. Звук смерти
-                    VerticalLayout {
-                        spacing: 5px;
-                        HorizontalLayout {
-                            spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: center;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
                             Text {
-                                text: T.mods_death_sound + " (" + T.mods_death_sound_desc + ")";
+                                text: T.mods_death_sound;
                                 font-weight: 500;
-                                font-size: 11.5px;
+                                font-size: 12px;
                                 color: Theme.fg;
-                                horizontal-stretch: 1;
                             }
-                            if root.death-sound-path != "" : Text {
-                                text: root.death-sound-path;
-                                font-family: Theme.font-mono;
-                                font-size: 10px;
-                                color: Theme.fg-dimmer;
-                                overflow: elide;
+                            Text {
+                                text: T.mods_death_sound_desc;
+                                font-size: 11px;
+                                color: Theme.fg-dim;
                             }
                         }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Btn {
-                                label: "Стандарт";
-                                kind: 2;
-                                active: root.death-sound-mode == 0;
-                                height: 26px;
-                                clicked => { root.death-sound-set(0); }
+
+                        Combo {
+                            width: 240px;
+                            dd-id: 300;
+                            items: root.death-sound-options;
+                            selected: root.death-sound-mode;
+                            current-text: root.death-sound-label(root.death-sound-mode, root.death-sound-path);
+                            pick(i) => {
+                                root.death-sound-set(i);
+                                if i == 4 { root.death-sound-pick(); }
                             }
-                            Btn {
-                                label: "Классический OOF (2006)";
-                                kind: 2;
-                                active: root.death-sound-mode == 1;
-                                height: 26px;
-                                clicked => { root.death-sound-set(1); }
-                            }
-                            Btn {
-                                label: "Minecraft";
-                                kind: 2;
-                                active: root.death-sound-mode == 2;
-                                height: 26px;
-                                clicked => { root.death-sound-set(2); }
-                            }
-                            Btn {
-                                label: "Без звука";
-                                kind: 2;
-                                active: root.death-sound-mode == 3;
-                                height: 26px;
-                                clicked => { root.death-sound-set(3); }
-                            }
-                            Btn {
-                                label: root.death-sound-mode == 4 ? "Свой звук ✓" : "Свой файл…";
-                                kind: 2;
-                                active: root.death-sound-mode == 4;
-                                height: 26px;
-                                clicked => { root.death-sound-pick(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        if root.death-sound-mode == 4 : Btn {
+                            label: "Обзор…";
+                            kind: 1;
+                            width: 80px;
+                            height: 32px;
+                            clicked => { root.death-sound-pick(); }
                         }
                     }
 
                     Rectangle { height: 1px; background: #ffffff0d; }
 
                     // 2. Курсор мыши
-                    VerticalLayout {
-                        spacing: 5px;
-                        Text {
-                            text: T.mods_cursor + " (" + T.mods_cursor_desc + ")";
-                            font-weight: 500;
-                            font-size: 11.5px;
-                            color: Theme.fg;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: center;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            Text {
+                                text: T.mods_cursor;
+                                font-weight: 500;
+                                font-size: 12px;
+                                color: Theme.fg;
+                            }
+                            Text {
+                                text: T.mods_cursor_desc;
+                                font-size: 11px;
+                                color: Theme.fg-dim;
+                            }
                         }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Btn {
-                                label: "Стандарт (2020+)";
-                                kind: 2;
-                                active: root.cursor-mode == 0;
-                                height: 26px;
-                                clicked => { root.cursor-set(0); }
-                            }
-                            Btn {
-                                label: "Ретро 2006–2013";
-                                kind: 2;
-                                active: root.cursor-mode == 1;
-                                height: 26px;
-                                clicked => { root.cursor-set(1); }
-                            }
-                            Btn {
-                                label: "Классика 2013–2020";
-                                kind: 2;
-                                active: root.cursor-mode == 2;
-                                height: 26px;
-                                clicked => { root.cursor-set(2); }
-                            }
-                            Btn {
-                                label: "Киберспорт / Прицел";
-                                kind: 2;
-                                active: root.cursor-mode == 3;
-                                height: 26px;
-                                clicked => { root.cursor-set(3); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
+
+                        Combo {
+                            width: 240px;
+                            dd-id: 301;
+                            items: root.cursor-options;
+                            selected: root.cursor-mode;
+                            current-text: root.cursor-label(root.cursor-mode);
+                            pick(i) => { root.cursor-set(i); }
                         }
                     }
 
                     Rectangle { height: 1px; background: #ffffff0d; }
 
                     // 3. Шрифт интерфейса
-                    VerticalLayout {
-                        spacing: 5px;
-                        HorizontalLayout {
-                            spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: center;
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
                             Text {
-                                text: T.mods_font + " (" + T.mods_font_desc + ")";
+                                text: T.mods_font;
                                 font-weight: 500;
-                                font-size: 11.5px;
+                                font-size: 12px;
                                 color: Theme.fg;
-                                horizontal-stretch: 1;
                             }
-                            if root.font-path != "" : Text {
-                                text: root.font-path;
-                                font-family: Theme.font-mono;
-                                font-size: 10px;
-                                color: Theme.fg-dimmer;
-                                overflow: elide;
+                            Text {
+                                text: T.mods_font_desc;
+                                font-size: 11px;
+                                color: Theme.fg-dim;
                             }
                         }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Btn {
-                                label: "Стандарт (Roblox)";
-                                kind: 2;
-                                active: root.font-mode == 0;
-                                height: 26px;
-                                clicked => { root.font-set(0); }
+
+                        Combo {
+                            width: 240px;
+                            dd-id: 302;
+                            items: root.font-options;
+                            selected: root.font-mode;
+                            current-text: root.font-label(root.font-mode, root.font-path);
+                            pick(i) => {
+                                root.font-set(i);
+                                if i == 4 { root.font-pick(); }
                             }
-                            Btn {
-                                label: "JetBrains Mono";
-                                kind: 2;
-                                active: root.font-mode == 1;
-                                height: 26px;
-                                clicked => { root.font-set(1); }
-                            }
-                            Btn {
-                                label: "Inter";
-                                kind: 2;
-                                active: root.font-mode == 2;
-                                height: 26px;
-                                clicked => { root.font-set(2); }
-                            }
-                            Btn {
-                                label: "Unbounded";
-                                kind: 2;
-                                active: root.font-mode == 3;
-                                height: 26px;
-                                clicked => { root.font-set(3); }
-                            }
-                            Btn {
-                                label: root.font-mode == 4 ? "Свой шрифт ✓" : "Свой .ttf…";
-                                kind: 2;
-                                active: root.font-mode == 4;
-                                height: 26px;
-                                clicked => { root.font-pick(); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        if root.font-mode == 4 : Btn {
+                            label: "Обзор…";
+                            kind: 1;
+                            width: 80px;
+                            height: 32px;
+                            clicked => { root.font-pick(); }
                         }
                     }
                 }

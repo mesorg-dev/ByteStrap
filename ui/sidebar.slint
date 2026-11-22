@@ -92,15 +92,22 @@ export component SideBar inherits Rectangle {
     in-out property <bool> show-logs: true;
     callback navigate(int);
 
-    /// Позиция пункта: скрытые «Логи» сдвигают «Настройки» и «О программе».
-    pure function item-y(kind: int) -> length {
-        (18px + kind * Theme.nav-step)
-            - ((!root.show-logs && kind > 5) ? Theme.nav-step : 0px)
+    pure function visual-idx(p: int) -> int {
+        p == 0 ? 0 :
+        p == 1 ? 1 :
+        p == 2 ? 2 :
+        p == 4 ? 3 :
+        p == 5 ? 4 :
+        p == 6 ? (root.show-logs ? 5 : 4) :
+        (root.show-logs ? 6 : 5)
     }
-    /// Скользящий индикатор: индекс видимого пункта для активной страницы.
+
+    pure function item-y(p: int) -> length {
+        18px + root.visual-idx(p) * Theme.nav-step
+    }
+
     pure function ind-y() -> length {
-        (18px + (root.page - ((!root.show-logs && root.page > 5) ? 1 : 0)) * Theme.nav-step
-            + (Theme.nav-item-h - 20px) / 2)
+        18px + root.visual-idx(root.page) * Theme.nav-step + (Theme.nav-item-h - 20px) / 2
     }
 
     background: #080a13f2;
@@ -154,15 +161,6 @@ export component SideBar inherits Rectangle {
         label: T.nav_flags;
         active: root.page == 2;
         clicked => { root.navigate(2); }
-    }
-    NavItem {
-        x: 12px;
-        y: root.item-y(3);
-        width: parent.width - 24px;
-        kind: 3;
-        label: T.nav_versions;
-        active: root.page == 3;
-        clicked => { root.navigate(3); }
     }
     NavItem {
         x: 12px;
