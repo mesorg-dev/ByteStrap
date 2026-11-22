@@ -285,24 +285,38 @@ pub async fn ensure_installed(
     }
 
     let base = cfg.base();
-    let installed = versions::find_installed(&base);
-    if !force && installed.as_deref() == Some(latest.guid.as_str()) {
-        versions::ensure_baseline(&base.join("Versions").join(&latest.guid));
+    versions::migrate_legacy_versions(&base);
+    let installed_guid = versions::get_installed_guid(&base);
+    let version_dir = base.join("Versions").join(versions::STATIC_VERSION_DIR);
+    let client_ready =
+        version_dir.join(PLAYER_EXE).exists() && version_dir.join("AppSettings.xml").exists();
+
+    if !force && client_ready && installed_guid.as_deref() == Some(latest.guid.as_str()) {
+        versions::ensure_baseline(&version_dir);
         send(Event::Finished {
-            guid: latest.guid.clone(),
+            guid: versions::STATIC_VERSION_DIR.to_string(),
             already: true,
             activate: true,
         });
-        return Ok(latest.guid);
+        return Ok(versions::STATIC_VERSION_DIR.to_string());
     }
 
-    ensure_guid(cfg, &latest.guid, force, true, tx, cancel, installed.as_deref()).await
+    ensure_guid(
+        cfg,
+        &latest.guid,
+        force,
+        true,
+        tx,
+        cancel,
+        installed_guid.as_deref(),
+    )
+    .await
 }
 
 /// Распаковка конкретной версии (guid): манифест → параллельные зипы
 /// (с возобновлением по Range) → распаковка по карте → AppSettings.xml
-/// (маркер целой установки) → снимок файлов. `repair_for` — версия, которую
-/// держим в ретеншене при чистке.
+/// (маркер целой установки) → снимок файлов. Распаковка всегда ведётся в статичную
+/// папку Versions/Client для неизменности пути RobloxPlayerBeta.exe (VPN split-tunneling).
 pub async fn ensure_guid(
     cfg: &Config,
     guid: &str,
@@ -310,7 +324,7 @@ pub async fn ensure_guid(
     activate: bool,
     tx: &Sender<Event>,
     cancel: &Arc<AtomicBool>,
-    repair_for: Option<&str>,
+    _repair_for: Option<&str>,
 ) -> Result<String> {
     let send = |e: Event| {
         let _ = tx.send(e);
@@ -334,29 +348,10 @@ pub async fn ensure_guid(
         .await?;
     let packages = parse_manifest(&manifest)?;
 
-    let version_dir = base.join("Versions").join(guid);
+    let version_dir = base.join("Versions").join(versions::STATIC_VERSION_DIR);
     let dl_dir = base.join("Downloads").join(guid);
     std::fs::create_dir_all(&version_dir)?;
     std::fs::create_dir_all(&dl_dir)?;
-
-    // Недокачанная установка без AppSettings.xml или принудительный ремонт:
-    // удаляем каталог (ClientSettings с флагами сохраняем), распаковка заново.
-    let incomplete =
-        version_dir.join(PLAYER_EXE).exists() && !version_dir.join("AppSettings.xml").exists();
-    if force || incomplete {
-        let cs = version_dir.join("ClientSettings");
-        let saved = base.join(".clientsettings-tmp");
-        let had_cs = cs.exists();
-        if had_cs {
-            let _ = std::fs::remove_dir_all(&saved);
-            let _ = std::fs::rename(&cs, &saved);
-        }
-        let _ = std::fs::remove_dir_all(&version_dir);
-        std::fs::create_dir_all(&version_dir)?;
-        if had_cs && saved.exists() {
-            let _ = std::fs::rename(&saved, &cs);
-        }
-    }
 
     let total: u64 = packages.iter().map(|p| p.packed).sum();
     let done = Arc::new(AtomicU64::new(0));
@@ -428,6 +423,21 @@ pub async fn ensure_guid(
         done: 0,
         total: packages.len() as u64,
     });
+
+    // Сохраняем FastFlags (ClientSettings) и пересоздаём каталог версии для чистой распаковки
+    let cs = version_dir.join("ClientSettings");
+    let saved = base.join(".clientsettings-tmp");
+    let had_cs = cs.exists();
+    if had_cs {
+        let _ = std::fs::remove_dir_all(&saved);
+        let _ = std::fs::rename(&cs, &saved);
+    }
+    let _ = std::fs::remove_dir_all(&version_dir);
+    std::fs::create_dir_all(&version_dir)?;
+    if had_cs && saved.exists() {
+        let _ = std::fs::rename(&saved, &cs);
+    }
+
     for (i, p) in packages.iter().enumerate() {
         if cancelled() {
             send(Event::Cancelled);
@@ -449,30 +459,30 @@ pub async fn ensure_guid(
         total: 1,
     });
     std::fs::write(version_dir.join("AppSettings.xml"), APP_SETTINGS_XML)?;
+    let _ = std::fs::write(version_dir.join("bytestrap.version.txt"), guid);
+    let _ = std::fs::write(version_dir.join("version.txt"), guid);
     versions::write_baseline(&version_dir)?;
 
-    // Чистка: загрузки целиком, старые версии кроме новых/текущей/предыдущей
+    // Чистка: загрузки целиком, старые legacy-версии кроме Versions/Client
     let _ = std::fs::remove_dir_all(base.join("Downloads"));
-    let mut keep = vec![
-        guid.to_string(),
-        cfg.installed_version.clone(),
-        cfg.previous_version.clone(),
-    ];
-    if let Some(r) = repair_for {
-        keep.push(r.to_string());
-    }
-    for dir in versions::list(&base) {
-        if !keep.iter().any(|k| !k.is_empty() && *k == dir.guid) {
-            let _ = std::fs::remove_dir_all(base.join("Versions").join(&dir.guid));
+    if let Ok(rd) = std::fs::read_dir(base.join("Versions")) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name != versions::STATIC_VERSION_DIR
+                && name.starts_with("version-")
+                && e.path().is_dir()
+            {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
         }
     }
 
     send(Event::Finished {
-        guid: guid.to_string(),
+        guid: versions::STATIC_VERSION_DIR.to_string(),
         already: false,
         activate,
     });
-    Ok(guid.to_string())
+    Ok(versions::STATIC_VERSION_DIR.to_string())
 }
 
 #[cfg(test)]

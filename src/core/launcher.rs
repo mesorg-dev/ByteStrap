@@ -3,6 +3,13 @@ use std::path::{Path, PathBuf};
 use super::deploy::PLAYER_EXE;
 
 pub fn exe_path(base: &Path, guid: &str) -> Option<PathBuf> {
+    let client_exe = base
+        .join("Versions")
+        .join(super::versions::STATIC_VERSION_DIR)
+        .join(PLAYER_EXE);
+    if client_exe.exists() {
+        return Some(client_exe);
+    }
     if !super::versions::is_version_guid(guid) {
         return None;
     }
@@ -46,5 +53,24 @@ pub fn server_url(place_id: u64, job_id: &str) -> String {
         place_url(place_id)
     } else {
         format!("roblox://placeId={place_id}&gameInstanceId={job_id}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exe_path_finds_static_client() {
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path();
+        let client_dir = base
+            .join("Versions")
+            .join(super::super::versions::STATIC_VERSION_DIR);
+        std::fs::create_dir_all(&client_dir).unwrap();
+        let client_exe = client_dir.join(PLAYER_EXE);
+        std::fs::write(&client_exe, b"dummy").unwrap();
+
+        assert_eq!(exe_path(base, "whatever"), Some(client_exe));
     }
 }

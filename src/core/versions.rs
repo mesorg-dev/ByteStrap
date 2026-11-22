@@ -46,10 +46,13 @@ impl IntegrityReport {
     }
 }
 
+pub const STATIC_VERSION_DIR: &str = "Client";
+
 pub fn is_version_guid(s: &str) -> bool {
-    s.len() == 24
-        && s.starts_with("version-")
-        && s[8..].chars().all(|c| c.is_ascii_hexdigit())
+    s == STATIC_VERSION_DIR
+        || (s.len() == 24
+            && s.starts_with("version-")
+            && s[8..].chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 fn version_dirs(base: &Path) -> Vec<PathBuf> {
@@ -66,9 +69,82 @@ fn version_dirs(base: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Целая установка: папка version-* с exe и AppSettings.xml
+/// Получение GUID установленной версии из version.txt / bytestrap.version.txt в папке Client,
+/// либо из имени папки legacy-установки version-*.
+pub fn get_installed_guid(base: &Path) -> Option<String> {
+    let client_dir = base.join("Versions").join(STATIC_VERSION_DIR);
+    for fname in &["bytestrap.version.txt", "version.txt"] {
+        if let Ok(s) = std::fs::read_to_string(client_dir.join(fname)) {
+            let t = s.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    for dir in version_dirs(base) {
+        if let Some(name) = dir.file_name() {
+            let name_str = name.to_string_lossy();
+            if name_str != STATIC_VERSION_DIR && dir.join(PLAYER_EXE).exists() {
+                return Some(name_str.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Миграция старых папок version-* в статичную папку Versions/Client,
+/// чтобы путь к RobloxPlayerBeta.exe никогда не менялся (удобно для VPN split-tunneling).
+pub fn migrate_legacy_versions(base: &Path) {
+    let versions_dir = base.join("Versions");
+    let client_dir = versions_dir.join(STATIC_VERSION_DIR);
+    if client_dir.join(PLAYER_EXE).exists() {
+        return;
+    }
+    let mut legacy = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&versions_dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name != STATIC_VERSION_DIR
+                && name.starts_with("version-")
+                && e.path().is_dir()
+                && e.path().join(PLAYER_EXE).exists()
+            {
+                let mtime = e
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                legacy.push((e.path(), name, mtime));
+            }
+        }
+    }
+    legacy.sort_by(|a, b| b.2.cmp(&a.2));
+    if let Some((best_path, guid, _)) = legacy.first() {
+        if client_dir.exists() {
+            let _ = std::fs::remove_dir_all(&client_dir);
+        }
+        if std::fs::rename(best_path, &client_dir).is_ok() {
+            let _ = std::fs::write(client_dir.join("bytestrap.version.txt"), guid.as_bytes());
+            let _ = std::fs::write(client_dir.join("version.txt"), guid.as_bytes());
+        }
+    }
+    // Чистим остальные старые папки version-*
+    if let Ok(rd) = std::fs::read_dir(&versions_dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name != STATIC_VERSION_DIR && name.starts_with("version-") && e.path().is_dir() {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
+}
+
+/// Целая установка: папка Client (или legacy version-*) с exe и AppSettings.xml
 /// (AppSettings пишется только после полной распаковки).
 pub fn find_installed(base: &Path) -> Option<String> {
+    let client_dir = base.join("Versions").join(STATIC_VERSION_DIR);
+    if client_dir.join(PLAYER_EXE).exists() && client_dir.join("AppSettings.xml").exists() {
+        return Some(STATIC_VERSION_DIR.to_string());
+    }
     for dir in version_dirs(base) {
         let guid = dir.file_name()?.to_string_lossy().to_string();
         if dir.join(PLAYER_EXE).exists() && dir.join("AppSettings.xml").exists() {
@@ -167,6 +243,12 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<BaselineFile>) -> Result
             }
             collect_files(root, &p, out)?;
         } else {
+            // Исключаем маркеры версии ByteStrap и сам baseline
+            if let Some(n) = p.file_name() {
+                if n == "bytestrap.version.txt" || n == "version.txt" || n == BASELINE_FILE {
+                    continue;
+                }
+            }
             let rel = p.strip_prefix(root)?.to_string_lossy().replace('\\', "/");
             out.push(BaselineFile {
                 path: rel,
@@ -201,9 +283,30 @@ mod tests {
 
     #[test]
     fn guid_check() {
+        assert!(is_version_guid(STATIC_VERSION_DIR));
         assert!(is_version_guid("version-0123456789abcdef"));
         assert!(!is_version_guid("version-zz23456789abcdef"));
         assert!(!is_version_guid("abc"));
+    }
+
+    #[test]
+    fn migration_moves_legacy_to_client() {
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path();
+        let legacy_dir = base.join("Versions").join("version-0123456789abcdef");
+        std::fs::create_dir_all(&legacy_dir).unwrap();
+        std::fs::write(legacy_dir.join(PLAYER_EXE), b"exe").unwrap();
+        std::fs::write(legacy_dir.join("AppSettings.xml"), b"xml").unwrap();
+
+        migrate_legacy_versions(base);
+
+        let client_dir = base.join("Versions").join(STATIC_VERSION_DIR);
+        assert!(client_dir.join(PLAYER_EXE).exists());
+        assert!(!legacy_dir.exists());
+        assert_eq!(
+            get_installed_guid(base),
+            Some("version-0123456789abcdef".to_string())
+        );
     }
 
     #[test]

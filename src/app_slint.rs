@@ -79,6 +79,11 @@ pub struct InstallUi {
 /// Активная версия клиента с проверкой целостности установки.
 pub fn effective_installed(config: &Config) -> Option<String> {
     let base = config.base();
+    versions::migrate_legacy_versions(&base);
+    let client_dir = base.join("Versions").join(versions::STATIC_VERSION_DIR);
+    if client_dir.join(deploy::PLAYER_EXE).exists() && client_dir.join("AppSettings.xml").exists() {
+        return Some(versions::STATIC_VERSION_DIR.to_string());
+    }
     let iv = &config.installed_version;
     if !iv.is_empty() && versions::is_version_guid(iv) {
         let dir = base.join("Versions").join(iv);
@@ -330,7 +335,11 @@ impl Ctx {
 
     fn update_available(&self) -> bool {
         match (&self.installed, &self.latest) {
-            (Some(inst), Some(lat)) => inst != &lat.guid,
+            (Some(inst), Some(lat)) => {
+                let installed_guid = versions::get_installed_guid(&self.config.base())
+                    .unwrap_or_else(|| inst.clone());
+                installed_guid != lat.guid
+            }
             (None, Some(_)) => true,
             _ => false,
         }
@@ -1581,9 +1590,16 @@ impl Ctx {
         logger::info("Проверка целостности завершена");
     }
 
-    fn start_repair(&mut self, guid: String) {
+    fn start_repair(&mut self, mut guid: String) {
         if self.install.active {
             return;
+        }
+        if guid == versions::STATIC_VERSION_DIR {
+            if let Some(installed_guid) = versions::get_installed_guid(&self.config.base()) {
+                guid = installed_guid;
+            } else if let Some(latest) = &self.latest {
+                guid = latest.guid.clone();
+            }
         }
         logger::info(format!("Запущен ремонт версии {guid}"));
         self.install = InstallUi {
@@ -1616,15 +1632,19 @@ impl Ctx {
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
-            let res = rt.block_on(deploy::ensure_guid(
-                &cfg,
-                &guid,
-                true,
-                false,
-                &etx,
-                &cancel,
-                repair_for.as_deref(),
-            ));
+            let res = if guid == versions::STATIC_VERSION_DIR {
+                rt.block_on(deploy::ensure_installed(&cfg, &etx, &cancel, true))
+            } else {
+                rt.block_on(deploy::ensure_guid(
+                    &cfg,
+                    &guid,
+                    true,
+                    false,
+                    &etx,
+                    &cancel,
+                    repair_for.as_deref(),
+                ))
+            };
             drop(etx);
             let _ = relay.join();
             if let Err(e) = res {
