@@ -351,7 +351,7 @@ mod imp {
     }
 
     /// Окно Roblox: видимое топ-левел окно процесса RobloxPlayerBeta.
-    pub(crate) fn find_game_hwnd() -> HWND {
+    pub fn find_game_hwnd() -> HWND {
         extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> i32 {
             unsafe {
                 let out = lparam as *mut HWND;
