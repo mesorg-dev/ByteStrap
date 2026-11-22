@@ -320,7 +320,7 @@ pub async fn ensure_installed(
 pub async fn ensure_guid(
     cfg: &Config,
     guid: &str,
-    force: bool,
+    _force: bool,
     activate: bool,
     tx: &Sender<Event>,
     cancel: &Arc<AtomicBool>,

@@ -5449,7 +5449,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
         ctx.borrow_mut().check_updates(false);
     }
     ctx.borrow().push_home(&ui);
-    ctx.borrow_mut().refresh_roblox_data();
 
     // Клик по roblox:// в командной строке (друзья, приватки, плейсы):
     // сразу запускаем игру с этой ссылкой (счётчик сессии и RP работают).
