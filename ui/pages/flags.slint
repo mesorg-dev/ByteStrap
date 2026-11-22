@@ -95,6 +95,11 @@ export component FlagsPage inherits PageFade {
             vertical-stretch: 1;
             content-width: self.width;
             content-height: root.prof-y + root.prof-h + 16px;
+            changed viewport-y => {
+                if Dd.open {
+                    Dd.open = false;
+                }
+            }
 
             // ===== Тулбар =====
             c-tool := Rectangle {

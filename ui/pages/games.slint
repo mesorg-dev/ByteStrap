@@ -66,6 +66,11 @@ export component GamesPage inherits PageFade {
         height: 100%;
         content-width: flick.width;
         content-height: col.preferred-height;
+        changed viewport-y => {
+            if Dd.open {
+                Dd.open = false;
+            }
+        }
 
         col := VerticalLayout {
             width: flick.width;
@@ -76,7 +81,6 @@ export component GamesPage inherits PageFade {
             HorizontalLayout {
                 height: 44px;
                 spacing: 16px;
-                alignment: center;
 
                 VerticalLayout {
                     horizontal-stretch: 1;
@@ -96,10 +100,11 @@ export component GamesPage inherits PageFade {
                     }
                 }
 
-                // Переключатель вкладок
+                // Переключатель вкладок — всегда прижат к правому краю
                 Rectangle {
                     width: 250px;
                     height: 34px;
+                    y: (parent.height - self.height) / 2;
                     border-radius: Theme.r-soft;
                     background: Theme.panel;
                     border-width: 1px;
@@ -453,21 +458,21 @@ export component GamesPage inherits PageFade {
                                 clicked => { root.region-filter-set(0); }
                             }
                             Btn {
-                                label: "🇩🇪 Европа";
+                                label: "Европа";
                                 kind: 2;
                                 active: root.region-filter == 1;
                                 height: 26px;
                                 clicked => { root.region-filter-set(1); }
                             }
                             Btn {
-                                label: "🇺🇸 Америка";
+                                label: "Америка";
                                 kind: 2;
                                 active: root.region-filter == 2;
                                 height: 26px;
                                 clicked => { root.region-filter-set(2); }
                             }
                             Btn {
-                                label: "🇸🇬 Азия";
+                                label: "Азия";
                                 kind: 2;
                                 active: root.region-filter == 3;
                                 height: 26px;
@@ -685,10 +690,24 @@ export component GamesPage inherits PageFade {
                                     padding-right: 12px;
                                     spacing: 8px;
 
-                                    Text {
-                                        text: rp.flag;
-                                        font-size: 13px;
-                                        vertical-alignment: center;
+                                    Rectangle {
+                                        width: 28px;
+                                        height: 18px;
+                                        y: (parent.height - self.height) / 2;
+                                        border-radius: 4px;
+                                        background: #ffffff14;
+                                        border-width: 1px;
+                                        border-color: #ffffff20;
+
+                                        Text {
+                                            text: rp.flag;
+                                            font-family: Theme.font-mono;
+                                            font-size: 10px;
+                                            font-weight: 700;
+                                            color: Theme.fg;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
                                     }
                                     Text {
                                         text: rp.name;

@@ -20,21 +20,21 @@ export component SettingsPage inherits PageFade {
     in-out property <int> threads: 4;
 
     in-out property <[string]> region-options: [
-        "Автоматически (наименьший пинг)",
-        "🇩🇪 Германия (Франкфурт)",
-        "🇬🇧 Великобритания (Лондон)",
-        "🇺🇸 США Восток (Нью-Йорк / Ашберн)",
-        "🇺🇸 США Запад (Лос-Анджелес)",
-        "🇸🇬 Азия (Сингапур / Токио)"
+        "[Auto] Автоматически (наименьший пинг)",
+        "[DE] Германия (Франкфурт)",
+        "[GB] Великобритания (Лондон)",
+        "[US] США Восток (Нью-Йорк / Ашберн)",
+        "[US] США Запад (Лос-Анджелес)",
+        "[SG] Азия (Сингапур / Токио)"
     ];
 
     pure function region-label(r: int) -> string {
-        r == 1 ? "🇩🇪 Германия (Франкфурт)" :
-        r == 2 ? "🇬🇧 Великобритания (Лондон)" :
-        r == 3 ? "🇺🇸 США Восток (Нью-Йорк / Ашберн)" :
-        r == 4 ? "🇺🇸 США Запад (Лос-Анджелес)" :
-        r == 5 ? "🇸🇬 Азия (Сингапур / Токио)" :
-        "Автоматически (наименьший пинг)"
+        r == 1 ? "[DE] Германия (Франкфурт)" :
+        r == 2 ? "[GB] Великобритания (Лондон)" :
+        r == 3 ? "[US] США Восток (Нью-Йорк / Ашберн)" :
+        r == 4 ? "[US] США Запад (Лос-Анджелес)" :
+        r == 5 ? "[SG] Азия (Сингапур / Токио)" :
+        "[Auto] Автоматически (наименьший пинг)"
     }
     in-out property <bool> auto-update: true;
     in-out property <bool> close-launch: false;
@@ -179,6 +179,11 @@ export component SettingsPage inherits PageFade {
             vertical-stretch: 1;
             content-width: flick.width;
             content-height: col.preferred-height;
+            changed viewport-y => {
+                if Dd.open {
+                    Dd.open = false;
+                }
+            }
 
             col := VerticalLayout {
                 width: flick.width;

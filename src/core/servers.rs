@@ -526,16 +526,13 @@ async fn measure_tcp_data_ping(ip: &str, port: u16) -> Option<u32> {
     if let Ok(Ok(n)) = res {
         if n > 0 {
             let elapsed = start.elapsed().as_millis() as u32;
-            return Some(elapsed);
+            if elapsed >= 5 {
+                return Some(elapsed);
+            }
         }
     }
 
-    let elapsed = start.elapsed().as_millis() as u32;
-    if elapsed >= 10 {
-        Some(elapsed)
-    } else {
-        None // Отсеиваем локальные ложные срабатывания 0-2 мс
-    }
+    None
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -547,31 +544,48 @@ pub struct RegionPing {
     pub ping_ms: Option<u32>,
 }
 
-/// Замер задержки до ключевых дата-центров Roblox по всему миру.
+/// Замер задержки до ключевых дата-центров через высоконадёжные региональные эндпоинты S3.
 pub async fn measure_regions_ping() -> Vec<RegionPing> {
     let targets = [
-        (1, "Германия (Франкфурт)", "🇩🇪", "128.116.5.33"),
-        (2, "Великобритания (Лондон)", "🇬🇧", "128.116.6.1"),
-        (3, "Нидерланды (Амстердам)", "🇳🇱", "128.116.12.1"),
-        (4, "Франция (Париж)", "🇫🇷", "128.116.14.1"),
-        (5, "США Восток (Нью-Йорк)", "🇺🇸", "128.116.0.1"),
-        (6, "США Восток (Ашберн)", "🇺🇸", "128.116.1.1"),
-        (7, "США Центр (Чикаго)", "🇺🇸", "128.116.2.1"),
-        (8, "США Запад (Лос-Анджелес)", "🇺🇸", "128.116.8.1"),
-        (9, "Сингапур", "🇸🇬", "128.116.20.1"),
-        (10, "Япония (Токио)", "🇯🇵", "128.116.22.1"),
-        (11, "Австралия (Сидней)", "🇦🇺", "128.116.24.1"),
+        (1, "Германия (Франкфурт)", "DE", "https://s3.eu-central-1.amazonaws.com/"),
+        (2, "Великобритания (Лондон)", "GB", "https://s3.eu-west-2.amazonaws.com/"),
+        (3, "Нидерланды (Амстердам)", "NL", "https://s3.eu-west-1.amazonaws.com/"),
+        (4, "Франция (Париж)", "FR", "https://s3.eu-west-3.amazonaws.com/"),
+        (5, "США Восток (Нью-Йорк)", "US", "https://s3.us-east-2.amazonaws.com/"),
+        (6, "США Восток (Ашберн)", "US", "https://s3.us-east-1.amazonaws.com/"),
+        (7, "США Запад (Калифорния)", "US", "https://s3.us-west-1.amazonaws.com/"),
+        (8, "США Запад (Орегон)", "US", "https://s3.us-west-2.amazonaws.com/"),
+        (9, "Сингапур", "SG", "https://s3.ap-southeast-1.amazonaws.com/"),
+        (10, "Япония (Токио)", "JP", "https://s3.ap-northeast-1.amazonaws.com/"),
+        (11, "Австралия (Сидней)", "AU", "https://s3.ap-southeast-2.amazonaws.com/"),
     ];
 
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_millis(1800))
+        .build()
+        .unwrap_or_default();
+
     let mut handles = Vec::new();
-    for (id, name, flag, ip) in targets {
+    for (id, name, flag, url) in targets {
+        let client = client.clone();
         handles.push(tokio::spawn(async move {
-            let ping = measure_ping(ip, 443).await;
+            let start = std::time::Instant::now();
+            let ping = match client.head(url).send().await {
+                Ok(_) => {
+                    let elapsed = start.elapsed().as_millis() as u32;
+                    if elapsed >= 5 {
+                        Some(elapsed)
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            };
             RegionPing {
                 id,
                 name: name.to_string(),
                 flag: flag.to_string(),
-                ip: ip.to_string(),
+                ip: url.to_string(),
                 ping_ms: ping,
             }
         }));
