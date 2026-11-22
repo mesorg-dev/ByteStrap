@@ -825,7 +825,6 @@ dependencies = [
  "futures-util",
  "i-slint-backend-testing",
  "image",
- "qrcode",
  "reqwest",
  "rfd",
  "rodio",

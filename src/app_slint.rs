@@ -20,13 +20,12 @@ use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 
 use crate::core::config::Config;
-use crate::core::accounts::{self, Accounts};
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::places::{Places};
 use crate::core::flags::FlagError;
 use crate::core::overlay;
-use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, quick_login, roblox_link, screenshots, servers, updater, versions};
+use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, screenshots, servers, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::tray;
 
@@ -49,19 +48,11 @@ pub enum AsyncEvent {
     Tray(tray::Action),
     /// Имя места получено: (id, Some(имя) | None).
     PlaceName((u64, Option<String>)),
-    /// Аккаунт добавлен: (id, Some(имя) | None, если имя не получено).
-    AccountAdded((String, Option<String>)),
-    /// Получен auth-ticket аккаунта: ссылка запуска или ошибка.
-    LaunchTicket(Result<String, String>),
     /// Список серверов места: (placeId, результат).
     Servers((u64, Result<Vec<servers::ServerInfo>, String>)),
     /// Пинг активного сервера Roblox.
     ActiveServerPing(u32),
     Session(SessionEvent),
-    QuickLoginStarted(Result<quick_login::QuickLoginSession, String>),
-    QuickLoginProgress(quick_login::QuickLoginStatus),
-    FriendsLoaded(Vec<crate::core::roblox_api::OnlineFriend>),
-    RecentGamesLoaded(Vec<crate::core::roblox_api::RecentGame>),
 }
 
 /// Состояние карточки «обновление лаунчера» на странице About.
@@ -117,8 +108,6 @@ enum Confirm {
 enum Dlg {
     ModsProfile,
     FlagsProfile,
-    /// Ввод куки `.ROBLOSECURITY` для нового аккаунта.
-    AccountCookie,
 }
 
 /// Очередь конфликтов импорта FastFlags (окно спрашивает по одному).
@@ -252,13 +241,6 @@ struct Ctx {
     cfg_msg: Option<(String, bool)>,
     /// Оверлей «Картинка клиента» поверх окна Roblox.
     overlay: overlay::Handle,
-    /// Аккаунты Roblox (мультиаккаунт).
-    accounts: Accounts,
-    quick_login_session: Option<quick_login::QuickLoginSession>,
-    quick_login_cancel: Option<Arc<AtomicBool>>,
-    friends: Vec<crate::core::roblox_api::OnlineFriend>,
-    friends_busy: bool,
-    recent_games: Vec<crate::core::roblox_api::RecentGame>,
     gif_timer: Option<slint::Timer>,
 
     // — Сессия игры (Tick/End из playtime::watch_session) —
@@ -424,31 +406,6 @@ impl Ctx {
     // ---- Запуск ----
 
     fn play(&mut self, arg: Option<&str>) {
-        // Если выбран аккаунт — запускаем клиент от его имени (auth-ticket).
-        if let Some(account) = self.accounts.active() {
-            if !account.cookie.is_empty() {
-                let cookie = account.cookie.clone();
-                let place = arg.and_then(Self::parse_place);
-                let job = arg.and_then(Self::parse_job);
-                let tx = self.tx.clone();
-                self.install.error = None;
-                logger::info("Получаем auth-ticket аккаунта…");
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build();
-                    let res = match rt {
-                        Ok(rt) => rt
-                            .block_on(accounts::auth_ticket(&cookie))
-                            .map(|t| accounts::launch_uri(&t, place, job.as_deref()))
-                            .map_err(|e| e.to_string()),
-                        Err(e) => Err(e.to_string()),
-                    };
-                    let _ = tx.send(AsyncEvent::LaunchTicket(res));
-                });
-                return;
-            }
-        }
         self.play_direct(arg);
     }
 
@@ -557,6 +514,7 @@ impl Ctx {
     }
 
     /// JobId сервера из ввода (для захода в конкретный сервер).
+    #[allow(dead_code)]
     fn parse_job(input: &str) -> Option<String> {
         let t = input.trim();
         let url = roblox_link::parse_arg(t)?;
@@ -1346,46 +1304,6 @@ impl Ctx {
                         }
                     }
                 }
-                AsyncEvent::AccountAdded((id, name)) => {
-                    let mut found = false;
-                    for a in self.accounts.accounts.iter_mut() {
-                        if a.id == id {
-                            if let Some(n) = &name {
-                                a.name = n.clone();
-                            }
-                            found = true;
-                        }
-                    }
-                    match &name {
-                        Some(n) => logger::info(format!("Аккаунт добавлен: {n}")),
-                        None if found => {
-                            logger::warn("Аккаунт добавлен, но имя не получено (неверная кука?)")
-                        }
-                        None => logger::warn("Аккаунт не найден"),
-                    }
-                    self.accounts.save(&self.config.base());
-                    self.refresh_roblox_data();
-                }
-                AsyncEvent::FriendsLoaded(list) => {
-                    self.friends = list;
-                    self.friends_busy = false;
-                    if let Some(ui) = self.weak.upgrade() {
-                        self.push_friends(&ui);
-                    }
-                }
-                AsyncEvent::RecentGamesLoaded(list) => {
-                    self.recent_games = list;
-                    if let Some(ui) = self.weak.upgrade() {
-                        self.push_recent_games(&ui);
-                    }
-                }
-                AsyncEvent::LaunchTicket(res) => match res {
-                    Ok(uri) => self.play_direct(Some(&uri)),
-                    Err(e) => {
-                        logger::error(format!("Аккаунт: не удалось получить ticket: {e}"));
-                        self.install.error = Some(e);
-                    }
-                },
                 AsyncEvent::Servers((place, res)) => {
                     if place != self.servers_place {
                         continue;
@@ -1481,96 +1399,6 @@ impl Ctx {
                                 let _ = ui.show();
                                 #[cfg(windows)]
                                 winit_restore(&ui);
-                            }
-                        }
-                    }
-                },
-                AsyncEvent::QuickLoginStarted(res) => {
-                    if let Some(ui) = self.weak.upgrade() {
-                        ui.set_quick_login_busy(false);
-                        match res {
-                            Ok(session) => {
-                                ui.set_quick_login_code(session.code.clone().into());
-                                if let Ok(img) = slint::Image::load_from_svg_data(session.qr_svg.as_bytes()) {
-                                    ui.set_quick_login_qr(img);
-                                }
-                                ui.set_quick_login_status(tr(self.lang, "Quick_Waiting").into());
-                                ui.set_quick_login_linked(false);
-                                ui.set_quick_login_code_expired(false);
-                                self.quick_login_session = Some(session.clone());
-
-                                let tx = self.tx.clone();
-                                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                                self.quick_login_cancel = Some(cancel.clone());
-                                let code = session.code;
-                                let priv_key = session.private_key;
-
-                                std::thread::spawn(move || {
-                                    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-                                        Ok(rt) => rt,
-                                        Err(_) => return,
-                                    };
-                                    rt.block_on(async move {
-                                        for _ in 0..120 {
-                                            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                                                break;
-                                            }
-                                            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-                                            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                                                break;
-                                            }
-                                            match crate::core::quick_login::check_status(&code, &priv_key).await {
-                                                Ok(st) => {
-                                                    let is_done = matches!(st, crate::core::quick_login::QuickLoginStatus::Success { .. } | crate::core::quick_login::QuickLoginStatus::Expired);
-                                                    let _ = tx.send(AsyncEvent::QuickLoginProgress(st));
-                                                    if is_done {
-                                                        break;
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    let _ = tx.send(AsyncEvent::QuickLoginProgress(crate::core::quick_login::QuickLoginStatus::Error(e)));
-                                                }
-                                            }
-                                        }
-                                    });
-                                });
-                            }
-                            Err(e) => {
-                                ui.set_quick_login_status(e.into());
-                                ui.set_quick_login_code_expired(true);
-                            }
-                        }
-                    }
-                }
-                AsyncEvent::QuickLoginProgress(st) => {
-                    if let Some(ui) = self.weak.upgrade() {
-                        match st {
-                            crate::core::quick_login::QuickLoginStatus::Waiting => {
-                                ui.set_quick_login_status(tr(self.lang, "Quick_Waiting").into());
-                            }
-                            crate::core::quick_login::QuickLoginStatus::Linked { name, .. } => {
-                                ui.set_quick_login_linked(true);
-                                let msg = if name.is_empty() {
-                                    tr(self.lang, "Quick_Linked").to_string()
-                                } else {
-                                    format!("Подтверждено: {name}! Завершение входа...")
-                                };
-                                ui.set_quick_login_status(msg.into());
-                            }
-                            crate::core::quick_login::QuickLoginStatus::Success { cookie, username } => {
-                                ui.set_quick_login_open(false);
-                                let acc_id = self.accounts.add(&cookie, &username);
-                                self.accounts.active = acc_id;
-                                self.accounts.save(&self.config.base());
-                                self.push_accounts(&ui);
-                                self.info_override = Some((format!("Вход выполнен: {username}"), Instant::now()));
-                            }
-                            crate::core::quick_login::QuickLoginStatus::Expired => {
-                                ui.set_quick_login_status(tr(self.lang, "Quick_Expired").into());
-                                ui.set_quick_login_code_expired(true);
-                            }
-                            crate::core::quick_login::QuickLoginStatus::Error(e) => {
-                                crate::core::logger::warn(format!("Quick login polling error: {e}"));
                             }
                         }
                     }
@@ -1931,7 +1759,6 @@ impl Ctx {
                     self.config.active_flag_profile.clone()
                 }
             }
-            Dlg::AccountCookie => String::new(),
         };
         self.save_dlg = Some(kind);
     }
@@ -1940,14 +1767,6 @@ impl Ctx {
         let lang = self.lang;
         let name = name.trim().to_string();
         match self.save_dlg {
-            Some(Dlg::AccountCookie) => {
-                if name.is_empty() {
-                    return;
-                }
-                self.save_dlg = None;
-                self.dlg_input.clear();
-                self.account_add(&name);
-            }
             Some(Dlg::ModsProfile) => {
                 if name.is_empty() {
                     self.mods_msg = Some((tr(lang, "Prof_NeedName").to_string(), false));
@@ -2784,179 +2603,6 @@ impl Ctx {
             })
             .collect();
         ui.set_top_places(ModelRc::new(VecModel::from(rows)));
-
-        // Аккаунты: список для выпадашки на Home.
-        self.push_accounts(ui);
-    }
-
-    fn push_accounts(&self, ui: &AppWindow) {
-        let (items, sel, current) = self.account_ui();
-        ui.set_account_items(ModelRc::new(VecModel::from(items)));
-        ui.set_account_sel(sel);
-        ui.set_account_name(current.as_str().into());
-        let initial = self
-            .accounts
-            .active()
-            .and_then(|a| a.name.chars().next())
-            .map(|c| c.to_uppercase().to_string())
-            .unwrap_or_else(|| "○".to_string());
-        ui.set_account_initial(initial.into());
-        self.push_friends(ui);
-        self.push_recent_games(ui);
-    }
-
-    fn push_friends(&self, ui: &AppWindow) {
-        let rows: Vec<FriendRow> = self
-            .friends
-            .iter()
-            .map(|f| {
-                let initial = f
-                    .display_name
-                    .chars()
-                    .next()
-                    .or_else(|| f.name.chars().next())
-                    .map(|c| c.to_uppercase().to_string())
-                    .unwrap_or_else(|| "•".to_string());
-                let status_text = if f.presence_type == 2 {
-                    if !f.last_location.is_empty() {
-                        format!("В игре: {}", f.last_location)
-                    } else {
-                        "В игре".to_string()
-                    }
-                } else {
-                    "На сайте".to_string()
-                };
-                FriendRow {
-                    id: f.id.to_string().into(),
-                    name: f.name.clone().into(),
-                    display_name: f.display_name.clone().into(),
-                    status_text: status_text.into(),
-                    is_ingame: f.presence_type == 2,
-                    place_id: f.place_id.to_string().into(),
-                    game_id: f.game_id.clone().into(),
-                    game_name: f.last_location.clone().into(),
-                    initial: initial.into(),
-                }
-            })
-            .collect();
-        ui.set_home_friends(ModelRc::new(VecModel::from(rows)));
-        ui.set_home_friends_busy(self.friends_busy);
-    }
-
-    fn push_recent_games(&self, ui: &AppWindow) {
-        let mut rows: Vec<AccountGameRow> = Vec::new();
-        for g in &self.recent_games {
-            let p_entry = self.places.items.iter().find(|p| p.id == g.place_id);
-            let custom_res = p_entry
-                .filter(|p| p.custom_w > 0 && p.custom_h > 0)
-                .map(|p| format!("{}×{}", p.custom_w, p.custom_h))
-                .unwrap_or_default();
-            rows.push(AccountGameRow {
-                place_id: g.place_id.to_string().into(),
-                name: g.name.clone().into(),
-                creator: g.creator.clone().into(),
-                is_fav: g.is_fav,
-                custom_res: custom_res.into(),
-            });
-        }
-        for p in self.places.sorted() {
-            if !rows.iter().any(|r| r.place_id == p.id.to_string()) {
-                let custom_res = if p.custom_w > 0 && p.custom_h > 0 {
-                    format!("{}×{}", p.custom_w, p.custom_h)
-                } else {
-                    String::new()
-                };
-                let name = if p.name.is_empty() { format!("Place {}", p.id) } else { p.name.clone() };
-                rows.push(AccountGameRow {
-                    place_id: p.id.to_string().into(),
-                    name: name.into(),
-                    creator: String::new().into(),
-                    is_fav: p.fav,
-                    custom_res: custom_res.into(),
-                });
-            }
-        }
-        ui.set_home_recent_games(ModelRc::new(VecModel::from(rows)));
-    }
-
-    fn refresh_roblox_data(&mut self) {
-        let Some(active) = self.accounts.active() else {
-            self.friends.clear();
-            self.recent_games.clear();
-            self.friends_busy = false;
-            if let Some(ui) = self.weak.upgrade() {
-                self.push_friends(&ui);
-                self.push_recent_games(&ui);
-            }
-            return;
-        };
-
-        let cookie = active.cookie.clone();
-        if cookie.is_empty() {
-            return;
-        }
-
-        self.friends_busy = true;
-        if let Some(ui) = self.weak.upgrade() {
-            ui.set_home_friends_busy(true);
-        }
-
-        let tx = self.tx.clone();
-        std::thread::spawn(move || {
-            let Ok(rt) = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build() else { return; };
-            let friends = rt.block_on(crate::core::roblox_api::fetch_online_friends(&cookie));
-            let _ = tx.send(AsyncEvent::FriendsLoaded(friends));
-            let games = rt.block_on(crate::core::roblox_api::fetch_account_games(&cookie));
-            let _ = tx.send(AsyncEvent::RecentGamesLoaded(games));
-        });
-    }
-
-    fn friend_join(&mut self, place_id: &str, game_id: &str) {
-        let Ok(pid) = place_id.parse::<u64>() else { return; };
-        let url = if !game_id.is_empty() {
-            format!("roblox://experiences/start?placeId={pid}&gameInstanceId={game_id}")
-        } else {
-            format!("roblox://placeId={pid}")
-        };
-        self.play(Some(&url));
-    }
-
-    fn recent_game_play(&mut self, place_id: &str) {
-        let Ok(pid) = place_id.parse::<u64>() else { return; };
-        self.launch_place(pid);
-    }
-
-    fn game_res_edit(&mut self, place_id: &str, name: &str) {
-        let Some(ui) = self.weak.upgrade() else { return; };
-        let pid: u64 = place_id.parse().unwrap_or(0);
-        let p_entry = self.places.items.iter().find(|p| p.id == pid);
-        let (mode, w, h) = if let Some(p) = p_entry {
-            if p.custom_w == 1920 && p.custom_h == 1080 {
-                (1, 1920, 1080)
-            } else if p.custom_w == 1600 && p.custom_h == 900 {
-                (2, 1600, 900)
-            } else if p.custom_w == 1440 && p.custom_h == 1080 {
-                (3, 1440, 1080)
-            } else if p.custom_w == 1280 && p.custom_h == 720 {
-                (4, 1280, 720)
-            } else if p.custom_w == 1024 && p.custom_h == 768 {
-                (5, 1024, 768)
-            } else if p.custom_w > 0 && p.custom_h > 0 {
-                (6, p.custom_w, p.custom_h)
-            } else {
-                (0, 1920, 1080)
-            }
-        } else {
-            (0, 1920, 1080)
-        };
-        ui.set_game_res_modal_place(place_id.into());
-        ui.set_game_res_modal_title(name.into());
-        ui.set_game_res_modal_mode(mode);
-        ui.set_game_res_modal_w(w.to_string().into());
-        ui.set_game_res_modal_h(h.to_string().into());
-        ui.set_game_res_modal_open(true);
     }
 
     fn game_res_modal_save(&mut self, place_id: &str, mode: i32, w: i32, h: i32) {
@@ -2975,7 +2621,6 @@ impl Ctx {
         self.places.save(&self.config.base());
         if let Some(ui) = self.weak.upgrade() {
             ui.set_game_res_modal_open(false);
-            self.push_recent_games(&ui);
         }
     }
 
@@ -3017,135 +2662,6 @@ impl Ctx {
         };
 
         crate::core::window_mgr::apply_geometry(target_w, target_h, self.config.center_game);
-    }
-
-    /// Пункты выпадающего списка аккаунтов: [0] — без аккаунта,
-    /// далее аккаунты, в конце «Добавить…» и (при активном) «Удалить…».
-    fn account_ui(&self) -> (Vec<SharedString>, i32, String) {
-        let lang = self.lang;
-        let mut items: Vec<SharedString> = vec![tr(lang, "Acc_None").into()];
-        let mut sel = 0i32;
-        for (i, a) in self.accounts.accounts.iter().enumerate() {
-            items.push(a.name.clone().into());
-            if a.id == self.accounts.active {
-                sel = (i + 1) as i32;
-            }
-        }
-        items.push(tr(lang, "Acc_Add").into());
-        let has_active = self.accounts.active().is_some();
-        if has_active {
-            items.push(tr(lang, "Acc_Remove").into());
-        }
-        let current = self
-            .accounts
-            .active()
-            .map(|a| a.name.clone())
-            .unwrap_or_else(|| tr(lang, "Acc_None").to_string());
-        (items, sel, current)
-    }
-
-    /// Выбор пункта в списке аккаунтов (index — как в `account_ui`).
-    fn account_pick(&mut self, index: usize) {
-        let n = self.accounts.accounts.len();
-        if index == 0 {
-            self.accounts.active.clear();
-            self.accounts.save(&self.config.base());
-            logger::info("Запуск без аккаунта");
-            self.refresh_roblox_data();
-        } else if index <= n {
-            let id = self.accounts.accounts[index - 1].id.clone();
-            self.accounts.active = id;
-            self.accounts.save(&self.config.base());
-            let name = self.accounts.accounts[index - 1].name.clone();
-            logger::info(format!("Активный аккаунт: {name}"));
-            self.refresh_roblox_data();
-        } else if index == n + 1 {
-            self.open_save_dlg(Dlg::AccountCookie);
-        } else if index == n + 2 {
-            if let Some(a) = self.accounts.active().cloned() {
-                self.accounts.remove(&a.id);
-                self.accounts.save(&self.config.base());
-                logger::info(format!("Аккаунт удалён: {}", a.name));
-                self.save_dlg = None;
-                self.dlg_input.clear();
-            }
-        }
-    }
-
-    /// Добавить аккаунт по куке: сразу в список, имя — асинхронно.
-    fn account_add(&mut self, cookie: &str) {
-        let cookie = accounts::normalize_cookie(cookie);
-        if cookie.is_empty() {
-            return;
-        }
-        let id = self.accounts.add(&cookie, "…");
-        self.accounts.save(&self.config.base());
-        let tx = self.tx.clone();
-        let c = cookie.clone();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build();
-            let name = match rt {
-                Ok(rt) => rt.block_on(accounts::fetch_username(&c)),
-                Err(_) => None,
-            };
-            let _ = tx.send(AsyncEvent::AccountAdded((id, name)));
-        });
-    }
-
-    fn quick_login_start(&mut self) {
-        if let Some(c) = self.quick_login_cancel.take() {
-            c.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        if let Some(ui) = self.weak.upgrade() {
-            ui.set_quick_login_open(true);
-            ui.set_quick_login_busy(true);
-            ui.set_quick_login_code("".into());
-            ui.set_quick_login_status(tr(self.lang, "Quick_Waiting").into());
-            ui.set_quick_login_linked(false);
-            ui.set_quick_login_code_expired(false);
-        }
-        let tx = self.tx.clone();
-        std::thread::spawn(move || {
-            let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-                Ok(rt) => rt,
-                Err(e) => {
-                    let _ = tx.send(AsyncEvent::QuickLoginStarted(Err(e.to_string())));
-                    return;
-                }
-            };
-            let res = rt.block_on(crate::core::quick_login::create_session());
-            let _ = tx.send(AsyncEvent::QuickLoginStarted(res));
-        });
-    }
-
-    fn quick_login_cancel(&mut self) {
-        if let Some(c) = self.quick_login_cancel.take() {
-            c.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        if let Some(ui) = self.weak.upgrade() {
-            ui.set_quick_login_open(false);
-        }
-    }
-
-    fn quick_login_copy(&mut self) {
-        if let Some(session) = &self.quick_login_session {
-            #[cfg(windows)]
-            if let Ok(mut clip) = arboard::Clipboard::new() {
-                let _ = clip.set_text(session.code.clone());
-            }
-            if let Some(ui) = self.weak.upgrade() {
-                ui.set_quick_login_status(tr(self.lang, "Quick_Copied").into());
-            }
-        }
-    }
-
-    fn quick_login_open_site(&mut self) {
-        if let Some(session) = &self.quick_login_session {
-            let url = format!("https://www.roblox.com/crossdevice?code={}", session.code);
-            open_url(&url);
-        }
     }
 
     fn push_versions(&self, ui: &AppWindow) {
@@ -3657,12 +3173,6 @@ impl Ctx {
                     .into(),
                 );
             }
-            Some(Dlg::AccountCookie) => {
-                ui.set_dlg_open(true);
-                ui.set_dlg_desc(tr(lang, "Acc_AddDesc").into());
-                ui.set_dlg_hint(tr(lang, "Acc_CookieHint").into());
-                ui.set_dlg_ok_label(tr(lang, "Acc_AddOk").into());
-            }
         }
     }
 
@@ -4129,13 +3639,6 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_home_link_paste(tr(lang, "Home_LinkPaste").into());
     t.set_home_chart(tr(lang, "Home_Chart").into());
     t.set_home_places(tr(lang, "Home_Places").into());
-    t.set_home_friends_title(tr(lang, "Home_Friends_Title").into());
-    t.set_home_friends_empty(tr(lang, "Home_Friends_Empty").into());
-    t.set_home_friends_join(tr(lang, "Home_Friends_Join").into());
-    t.set_home_friends_ingame(tr(lang, "Home_Friends_InGame").into());
-    t.set_home_friends_online(tr(lang, "Home_Friends_Online").into());
-    t.set_home_recent_title(tr(lang, "Home_Recent_Title").into());
-    t.set_home_recent_empty(tr(lang, "Home_Recent_Empty").into());
     t.set_settings_center_win(tr(lang, "Settings_CenterWin").into());
     t.set_settings_center_game(tr(lang, "Settings_CenterGame").into());
     t.set_settings_game_res(tr(lang, "Settings_GameRes").into());
@@ -4146,23 +3649,6 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_settings_res_h(tr(lang, "Settings_ResH").into());
     t.set_settings_live_bg(tr(lang, "Settings_LiveBg").into());
     t.set_settings_live_bg_desc(tr(lang, "Settings_LiveBgDesc").into());
-    t.set_home_account(tr(lang, "Home_Account").into());
-    t.set_home_account_active(tr(lang, "Home_Account_Active").into());
-    t.set_home_account_guest(tr(lang, "Home_Account_Guest").into());
-    t.set_home_account_change(tr(lang, "Home_Account_Change").into());
-    t.set_home_account_select(tr(lang, "Home_Account_Select").into());
-    t.set_home_account_quick(tr(lang, "Home_Account_Quick").into());
-    t.set_home_account_add(tr(lang, "Home_Account_Add").into());
-    t.set_quick_login_title(tr(lang, "Quick_Title").into());
-    t.set_quick_login_sub(tr(lang, "Quick_Sub").into());
-    t.set_quick_login_code_label(tr(lang, "Quick_CodeLabel").into());
-    t.set_quick_login_copy(tr(lang, "Quick_Copy").into());
-    t.set_quick_login_copied(tr(lang, "Quick_Copied").into());
-    t.set_quick_login_open_site(tr(lang, "Quick_OpenSite").into());
-    t.set_quick_login_waiting(tr(lang, "Quick_Waiting").into());
-    t.set_quick_login_linked(tr(lang, "Quick_Linked").into());
-    t.set_quick_login_expired(tr(lang, "Quick_Expired").into());
-    t.set_quick_login_refresh(tr(lang, "Quick_Refresh").into());
     t.set_games_h1(tr(lang, "Games_H1").into());
     t.set_games_sub(tr(lang, "Games_Sub").into());
     t.set_games_hint(tr(lang, "Games_Hint").into());
@@ -4613,53 +4099,6 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             if let Ok(mut c) = ctx.try_borrow_mut() {
                 c.link_msg = None;
             }
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_account_pick(move |i: i32| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.account_pick(i.max(0) as usize);
-            }
-            let c = ctx.borrow();
-            let ui = weak.unwrap();
-            c.push_home(&ui);
-            c.push_dlg(&ui);
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_friend_join(move |pid: SharedString, jid: SharedString| {
-            ctx.borrow_mut().friend_join(&pid, &jid);
-            let c = ctx.borrow();
-            c.push_home(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_friends_refresh(move || {
-            ctx.borrow_mut().refresh_roblox_data();
-            let c = ctx.borrow();
-            c.push_home(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_recent_game_play(move |pid: SharedString| {
-            ctx.borrow_mut().recent_game_play(&pid);
-            let c = ctx.borrow();
-            c.push_home(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_game_res_edit(move |pid: SharedString, name: SharedString| {
-            ctx.borrow_mut().game_res_edit(&pid, &name);
         });
     }
     {
@@ -5555,30 +4994,6 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.push_dlg_input(&weak.unwrap());
         });
     }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_quick_login_start(move || {
-            ctx.borrow_mut().quick_login_start();
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_quick_login_cancel(move || {
-            ctx.borrow_mut().quick_login_cancel();
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_quick_login_copy(move || {
-            ctx.borrow_mut().quick_login_copy();
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_quick_login_open_site(move || {
-            ctx.borrow_mut().quick_login_open_site();
-        });
-    }
 
     // — FastFlags —
     {
@@ -5922,7 +5337,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
     tray::spawn(tx.clone());
 
     let weak = ui.as_weak();
-    let accounts = Accounts::load(&config.base());
     let overlay = overlay::spawn(overlay::Params {
         enabled: config.overlay_on,
         bright: config.overlay_bright,
@@ -5968,12 +5382,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
         shot_status: None,
         cfg_msg: None,
         overlay,
-        accounts,
-        quick_login_session: None,
-        quick_login_cancel: None,
-        friends: Vec::new(),
-        friends_busy: false,
-        recent_games: Vec::new(),
         gif_timer: initial_gif_timer,
         session_active: false,
         session_secs: 0,

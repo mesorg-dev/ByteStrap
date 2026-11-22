@@ -101,25 +101,3 @@ export struct PresetRow {
     /// Все флаги пресета в allowlist Roblox.
     works: bool,
 }
-
-/// Друг онлайн (HomePage → Друзья).
-export struct FriendRow {
-    id: string,
-    name: string,
-    display-name: string,
-    status-text: string,
-    is-ingame: bool,
-    place-id: string,
-    game-id: string,
-    game-name: string,
-    initial: string,
-}
-
-/// Недавняя / избранная игра аккаунта (HomePage → Игры).
-export struct AccountGameRow {
-    place-id: string,
-    name: string,
-    creator: string,
-    is-fav: bool,
-    custom-res: string,
-}

@@ -232,24 +232,6 @@ export component IconCopy inherits Rectangle {
     }
 }
 
-export component IconPlay inherits Rectangle {
-    in-out property <color> c: Theme.good;
-    width: 18px;
-    height: 18px;
-    Path {
-        width: parent.width;
-        height: parent.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
-        viewbox-width: 18;
-        viewbox-height: 18;
-        stroke: root.c;
-        stroke-width: 1.5px;
-        fill: root.c;
-        commands: "M5.5 3.5 L14.5 9 L5.5 14.5 Z";
-    }
-}
-
 export component IconCamera inherits Rectangle {
     in-out property <color> c: Theme.fg-dim;
     width: 18px;
@@ -283,24 +265,6 @@ export component IconGlobe inherits Rectangle {
         stroke-width: 1.4px;
         fill: transparent;
         commands: "M9 1.5 A7.5 7.5 0 1 1 9 16.5 A7.5 7.5 0 1 1 9 1.5 Z M1.5 9 L16.5 9 M9 1.5 C11.5 4.5 12.5 6.5 12.5 9 C12.5 11.5 11.5 13.5 9 16.5 C6.5 13.5 5.5 11.5 5.5 9 C5.5 6.5 6.5 4.5 9 1.5 Z";
-    }
-}
-
-export component IconTrash inherits Rectangle {
-    in-out property <color> c: Theme.fg-dim;
-    width: 18px;
-    height: 18px;
-    Path {
-        width: parent.width;
-        height: parent.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
-        viewbox-width: 18;
-        viewbox-height: 18;
-        stroke: root.c;
-        stroke-width: 1.4px;
-        fill: transparent;
-        commands: "M3 4.5 L15 4.5 M6 4.5 L6 3 A1 1 0 0 1 7 2 L11 2 A1 1 0 0 1 12 3 L12 4.5 M4.5 4.5 L5.5 15.2 A1.5 1.5 0 0 0 7 16.5 L11 16.5 A1.5 1.5 0 0 0 12.5 15.2 L13.5 4.5 M7.5 7.5 L7.5 13.5 M10.5 7.5 L10.5 13.5";
     }
 }
 
@@ -373,42 +337,6 @@ export component IconCross inherits Rectangle {
         stroke-width: 1.6px;
         fill: transparent;
         commands: "M4.5 4.5 L13.5 13.5 M13.5 4.5 L4.5 13.5";
-    }
-}
-
-export component IconQr inherits Rectangle {
-    in-out property <color> c: Theme.fg-dim;
-    width: 18px;
-    height: 18px;
-    Path {
-        width: parent.width;
-        height: parent.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
-        viewbox-width: 18;
-        viewbox-height: 18;
-        stroke: root.c;
-        stroke-width: 1.6px;
-        fill: transparent;
-        commands: "M2.5 2.5 L7.5 2.5 L7.5 7.5 L2.5 7.5 Z M10.5 2.5 L15.5 2.5 L15.5 7.5 L10.5 7.5 Z M2.5 10.5 L7.5 10.5 L7.5 15.5 L2.5 15.5 Z M10.5 10.5 L15.5 10.5 M10.5 13 L13 13 M10.5 15.5 L15.5 15.5 M15.5 10.5 L15.5 15.5 M4.5 4.5 L5.5 4.5 L5.5 5.5 L4.5 5.5 Z M12.5 4.5 L13.5 4.5 L13.5 5.5 L12.5 5.5 Z M4.5 12.5 L5.5 12.5 L5.5 13.5 L4.5 13.5 Z";
-    }
-}
-
-export component IconUsers inherits Rectangle {
-    in-out property <color> c: Theme.fg-dim;
-    width: 18px;
-    height: 18px;
-    Path {
-        width: parent.width;
-        height: parent.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
-        viewbox-width: 18;
-        viewbox-height: 18;
-        stroke: root.c;
-        stroke-width: 1.6px;
-        fill: transparent;
-        commands: "M12.5 15.5 C12.5 13 10.5 11 8 11 C5.5 11 3.5 13 3.5 15.5 M8 8.5 C9.5 8.5 10.5 7.2 10.5 5.5 C10.5 3.8 9.5 2.5 8 2.5 C6.5 2.5 5.5 3.8 5.5 5.5 C5.5 7.2 6.5 8.5 8 8.5 Z M12.5 11 C14 11.3 15 12.5 15 14.5 M11.5 3 C12.5 3.5 13 4.5 13 5.5 C13 6.5 12.5 7.5 11.5 8";
     }
 }
 

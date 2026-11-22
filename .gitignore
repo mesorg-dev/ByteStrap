@@ -2,3 +2,7 @@
 /NekoStrap
 /Voidstrap
 *.pdb
+.vscode/
+.idea/
+Thumbs.db
+*.tmp
