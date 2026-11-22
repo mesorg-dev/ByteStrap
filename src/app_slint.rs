@@ -52,6 +52,12 @@ pub enum AsyncEvent {
     Servers((u64, Result<Vec<servers::ServerInfo>, String>)),
     /// Пинг активного сервера Roblox.
     ActiveServerPing(u32),
+    /// Геолокация активного сервера: страна, флаг, город.
+    ActiveServerResolved {
+        ip: String,
+        region: String,
+        detail: String,
+    },
     Session(SessionEvent),
 }
 
@@ -1121,7 +1127,9 @@ impl Ctx {
             let mut s = self.session_display.clone().unwrap_or_else(|| "Roblox".to_string());
             if self.config.discord_show_server {
                 if let Some(srv) = &self.active_server {
-                    s = format!("{s} • {}", srv.region);
+                    if !srv.region.is_empty() && !srv.region.starts_with("Определение") {
+                        s = format!("{s} • {}", srv.region);
+                    }
                 }
             }
             Some(s)
@@ -1338,9 +1346,26 @@ impl Ctx {
                         }
                     }
                 }
+                AsyncEvent::ActiveServerResolved { ip, region, detail } => {
+                    if self.active_server_ip.as_deref() == Some(&ip) {
+                        if let Some(srv) = &mut self.active_server {
+                            srv.region = region;
+                            srv.detail = detail;
+                        }
+                        if let Some(ui) = self.weak.upgrade() {
+                            self.push_games(&ui);
+                        }
+                        if self.config.discord_rp {
+                            self.push_discord(self.session_secs);
+                        }
+                    }
+                }
                 AsyncEvent::ActiveServerPing(p) => {
                     if let Some(srv) = &mut self.active_server {
                         srv.ping_ms = Some(p);
+                    }
+                    if let Some(ui) = self.weak.upgrade() {
+                        self.push_games(&ui);
                     }
                 }
                 AsyncEvent::Session(ev) => match ev {
@@ -1355,7 +1380,7 @@ impl Ctx {
                         if let Some((ip, port)) = server {
                             if self.active_server_ip.as_deref() != Some(&ip) {
                                 self.active_server_ip = Some(ip.clone());
-                                let (region, detail) = servers::resolve_ip_region(&ip);
+                                let (region, detail) = servers::get_cached_or_default(&ip);
                                 self.active_server = Some(servers::ActiveServer {
                                     ip: ip.clone(),
                                     port,
@@ -1364,14 +1389,26 @@ impl Ctx {
                                     ping_ms: None,
                                 });
                                 let tx = self.tx.clone();
+                                let ip_clone = ip.clone();
                                 std::thread::spawn(move || {
-                                    let rt = tokio::runtime::Builder::new_current_thread()
+                                    let rt = match tokio::runtime::Builder::new_current_thread()
                                         .enable_all()
-                                        .build();
-                                    if let Ok(rt) = rt {
-                                        if let Some(p) = rt.block_on(servers::measure_ping(&ip, port)) {
-                                            let _ = tx.send(AsyncEvent::ActiveServerPing(p));
-                                        }
+                                        .build()
+                                    {
+                                        Ok(r) => r,
+                                        Err(_) => return,
+                                    };
+                                    let (region, detail) =
+                                        rt.block_on(servers::resolve_ip_location(&ip_clone));
+                                    let _ = tx.send(AsyncEvent::ActiveServerResolved {
+                                        ip: ip_clone.clone(),
+                                        region,
+                                        detail,
+                                    });
+                                    if let Some(p) =
+                                        rt.block_on(servers::measure_ping(&ip_clone, port))
+                                    {
+                                        let _ = tx.send(AsyncEvent::ActiveServerPing(p));
                                     }
                                 });
                             }
