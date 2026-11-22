@@ -282,11 +282,12 @@ mod imp {
             ShowWindow(hwnd, SW_SHOWNOACTIVATE);
 
             // Плавное появление (Fade in)
-            for alpha in (0..=240).step_by(30) {
+            for i in 0..=8 {
+                let alpha = (i * 30) as u8;
                 if !is_current_toast(hwnd) {
                     break;
                 }
-                SetLayeredWindowAttributes(hwnd, 0, alpha as u8, LWA_ALPHA);
+                SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
                 pump_messages(hwnd);
                 std::thread::sleep(Duration::from_millis(15));
             }
@@ -302,11 +303,12 @@ mod imp {
             }
 
             // Плавное исчезновение (Fade out)
-            for alpha in (0..=240).step_by(30).rev() {
+            for i in (0..=8).rev() {
+                let alpha = (i * 30) as u8;
                 if !is_current_toast(hwnd) {
                     break;
                 }
-                SetLayeredWindowAttributes(hwnd, 0, alpha as u8, LWA_ALPHA);
+                SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
                 pump_messages(hwnd);
                 std::thread::sleep(Duration::from_millis(15));
             }
