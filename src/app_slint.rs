@@ -1538,7 +1538,7 @@ impl Ctx {
                             // Подсказка, если найден сервер значительно быстрее
                             if let Some(cur_p) = ping_ms {
                                 if let Some(best) = servers::best(&self.servers) {
-                                    if let Some(best_p) = best.ping_ms {
+                                    if let Some(best_p) = best.ping {
                                         if cur_p > 75 && best_p + 30 <= cur_p {
                                             let msg = match self.lang {
                                                 crate::i18n::Lang::Ru => format!("Найден сервер быстрее: {} ({} мс против {} мс)", best.region, best_p, cur_p),
