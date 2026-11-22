@@ -484,7 +484,8 @@ mod tests {
         assert_eq!(country_flag("US"), "🇺🇸");
         assert_eq!(country_flag("GB"), "🇬🇧");
         assert_eq!(country_flag("JP"), "🇯🇵");
-        assert_eq!(country_flag("XX"), "🌐".to_string().as_str());
+        assert_eq!(country_flag(""), "🌐");
+        assert_eq!(country_flag("XYZ"), "🌐");
     }
 
     #[test]
