@@ -342,11 +342,16 @@ export component SettingsPage inherits PageFade {
                             for i in 8 : Rectangle {
                                 horizontal-stretch: 1;
                                 height: 32px;
-                                border-radius: 6px;
-                                background: (i + 1) <= root.threads ? #ffffffd9 : #ffffff0f;
+                                border-radius: 10px;
+                                background: (i + 1) == root.threads ? Theme.accent
+                                    : (i + 1) < root.threads ? #96A6FF22
+                                    : (seg-touch.has-hover ? #1c1f2c : #161822);
                                 border-width: 1px;
-                                border-color: (i + 1) <= root.threads ? #ffffff00 : #ffffff1a;
+                                border-color: (i + 1) == root.threads ? Theme.accent
+                                    : (i + 1) < root.threads ? Theme.border-accent
+                                    : Theme.border;
                                 animate background { duration: Theme.t-fast; }
+                                animate border-color { duration: Theme.t-fast; }
 
                                 Text {
                                     width: 100%;
@@ -354,8 +359,10 @@ export component SettingsPage inherits PageFade {
                                     text: i + 1;
                                     font-family: Theme.font-mono;
                                     font-size: 12px;
-                                    font-weight: 600;
-                                    color: (i + 1) <= root.threads ? #0b0d14 : Theme.fg-dim;
+                                    font-weight: (i + 1) == root.threads ? 700 : 600;
+                                    color: (i + 1) == root.threads ? Theme.on-accent
+                                        : (i + 1) < root.threads ? Theme.text-primary
+                                        : Theme.text-muted;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
@@ -363,6 +370,7 @@ export component SettingsPage inherits PageFade {
                                 seg-touch := TouchArea {
                                     width: 100%;
                                     height: 100%;
+                                    mouse-cursor: pointer;
                                     clicked => {
                                         Snd.play(1);
                                         root.threads-set(i + 1);
@@ -1101,7 +1109,7 @@ export component SettingsPage inherits PageFade {
                                     spacing: 12px;
 
                                     Text {
-                                        width: 80px;
+                                        width: 120px;
                                         text: T.settings_pic_bright;
                                         font-size: 12px;
                                         color: Theme.fg;
@@ -1137,7 +1145,7 @@ export component SettingsPage inherits PageFade {
                                     spacing: 12px;
 
                                     Text {
-                                        width: 80px;
+                                        width: 120px;
                                         text: T.settings_pic_sat;
                                         font-size: 12px;
                                         color: Theme.fg;
@@ -1173,7 +1181,7 @@ export component SettingsPage inherits PageFade {
                                     spacing: 12px;
 
                                     Text {
-                                        width: 80px;
+                                        width: 120px;
                                         text: T.settings_pic_contrast;
                                         font-size: 12px;
                                         color: Theme.fg;

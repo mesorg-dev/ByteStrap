@@ -717,13 +717,10 @@ export component AppWindow inherits Window {
 
         modal-confirm := Rectangle {
             property <bool> shown: false;
-            width: 400px;
-            height: 144px;
+            width: 420px;
+            height: confirm-col.preferred-height;
             x: (parent.width - self.width) / 2;
-            y: root.confirm-body != ""
-                ? ((parent.height - self.height) / 2
-                    + (modal-confirm.shown ? 0px : 14px))
-                : 0px;
+            y: (parent.height - self.height) / 2 + (modal-confirm.shown ? 0px : 14px);
             animate y { duration: Theme.t-mid; easing: ease-out; }
             opacity: modal-confirm.shown ? 1.0 : 0.0;
             animate opacity { duration: Theme.t-mid; }
@@ -735,33 +732,34 @@ export component AppWindow inherits Window {
             border-radius: 20px;
             clip: true;
 
-            VerticalLayout {
+            confirm-col := VerticalLayout {
                 padding: 22px;
-                spacing: 16px;
+                spacing: 20px;
 
                 Text {
                     text: root.confirm-body;
-                    font-size: 13px;
+                    font-size: 14px;
                     color: Theme.text-primary;
                     wrap: word-wrap;
+                    horizontal-alignment: left;
                 }
 
                 HorizontalLayout {
-                    Rectangle { horizontal-stretch: 1; }
+                    alignment: end;
+                    spacing: 10px;
+
+                    Btn {
+                        label: T.btn_no;
+                        kind: 1;
+                        height: 36px;
+                        clicked => { root.confirm-no(); }
+                    }
+
                     Btn {
                         label: T.btn_yes;
                         kind: 0;
-                        width: 90px;
-                        height: 34px;
+                        height: 36px;
                         clicked => { root.confirm-yes(); }
-                    }
-                    Rectangle { width: 8px; horizontal-stretch: 0; }
-                    Btn {
-                        label: T.btn_no;
-                        kind: 2;
-                        width: 90px;
-                        height: 34px;
-                        clicked => { root.confirm-no(); }
                     }
                 }
             }
@@ -1101,7 +1099,7 @@ export component AppWindow inherits Window {
                     }
                     Btn {
                         label: T.flags_conflict_replace;
-                        kind: 0;
+                        kind: 1;
                         width: 106px;
                         height: 34px;
                         clicked => { root.import-decision(1); }

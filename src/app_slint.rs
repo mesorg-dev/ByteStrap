@@ -6039,7 +6039,6 @@ mod shots {
             (1, "1-games".into()),
             (1, "1-games-servers".into()),
             (2, "2-flags".into()),
-            (3, "3-versions".into()),
             (4, "4-mods".into()),
             (5, "5-logs".into()),
             (6, "6-settings".into()),

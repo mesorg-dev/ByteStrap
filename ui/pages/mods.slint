@@ -186,8 +186,9 @@ export component ModsPage inherits PageFade {
                             }
 
                             HorizontalLayout {
+                                width: 260px;
+                                alignment: end;
                                 spacing: 8px;
-                                alignment: center;
 
                                 Combo {
                                     width: root.death-sound-mode == 4 ? 180px : 260px;
@@ -236,8 +237,8 @@ export component ModsPage inherits PageFade {
                             }
 
                             HorizontalLayout {
-                                spacing: 8px;
-                                alignment: center;
+                                width: 260px;
+                                alignment: end;
 
                                 Combo {
                                     width: 260px;
@@ -275,8 +276,9 @@ export component ModsPage inherits PageFade {
                             }
 
                             HorizontalLayout {
+                                width: 260px;
+                                alignment: end;
                                 spacing: 8px;
-                                alignment: center;
 
                                 Combo {
                                     width: root.font-mode == 4 ? 180px : 260px;
@@ -603,7 +605,6 @@ export component ModsPage inherits PageFade {
                         Btn {
                             label: T.prof_load;
                             kind: 0;
-                            width: 90px;
                             height: 30px;
                             enabled: root.profile-sel-valid;
                             clicked => { root.profile-load(); }
@@ -616,14 +617,12 @@ export component ModsPage inherits PageFade {
                         Btn {
                             label: T.prof_save_as;
                             kind: 2;
-                            width: 126px;
                             height: 30px;
                             clicked => { root.profile-save-as(); }
                         }
                         Btn {
                             label: T.prof_delete;
                             kind: 2;
-                            width: 90px;
                             height: 30px;
                             enabled: root.profile-sel-valid;
                             clicked => { root.profile-delete(); }
@@ -631,7 +630,6 @@ export component ModsPage inherits PageFade {
                         Btn {
                             label: T.prof_export;
                             kind: 2;
-                            width: 96px;
                             height: 30px;
                             enabled: root.profile-sel-valid;
                             clicked => { root.profile-export(); }
@@ -639,7 +637,6 @@ export component ModsPage inherits PageFade {
                         Btn {
                             label: T.prof_import;
                             kind: 2;
-                            width: 96px;
                             height: 30px;
                             clicked => { root.profile-import(); }
                         }

@@ -1,13 +1,13 @@
-// Games: запуск Roblox по placeId/ссылке, избранные и недавние места,
-// продвинутый браузер серверов с регионами и пингом,
-// и встроенная галерея скриншотов Roblox.
+// Страница «Игры»: управление сохранёнными плейсами,
+// продвинутый браузер серверов с пингом и регионами,
+// встроенная галерея скриншотов Roblox.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Snd } from "../snd.slint";
-import { PageFade, Btn, TextField, GlyphBtn, Dd } from "../widgets.slint";
+import { PageFade, Btn, TextField, StatusDot } from "../widgets.slint";
 import { GameRow, ServerRow, ScreenshotRow, RegionPingRow } from "../models.slint";
-import { IconGamepad, IconCamera, IconGlobe, IconLightning, IconCross, IconCopy, IconRefresh, IconFolder } from "../icons.slint";
+import { IconGamepad, IconCamera, IconCross, IconStar } from "../icons.slint";
 
 export component GamesPage inherits PageFade {
     /// 0 — Игры и Серверы, 1 — Галерея скриншотов.
@@ -61,129 +61,351 @@ export component GamesPage inherits PageFade {
     callback shot-delete(string);
     callback shot-refresh();
 
-    flick := Flickable {
+    VerticalLayout {
         width: 100%;
         height: 100%;
-        content-width: flick.width;
-        content-height: col.preferred-height;
-        changed viewport-y => {
-            if Dd.open {
-                Dd.open = false;
+        spacing: 12px;
+
+        // 1. ВЕРХНЯЯ ПАНЕЛЬ ПОДВКЛАДОК
+        HorizontalLayout {
+            height: 38px;
+            spacing: 12px;
+
+            // Капсула-переключатель подвкладок
+            Rectangle {
+                horizontal-stretch: 0;
+                height: 36px;
+                y: (parent.height - 36px) / 2;
+                border-radius: 18px;
+                background: #12141C;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding: 3px;
+                    spacing: 4px;
+
+                    // Подвкладка 0: Игры и серверы
+                    Rectangle {
+                        height: 30px;
+                        border-radius: 15px;
+                        background: root.active-tab == 0 ? Theme.surface-hover : (tab0-touch.has-hover ? #ffffff0d : transparent);
+                        border-width: root.active-tab == 0 ? 1px : 0px;
+                        border-color: #ffffff1a;
+                        animate background { duration: Theme.t-fast; }
+
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            IconGamepad {
+                                width: 14px;
+                                height: 14px;
+                                c: root.active-tab == 0 ? Theme.accent : Theme.text-secondary;
+                            }
+
+                            Text {
+                                text: T.games_tab_places;
+                                font-size: 12px;
+                                font-weight: root.active-tab == 0 ? 600 : 400;
+                                color: root.active-tab == 0 ? Theme.text-primary : Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        tab0-touch := TouchArea {
+                            mouse-cursor: MouseCursor.pointer;
+                            clicked => {
+                                Snd.play(2);
+                                root.active-tab = 0;
+                            }
+                        }
+                    }
+
+                    // Подвкладка 1: Скриншоты
+                    Rectangle {
+                        height: 30px;
+                        border-radius: 15px;
+                        background: root.active-tab == 1 ? Theme.surface-hover : (tab1-touch.has-hover ? #ffffff0d : transparent);
+                        border-width: root.active-tab == 1 ? 1px : 0px;
+                        border-color: #ffffff1a;
+                        animate background { duration: Theme.t-fast; }
+
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            IconCamera {
+                                width: 14px;
+                                height: 14px;
+                                c: root.active-tab == 1 ? Theme.accent : Theme.text-secondary;
+                            }
+
+                            Text {
+                                text: T.games_tab_shots;
+                                font-size: 12px;
+                                font-weight: root.active-tab == 1 ? 600 : 400;
+                                color: root.active-tab == 1 ? Theme.text-primary : Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        tab1-touch := TouchArea {
+                            mouse-cursor: MouseCursor.pointer;
+                            clicked => {
+                                Snd.play(2);
+                                root.active-tab = 1;
+                                root.shot-refresh();
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            // Справа: статус активного сервера Roblox
+            if root.active-tab == 0 && root.has-active-server : Rectangle {
+                height: 32px;
+                y: (parent.height - 32px) / 2;
+                border-radius: 16px;
+                background: #12141C;
+                border-width: 1px;
+                border-color: Theme.border-accent;
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+                    alignment: center;
+
+                    StatusDot {
+                        y: (parent.height - 8px) / 2;
+                        kind: 1;
+                    }
+
+                    Text {
+                        text: root.active-server-region + (root.active-server-detail != "" ? (" · " + root.active-server-detail) : "");
+                        font-size: 12px;
+                        font-weight: 500;
+                        color: Theme.text-primary;
+                        vertical-alignment: center;
+                    }
+
+                    if root.active-server-ping != "" : Text {
+                        text: root.active-server-ping;
+                        font-family: Theme.font-mono;
+                        font-size: 11.5px;
+                        font-weight: 600;
+                        color: Theme.accent;
+                        vertical-alignment: center;
+                    }
+                }
             }
         }
 
-        col := VerticalLayout {
-            width: flick.width;
-            height: flick.content-height;
-            spacing: 0px;
+        // 2. ПОДВКЛАДКА 0: ИГРЫ И СЕРВЕРЫ
+        if root.active-tab == 0 : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 12px;
 
-            // Заголовок страницы и переключатель вкладок
-            HorizontalLayout {
-                height: 44px;
-                spacing: 16px;
+            // ЛЕВАЯ КОЛОНКА: сохранённые игры
+            Rectangle {
+                horizontal-stretch: 5;
+                background: #12141C;
+                border-radius: 14px;
+                border-width: 1px;
+                border-color: Theme.border;
 
                 VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: 2px;
-                    alignment: center;
-                    Text {
-                        text: root.active-tab == 0 ? T.games_h1 : T.screenshots_h1;
-                        font-family: Theme.font-display;
-                        font-weight: 700;
-                        font-size: 20px;
-                        color: Theme.fg;
-                    }
-                    Text {
-                        text: root.active-tab == 0 ? T.games_sub : T.screenshots_sub;
-                        font-size: 11px;
-                        color: Theme.fg-dim;
-                    }
-                }
+                    padding: 14px;
+                    spacing: 10px;
 
-                // Переключатель вкладок — всегда прижат к правому краю
-                Rectangle {
-                    width: 250px;
-                    height: 34px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: Theme.r-soft;
-                    background: Theme.panel;
-                    border-width: 1px;
-                    border-color: #ffffff1f;
-                    clip: true;
-
+                    // Строка добавления игры
                     HorizontalLayout {
-                        padding: 3px;
-                        spacing: 4px;
+                        spacing: 8px;
 
-                        // Вкладка 0: Игры и Серверы
-                        Rectangle {
+                        add-field := TextField {
+                            height: 36px;
+                            placeholder: T.games_hint;
                             horizontal-stretch: 1;
-                            border-radius: 5px;
-                            background: root.active-tab == 0 ? #ffffff1c : transparent;
-                            border-width: root.active-tab == 0 ? 1px : 0px;
-                            border-color: #ffffff22;
-                            animate background { duration: Theme.t-fast; }
-
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 6px;
-
-                                IconGamepad {
-                                    width: 14px;
-                                    height: 14px;
-                                    c: root.active-tab == 0 ? Theme.fg : Theme.fg-dim;
-                                }
-
-                                Text {
-                                    text: T.games_tab_places;
-                                    font-size: 11.5px;
-                                    font-weight: root.active-tab == 0 ? 600 : 400;
-                                    color: root.active-tab == 0 ? Theme.fg : Theme.fg-dim;
-                                    vertical-alignment: center;
-                                }
-                            }
-
-                            TouchArea {
-                                clicked => {
-                                    Snd.play(2);
-                                    root.active-tab = 0;
+                            accepted => {
+                                if self.text != "" {
+                                    root.add(self.text);
+                                    self.text = "";
                                 }
                             }
                         }
 
-                        // Вкладка 1: Скриншоты
-                        Rectangle {
-                            horizontal-stretch: 1;
-                            border-radius: 5px;
-                            background: root.active-tab == 1 ? #ffffff1c : transparent;
-                            border-width: root.active-tab == 1 ? 1px : 0px;
-                            border-color: #ffffff22;
-                            animate background { duration: Theme.t-fast; }
-
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 6px;
-
-                                IconCamera {
-                                    width: 14px;
-                                    height: 14px;
-                                    c: root.active-tab == 1 ? Theme.fg : Theme.fg-dim;
-                                }
-
-                                Text {
-                                    text: T.games_tab_shots;
-                                    font-size: 11.5px;
-                                    font-weight: root.active-tab == 1 ? 600 : 400;
-                                    color: root.active-tab == 1 ? Theme.fg : Theme.fg-dim;
-                                    vertical-alignment: center;
+                        Btn {
+                            label: T.games_add;
+                            kind: 0;
+                            height: 36px;
+                            clicked => {
+                                if add-field.text != "" {
+                                    root.add(add-field.text);
+                                    add-field.text = "";
                                 }
                             }
+                        }
+                    }
 
-                            TouchArea {
-                                clicked => {
-                                    Snd.play(2);
-                                    root.active-tab = 1;
-                                    root.shot-refresh();
+                    // Сообщение валидации/ошибки
+                    if root.msg != "" : Text {
+                        text: root.msg;
+                        font-size: 11.5px;
+                        color: root.msg-err ? Theme.danger : Theme.text-secondary;
+                        overflow: elide;
+                    }
+
+                    // Список сохранённых игр
+                    if root.rows.length == 0 : Rectangle {
+                        vertical-stretch: 1;
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: T.games_empty;
+                            font-size: 12px;
+                            color: Theme.text-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    if root.rows.length > 0 : Flickable {
+                        vertical-stretch: 1;
+                        content-width: self.width;
+                        content-height: games-col.preferred-height;
+
+                        games-col := VerticalLayout {
+                            y: 0px;
+                            width: parent.width;
+                            height: self.preferred-height;
+                            alignment: start;
+                            spacing: 6px;
+
+                            for game in root.rows : Rectangle {
+                                height: 50px;
+                                border-radius: 12px;
+                                background: #161822;
+                                border-width: 1px;
+                                border-color: Theme.border;
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 10px;
+                                    spacing: 10px;
+
+                                    // Кнопка избранного
+                                    Rectangle {
+                                        width: 28px;
+                                        height: 28px;
+                                        vertical-stretch: 0;
+                                        y: (parent.height - self.height) / 2;
+                                        border-radius: 6px;
+                                        background: fav-touch.has-hover ? #ffffff0d : transparent;
+
+                                        IconStar {
+                                            width: 14px;
+                                            height: 14px;
+                                            c: game.fav ? Theme.warning : Theme.text-muted;
+                                            x: (parent.width - 14px) / 2;
+                                            y: (parent.height - 14px) / 2;
+                                        }
+
+                                        fav-touch := TouchArea {
+                                            mouse-cursor: MouseCursor.pointer;
+                                            clicked => {
+                                                Snd.play(2);
+                                                root.fav(game.id);
+                                            }
+                                        }
+                                    }
+
+                                    // Название и метаданные
+                                    Rectangle {
+                                        horizontal-stretch: 1;
+
+                                        VerticalLayout {
+                                            width: 100%;
+                                            height: 100%;
+                                            alignment: center;
+                                            spacing: 2px;
+
+                                            Text {
+                                                text: game.name;
+                                                font-size: 13px;
+                                                font-weight: 600;
+                                                color: Theme.text-primary;
+                                                horizontal-alignment: left;
+                                                overflow: elide;
+                                            }
+
+                                            Text {
+                                                text: (game.bad ? game.id : ("place " + game.id)) + " · " + game.visits + " зап. · " + game.last;
+                                                font-family: Theme.font-mono;
+                                                font-size: 11px;
+                                                color: Theme.text-secondary;
+                                                horizontal-alignment: left;
+                                                overflow: elide;
+                                            }
+                                        }
+
+                                        TouchArea {
+                                            width: 100%;
+                                            height: 100%;
+                                            mouse-cursor: MouseCursor.pointer;
+                                            clicked => {
+                                                Snd.play(0);
+                                                root.launch(game.id);
+                                            }
+                                        }
+                                    }
+
+                                    // Запуск
+                                    Btn {
+                                        label: "Играть";
+                                        kind: 1;
+                                        height: 30px;
+                                        clicked => {
+                                            Snd.play(0);
+                                            root.launch(game.id);
+                                        }
+                                    }
+
+                                    // Удаление
+                                    Rectangle {
+                                        width: 28px;
+                                        height: 28px;
+                                        vertical-stretch: 0;
+                                        y: (parent.height - self.height) / 2;
+                                        border-radius: 6px;
+                                        background: del-touch.has-hover ? #F8717126 : transparent;
+                                        animate background { duration: Theme.t-fast; }
+
+                                        IconCross {
+                                            width: 10px;
+                                            height: 10px;
+                                            c: del-touch.has-hover ? #FCA5A5 : Theme.text-muted;
+                                            x: (parent.width - 10px) / 2;
+                                            y: (parent.height - 10px) / 2;
+                                        }
+
+                                        del-touch := TouchArea {
+                                            mouse-cursor: MouseCursor.pointer;
+                                            clicked => {
+                                                Snd.play(2);
+                                                root.remove(game.id);
+                                            }
+                                            Tooltip {
+                                                text: @markdown("\{T.games_remove}");
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -191,538 +413,416 @@ export component GamesPage inherits PageFade {
                 }
             }
 
-            Rectangle { height: 16px; }
+            // ПРАВАЯ КОЛОНКА: Браузер серверов + Пинг дата-центров
+            VerticalLayout {
+                horizontal-stretch: 6;
+                spacing: 12px;
 
-            // =========================================================
-            // ВКЛАДКА 0: ИГРЫ И СЕРВЕРЫ
-            // =========================================================
-            if root.active-tab == 0 : VerticalLayout {
-                spacing: 14px;
-
-                // ===== Список мест =====
+                // Верхняя карточка: Браузер серверов
                 Rectangle {
-                    background: Theme.panel;
+                    vertical-stretch: 3;
+                    background: #12141C;
+                    border-radius: 14px;
                     border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #00000055;
-                    drop-shadow-offset-y: 4px;
-                    clip: true;
+                    border-color: Theme.border;
 
                     VerticalLayout {
-                        padding: 22px;
+                        padding: 14px;
                         spacing: 10px;
 
-                        Rectangle {
-                            height: 16px;
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text {
-                                    text: T.games_col_name;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                    horizontal-stretch: 1;
-                                }
-                                Text {
-                                    text: T.games_col_visits;
-                                    width: 70px;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                    horizontal-alignment: right;
-                                }
-                                Text {
-                                    text: T.games_col_last;
-                                    width: 46px;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                    horizontal-alignment: right;
-                                }
-                                Rectangle { width: 58px; }
-                            }
-                        }
-                        Rectangle {
-                            height: 1px;
-                            background: #ffffff0d;
-                        }
-
-                        if root.rows.length == 0 : Text {
-                            height: 40px;
-                            text: T.games_empty;
-                            font-size: 12.5px;
-                            color: Theme.fg-dimmer;
-                            vertical-alignment: center;
-                        }
-
-                        for game in root.rows : Rectangle {
-                            height: 34px;
-                            border-radius: Theme.r-soft;
-                            background: row-touch.has-hover ? Theme.glass-hover : transparent;
-                            animate background { duration: Theme.t-fast; }
-
-                            row-touch := TouchArea {
-                                width: 100%;
-                                height: 100%;
-                                clicked => {
-                                    Snd.play(3);
-                                    root.launch(game.id);
-                                }
-                            }
-
-                            HorizontalLayout {
-                                spacing: 8px;
-
-                                GlyphBtn {
-                                    width: 24px;
-                                    height: 24px;
-                                    vertical-stretch: 0;
-                                    glyph: game.fav ? "★" : "☆";
-                                    tip: T.games_fav;
-                                    clicked => { root.fav(game.id); }
-                                }
-
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    vertical-stretch: 0;
-                                    spacing: 1px;
-                                    Text {
-                                        height: 16px;
-                                        text: game.name;
-                                        font-size: 13px;
-                                        font-weight: 500;
-                                        color: Theme.fg;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        height: 11px;
-                                        text: game.bad ? game.id : ("place " + game.id);
-                                        font-family: Theme.font-mono;
-                                        font-size: 9.5px;
-                                        color: Theme.fg-dimmer;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                Text {
-                                    width: 70px;
-                                    text: game.visits;
-                                    font-family: Theme.font-mono;
-                                    font-size: 11.5px;
-                                    color: Theme.fg-dim;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: right;
-                                }
-
-                                Text {
-                                    width: 46px;
-                                    text: game.last;
-                                    font-family: Theme.font-mono;
-                                    font-size: 11.5px;
-                                    color: Theme.fg-dim;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: right;
-                                }
-
-                                Rectangle { width: 8px; }
-                                GlyphBtn {
-                                    width: 24px;
-                                    height: 24px;
-                                    vertical-stretch: 0;
-                                    glyph: "✕";
-                                    tip: T.games_remove;
-                                    clicked => { root.remove(game.id); }
-                                }
-                                Rectangle { width: 8px; }
-                            }
-                        }
-                    }
-                }
-
-                // ===== Активный сервер Roblox (во время игры) =====
-                if root.has-active-server : Rectangle {
-                    background: #10b98114;
-                    border-width: 1px;
-                    border-color: #10b98144;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 16px;
-                    drop-shadow-color: #10b98122;
-
-                    HorizontalLayout {
-                        padding: 16px;
-                        spacing: 12px;
-
-                        IconGlobe {
-                            width: 22px;
-                            height: 22px;
-                            c: #34d399;
-                        }
-
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            spacing: 3px;
-                            Text {
-                                text: T.games_servers_active_prefix + root.active-server-region;
-                                font-weight: 600;
-                                font-size: 13.5px;
-                                color: #34d399;
-                            }
-                            Text {
-                                text: root.active-server-detail + (root.active-server-ping != "" ? (" • " + T.games_servers_ping_label + ": " + root.active-server-ping) : "");
-                                font-size: 11.5px;
-                                color: Theme.fg-dim;
-                            }
-                        }
-                    }
-                }
-
-                // ===== Сервера места (Server Region + Ping) =====
-                Rectangle {
-                    background: Theme.panel;
-                    border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #00000055;
-                    drop-shadow-offset-y: 4px;
-                    clip: true;
-
-                    VerticalLayout {
-                        padding: 22px;
-                        spacing: 10px;
-
-                        Text {
-                            text: T.games_servers;
-                            font-weight: 600;
-                            font-size: 13px;
-                            height: 17px;
-                            color: Theme.fg;
-                        }
-                        Text {
-                            text: T.games_servers_sub;
-                            font-size: 11px;
-                            height: 15px;
-                            color: Theme.fg-dimmer;
-                        }
-
+                        // Шапка тулбара серверов
                         HorizontalLayout {
+                            height: 28px;
                             spacing: 8px;
+
+                            Text {
+                                text: "СЕРВЕРЫ";
+                                font-family: Theme.font-mono;
+                                font-size: 11px;
+                                font-weight: 600;
+                                letter-spacing: 0.6px;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+
+                            Rectangle { horizontal-stretch: 1; }
+
+                            // Фильтры регионов
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Btn { label: "Все"; kind: 2; active: root.region-filter == 0; height: 26px; clicked => { root.region-filter-set(0); } }
+                                Btn { label: "EU"; kind: 2; active: root.region-filter == 1; height: 26px; clicked => { root.region-filter-set(1); } }
+                                Btn { label: "US"; kind: 2; active: root.region-filter == 2; height: 26px; clicked => { root.region-filter-set(2); } }
+                                Btn { label: "ASIA"; kind: 2; active: root.region-filter == 3; height: 26px; clicked => { root.region-filter-set(3); } }
+                            }
+
                             Btn {
-                                label: T.games_servers_load;
-                                kind: 2;
-                                width: 130px;
-                                height: 30px;
+                                label: "Обновить";
+                                kind: 1;
+                                height: 28px;
                                 enabled: !root.servers-busy;
                                 clicked => { root.servers-refresh(""); }
                             }
+
                             Btn {
-                                label: T.games_servers_best;
+                                label: "Лучший";
                                 kind: 0;
-                                width: 165px;
-                                height: 30px;
+                                height: 28px;
                                 enabled: !root.servers-busy && root.servers.length > 0;
                                 clicked => { root.servers-best(""); }
                             }
-                            if root.servers-msg != "" : Text {
-                                text: root.servers-msg;
-                                font-family: Theme.font-mono;
-                                font-size: 11px;
-                                color: Theme.fg-dim;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                horizontal-stretch: 1;
-                            }
                         }
 
-                        // Фильтр по регионам серверов
-                        HorizontalLayout {
-                            spacing: 6px;
+                        if root.servers-msg != "" : Text {
+                            text: root.servers-msg;
+                            font-size: 11.5px;
+                            color: Theme.text-secondary;
+                            overflow: elide;
+                        }
+
+                        // Список серверов
+                        if root.servers.length == 0 : Rectangle {
+                            vertical-stretch: 1;
                             Text {
-                                text: T.games_region_filter + ":";
-                                font-size: 11.5px;
-                                color: Theme.fg-dim;
-                                vertical-alignment: center;
-                            }
-                            Btn {
-                                label: "Все регионы";
-                                kind: 2;
-                                active: root.region-filter == 0;
-                                height: 26px;
-                                clicked => { root.region-filter-set(0); }
-                            }
-                            Btn {
-                                label: "Европа";
-                                kind: 2;
-                                active: root.region-filter == 1;
-                                height: 26px;
-                                clicked => { root.region-filter-set(1); }
-                            }
-                            Btn {
-                                label: "Америка";
-                                kind: 2;
-                                active: root.region-filter == 2;
-                                height: 26px;
-                                clicked => { root.region-filter-set(2); }
-                            }
-                            Btn {
-                                label: "Азия";
-                                kind: 2;
-                                active: root.region-filter == 3;
-                                height: 26px;
-                                clicked => { root.region-filter-set(3); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                        }
-
-                        // Шапка таблицы серверов.
-                        if root.servers.length > 0 : Rectangle {
-                            height: 16px;
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Text {
-                                    text: T.games_servers_job;
-                                    width: 140px;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                }
-                                Text {
-                                    text: T.games_servers_col_region;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                    horizontal-stretch: 1;
-                                }
-                                Text {
-                                    text: T.games_servers_players;
-                                    width: 84px;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                    horizontal-alignment: right;
-                                }
-                                Text {
-                                    text: T.games_servers_ping;
-                                    width: 74px;
-                                    font-family: Theme.font-mono;
-                                    font-size: 10px;
-                                    letter-spacing: 2px;
-                                    color: Theme.fg-dimmer;
-                                    horizontal-alignment: right;
-                                }
-                                Rectangle { width: 76px; }
-                            }
-                        }
-
-                        for s in root.servers : Rectangle {
-                            height: 32px;
-                            border-radius: Theme.r-soft;
-                            background: srv-touch.has-hover ? Theme.glass-hover : transparent;
-                            animate background { duration: Theme.t-fast; }
-
-                            srv-touch := TouchArea {
                                 width: 100%;
                                 height: 100%;
-                                clicked => { root.server-join(s.place, s.id); }
+                                text: root.servers-busy ? "Поиск доступных серверов…" : "Нажмите «Обновить» для поиска серверов";
+                                font-size: 12px;
+                                color: Theme.text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
                             }
+                        }
 
-                            HorizontalLayout {
-                                spacing: 8px;
+                        if root.servers.length > 0 : Flickable {
+                            vertical-stretch: 1;
+                            content-width: self.width;
+                            content-height: srv-col.preferred-height;
 
-                                // JobId с кнопкой копирования
-                                HorizontalLayout {
-                                    width: 140px;
-                                    spacing: 4px;
-                                    Text {
-                                        text: s.id;
-                                        font-family: Theme.font-mono;
-                                        font-size: 10.5px;
-                                        color: Theme.fg-dim;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                        horizontal-stretch: 1;
-                                    }
-                                    Rectangle {
-                                        width: 22px;
-                                        height: 22px;
-                                        border-radius: 4px;
-                                        background: copy-touch.has-hover ? #ffffff22 : transparent;
-                                        border-width: 1px;
-                                        border-color: copy-touch.has-hover ? #ffffff44 : transparent;
+                            srv-col := VerticalLayout {
+                                y: 0px;
+                                width: parent.width;
+                                height: self.preferred-height;
+                                alignment: start;
+                                spacing: 6px;
 
-                                        IconCopy {
-                                            width: 13px;
-                                            height: 13px;
-                                            c: copy-touch.has-hover ? Theme.fg : Theme.fg-dimmer;
-                                            x: (parent.width - self.width) / 2;
+                                for s in root.servers : Rectangle {
+                                    height: 44px;
+                                    border-radius: 10px;
+                                    background: #161822;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 10px;
+                                        spacing: 10px;
+
+                                        // Бейдж пинга
+                                        Rectangle {
+                                            width: 60px;
+                                            height: 22px;
+                                            vertical-stretch: 0;
                                             y: (parent.height - self.height) / 2;
+                                            border-radius: 6px;
+                                            background: s.ping-kind == 0 ? #4ADE8020
+                                                : s.ping-kind == 1 ? #FBBF2420
+                                                : s.ping-kind == 2 ? #F8717120
+                                                : #ffffff0d;
+
+                                            Text {
+                                                width: 100%;
+                                                height: 100%;
+                                                text: s.ping;
+                                                font-family: Theme.font-mono;
+                                                font-size: 11px;
+                                                font-weight: 600;
+                                                color: s.ping-kind == 0 ? Theme.success
+                                                    : s.ping-kind == 1 ? Theme.warning
+                                                    : s.ping-kind == 2 ? Theme.danger
+                                                    : Theme.text-secondary;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
                                         }
 
-                                        copy-touch := TouchArea {
-                                            clicked => { root.server-copy-id(s.id); }
+                                        // Регион
+                                        Text {
+                                            text: s.region;
+                                            font-size: 12px;
+                                            font-weight: 500;
+                                            color: Theme.text-primary;
+                                            horizontal-stretch: 1;
+                                            horizontal-alignment: left;
+                                            overflow: elide;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Игроки
+                                        Text {
+                                            text: s.players;
+                                            font-family: Theme.font-mono;
+                                            font-size: 11.5px;
+                                            color: Theme.text-secondary;
+                                            vertical-alignment: center;
+                                        }
+
+                                        // Копирование JobId
+                                        Btn {
+                                            label: "JobId";
+                                            kind: 2;
+                                            height: 28px;
+                                            vertical-stretch: 0;
+                                            y: (parent.height - self.height) / 2;
+                                            clicked => {
+                                                Snd.play(2);
+                                                root.server-copy-id(s.id);
+                                            }
+                                        }
+
+                                        // Войти
+                                        Btn {
+                                            label: "Войти";
+                                            kind: 1;
+                                            height: 28px;
+                                            vertical-stretch: 0;
+                                            y: (parent.height - self.height) / 2;
+                                            clicked => {
+                                                Snd.play(0);
+                                                root.server-join(s.place, s.id);
+                                            }
                                         }
                                     }
-                                }
-
-                                // Регион и флаг
-                                Text {
-                                    text: s.region;
-                                    font-size: 11.5px;
-                                    color: Theme.fg;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
-                                }
-
-                                // Игроки
-                                Text {
-                                    width: 84px;
-                                    text: s.players;
-                                    font-family: Theme.font-mono;
-                                    font-size: 11px;
-                                    color: Theme.fg-dim;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: right;
-                                }
-
-                                // Пинг с цветовой градацией
-                                Rectangle {
-                                    width: 74px;
-                                    height: 22px;
-                                    border-radius: 4px;
-                                    vertical-stretch: 0;
-                                    background: s.ping-kind == 0 ? #10b98126
-                                        : s.ping-kind == 1 ? #f59e0b26
-                                        : s.ping-kind == 2 ? #ef444426
-                                        : #ffffff10;
-
-                                    Text {
-                                        width: 100%;
-                                        height: 100%;
-                                        text: s.ping;
-                                        font-family: Theme.font-mono;
-                                        font-size: 10.5px;
-                                        font-weight: 500;
-                                        color: s.ping-kind == 0 ? #34d399
-                                            : s.ping-kind == 1 ? #fbbf24
-                                            : s.ping-kind == 2 ? #f87171
-                                            : Theme.fg-dim;
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                }
-
-                                Btn {
-                                    label: T.games_servers_join;
-                                    kind: 1;
-                                    width: 76px;
-                                    height: 26px;
-                                    vertical-stretch: 0;
-                                    clicked => { root.server-join(s.place, s.id); }
                                 }
                             }
                         }
                     }
                 }
 
-                // ===== Тест задержки до дата-центров Roblox =====
+                // Нижняя карточка: Пинг дата-центров
                 Rectangle {
-                    background: Theme.panel;
+                    vertical-stretch: 2;
+                    min-height: 125px;
+                    background: #12141C;
+                    border-radius: 14px;
                     border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #00000055;
-                    drop-shadow-offset-y: 4px;
-                    clip: true;
+                    border-color: Theme.border;
 
                     VerticalLayout {
-                        padding: 22px;
-                        spacing: 12px;
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 8px;
 
                         HorizontalLayout {
-                            spacing: 12px;
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                spacing: 2px;
-                                Text {
-                                    text: T.games_ping_test;
-                                    font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
-                                }
-                                Text {
-                                    text: "Замер реального пинга до серверных узлов Roblox (Германия, Англия, США, Азия)";
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
-                                }
+                            height: 28px;
+
+                            Text {
+                                text: "ПИНГ ДАТА-ЦЕНТРОВ";
+                                font-family: Theme.font-mono;
+                                font-size: 11px;
+                                font-weight: 600;
+                                letter-spacing: 0.6px;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
                             }
+
+                            Rectangle { horizontal-stretch: 1; }
 
                             Btn {
                                 label: root.ping-busy ? T.games_ping_testing : T.games_ping_test_btn;
-                                kind: 0;
-                                width: 160px;
-                                height: 30px;
+                                kind: 1;
+                                height: 28px;
                                 enabled: !root.ping-busy;
                                 clicked => { root.ping-test(); }
                             }
                         }
 
-                        if root.region-pings.length > 0 : VerticalLayout {
-                            spacing: 4px;
-                            for rp in root.region-pings : Rectangle {
-                                height: 28px;
-                                border-radius: Theme.r-soft;
-                                background: #ffffff08;
+                        if root.region-pings.length == 0 : Rectangle {
+                            vertical-stretch: 1;
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                text: "Нажмите «Проверить пинг» для замера задержки";
+                                font-size: 11.5px;
+                                color: Theme.text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
 
-                                HorizontalLayout {
-                                    padding-left: 12px;
-                                    padding-right: 12px;
-                                    spacing: 8px;
+                        if root.region-pings.length > 0 : Flickable {
+                            vertical-stretch: 1;
+                            content-width: self.width;
+                            content-height: ping-col.preferred-height;
 
-                                    Rectangle {
-                                        width: 28px;
-                                        height: 18px;
-                                        y: (parent.height - self.height) / 2;
-                                        border-radius: 4px;
-                                        background: #ffffff14;
-                                        border-width: 1px;
-                                        border-color: #ffffff20;
+                            ping-col := VerticalLayout {
+                                y: 0px;
+                                width: parent.width;
+                                height: self.preferred-height;
+                                alignment: start;
+                                spacing: 4px;
+
+                                for rp in root.region-pings : Rectangle {
+                                    height: 26px;
+                                    border-radius: 6px;
+                                    background: #161822;
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        spacing: 8px;
+
+                                        Rectangle {
+                                            width: 26px;
+                                            height: 18px;
+                                            vertical-stretch: 0;
+                                            y: (parent.height - self.height) / 2;
+                                            border-radius: 4px;
+                                            background: #ffffff14;
+                                            border-width: 1px;
+                                            border-color: #ffffff20;
+
+                                            Text {
+                                                width: 100%;
+                                                height: 100%;
+                                                text: rp.flag;
+                                                font-family: Theme.font-mono;
+                                                font-size: 10px;
+                                                font-weight: 700;
+                                                color: Theme.text-primary;
+                                                horizontal-alignment: center;
+                                                vertical-alignment: center;
+                                            }
+                                        }
 
                                         Text {
-                                            text: rp.flag;
+                                            text: rp.name;
+                                            font-size: 12px;
+                                            color: Theme.text-primary;
+                                            horizontal-stretch: 1;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+
+                                        Text {
+                                            text: rp.ping;
                                             font-family: Theme.font-mono;
-                                            font-size: 10px;
-                                            font-weight: 700;
-                                            color: Theme.fg;
-                                            horizontal-alignment: center;
+                                            font-size: 11.5px;
+                                            font-weight: 600;
+                                            color: rp.ping-kind == 0 ? Theme.success : (rp.ping-kind == 1 ? Theme.warning : Theme.danger);
                                             vertical-alignment: center;
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. ПОДВКЛАДКА 1: ГАЛЕРЕЯ СКРИНШОТОВ
+        if root.active-tab == 1 : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 12px;
+
+            // Левая колонка: список скриншотов
+            Rectangle {
+                horizontal-stretch: 4;
+                background: #12141C;
+                border-radius: 14px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        height: 28px;
+
+                        Text {
+                            text: "СНИМКИ (" + root.shots.length + ")";
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            font-weight: 600;
+                            letter-spacing: 0.6px;
+                            color: Theme.text-secondary;
+                            horizontal-stretch: 1;
+                            vertical-alignment: center;
+                        }
+
+                        Btn {
+                            label: T.screenshots_refresh;
+                            kind: 1;
+                            height: 28px;
+                            clicked => { root.shot-refresh(); }
+                        }
+                    }
+
+                    if root.shots.length == 0 : Rectangle {
+                        vertical-stretch: 1;
+                        Text {
+                            width: 100%;
+                            height: 100%;
+                            text: T.screenshots_empty;
+                            font-size: 12px;
+                            color: Theme.text-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    if root.shots.length > 0 : Flickable {
+                        vertical-stretch: 1;
+                        content-width: self.width;
+                        content-height: shots-col.preferred-height;
+
+                        shots-col := VerticalLayout {
+                            width: parent.width;
+                            spacing: 6px;
+
+                            for shot[idx] in root.shots : Rectangle {
+                                height: 46px;
+                                border-radius: 10px;
+                                background: root.shot-selected == idx ? #96A6FF14 : (shot-touch.has-hover ? #1E212E : #161822);
+                                border-width: 1px;
+                                border-color: root.shot-selected == idx ? Theme.border-accent : Theme.border;
+                                animate background { duration: Theme.t-fast; }
+
+                                VerticalLayout {
+                                    padding-top: 6px;
+                                    padding-bottom: 6px;
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 2px;
+                                    alignment: center;
+
                                     Text {
-                                        text: rp.name;
+                                        text: shot.name;
                                         font-size: 12px;
-                                        color: Theme.fg;
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 1;
+                                        font-weight: root.shot-selected == idx ? 600 : 400;
+                                        color: root.shot-selected == idx ? Theme.text-primary : Theme.text-secondary;
+                                        overflow: elide;
                                     }
+
                                     Text {
-                                        text: rp.ping;
+                                        text: shot.date + " · " + shot.size;
                                         font-family: Theme.font-mono;
-                                        font-size: 11.5px;
-                                        font-weight: 600;
-                                        color: rp.ping-kind == 0 ? #34d399 : (rp.ping-kind == 1 ? #fbbf24 : #f87171);
-                                        vertical-alignment: center;
+                                        font-size: 10.5px;
+                                        color: Theme.text-muted;
+                                    }
+                                }
+
+                                shot-touch := TouchArea {
+                                    width: 100%;
+                                    height: 100%;
+                                    mouse-cursor: MouseCursor.pointer;
+                                    clicked => {
+                                        Snd.play(1);
+                                        root.shot-select(idx);
                                     }
                                 }
                             }
@@ -731,280 +831,112 @@ export component GamesPage inherits PageFade {
                 }
             }
 
-            // =========================================================
-            // ВКЛАДКА 1: ВСТРОЕННАЯ ГАЛЕРЕЯ СКРИНШОТОВ
-            // =========================================================
-            if root.active-tab == 1 : VerticalLayout {
-                spacing: 14px;
+            // Правая колонка: предпросмотр и действия
+            Rectangle {
+                horizontal-stretch: 6;
+                background: #12141C;
+                border-radius: 14px;
+                border-width: 1px;
+                border-color: Theme.border;
 
-                // Верхняя панель действий со скриншотами
-                Rectangle {
-                    background: Theme.panel;
-                    border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #00000055;
-                    drop-shadow-offset-y: 4px;
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
 
-                    HorizontalLayout {
-                        padding: 16px;
-                        spacing: 12px;
+                    // Область предпросмотра
+                    Rectangle {
+                        vertical-stretch: 1;
+                        background: #0D0E13;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        clip: true;
+
+                        if root.shot-selected >= 0 : Image {
+                            width: 100%;
+                            height: 100%;
+                            source: root.shot-preview-img;
+                            image-fit: contain;
+                        }
+
+                        if root.shot-selected < 0 : Text {
+                            width: 100%;
+                            height: 100%;
+                            text: "Выберите скриншот для предпросмотра";
+                            font-size: 12.5px;
+                            color: Theme.text-muted;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Метаданные скриншота
+                    if root.shot-selected >= 0 : HorizontalLayout {
+                        spacing: 10px;
+                        alignment: center;
 
                         Text {
-                            text: T.screenshots_count_prefix + root.shots.length;
-                            font-size: 12.5px;
-                            font-weight: 500;
-                            color: Theme.fg;
+                            text: root.shot-preview-name;
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                             vertical-alignment: center;
                         }
 
-                        if root.shot-status != "" : Text {
-                            text: root.shot-status;
+                        Text {
+                            text: root.shot-preview-date + " · " + root.shot-preview-size;
+                            font-family: Theme.font-mono;
                             font-size: 11.5px;
-                            color: Theme.good;
+                            color: Theme.text-secondary;
                             vertical-alignment: center;
-                            horizontal-stretch: 1;
-                            overflow: elide;
                         }
-                        if root.shot-status == "" : Rectangle { horizontal-stretch: 1; }
+                    }
+
+                    // Статус
+                    if root.shot-status != "" : Text {
+                        text: root.shot-status;
+                        font-size: 11.5px;
+                        color: Theme.accent;
+                        overflow: elide;
+                    }
+
+                    // Кнопки действий
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Btn {
+                            label: T.screenshots_copy_discord;
+                            kind: 0;
+                            height: 34px;
+                            enabled: root.shot-selected >= 0;
+                            clicked => { root.shot-copy(root.shot-preview-path); }
+                        }
+
+                        Btn {
+                            label: T.screenshots_open;
+                            kind: 1;
+                            height: 34px;
+                            enabled: root.shot-selected >= 0;
+                            clicked => { root.shot-open(root.shot-preview-path); }
+                        }
 
                         Btn {
                             label: T.screenshots_open_folder;
-                            kind: 2;
-                            width: 145px;
-                            height: 30px;
+                            kind: 1;
+                            height: 34px;
                             clicked => { root.shot-folder(root.shot-preview-path); }
                         }
 
+                        Rectangle { horizontal-stretch: 1; }
+
                         Btn {
-                            label: T.screenshots_refresh;
-                            kind: 1;
-                            width: 115px;
-                            height: 30px;
-                            clicked => { root.shot-refresh(); }
-                        }
-                    }
-                }
-
-                // Основная область галереи
-                if root.shots.length == 0 : Rectangle {
-                    height: 220px;
-                    background: Theme.panel;
-                    border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: 12px;
-
-                        IconCamera {
-                            width: 36px;
-                            height: 36px;
-                            c: Theme.fg-dim;
-                            x: (parent.width - self.width) / 2;
-                        }
-                        Text {
-                            text: T.screenshots_empty;
-                            font-weight: 600;
-                            font-size: 15px;
-                            color: Theme.fg;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: T.screenshots_empty_desc;
-                            font-size: 12px;
-                            color: Theme.fg-dim;
-                            horizontal-alignment: center;
-                        }
-                    }
-                }
-
-                if root.shots.length > 0 : Rectangle {
-                    background: Theme.panel;
-                    border-width: 1px;
-                    border-color: #ffffff17;
-                    border-radius: Theme.r-card;
-                    drop-shadow-blur: 24px;
-                    drop-shadow-color: #00000055;
-                    drop-shadow-offset-y: 4px;
-                    clip: true;
-
-                    HorizontalLayout {
-                        padding: 16px;
-                        spacing: 16px;
-
-                        // Список файлов слева
-                        VerticalLayout {
-                            width: 260px;
-                            spacing: 6px;
-
-                            Text {
-                                text: T.screenshots_recent;
-                                font-family: Theme.font-mono;
-                                font-size: 10px;
-                                letter-spacing: 2px;
-                                color: Theme.fg-dimmer;
-                            }
-
-                            for shot[idx] in root.shots : Rectangle {
-                                height: 44px;
-                                border-radius: Theme.r-soft;
-                                background: root.shot-selected == idx ? Theme.glass
-                                    : shot-item-touch.has-hover ? #ffffff08
-                                    : transparent;
-                                border-width: root.shot-selected == idx ? 1px : 0px;
-                                border-color: root.shot-selected == idx ? #ffffff22 : transparent;
-                                animate background { duration: Theme.t-fast; }
-
-                                HorizontalLayout {
-                                    width: 100%;
-                                    height: 100%;
-                                    padding-left: 10px;
-                                    padding-right: 6px;
-                                    spacing: 6px;
-
-                                    // Область клика и названия
-                                    Rectangle {
-                                        horizontal-stretch: 1;
-
-                                        VerticalLayout {
-                                            alignment: center;
-                                            spacing: 2px;
-
-                                            Text {
-                                                text: shot.name;
-                                                font-size: 12px;
-                                                font-weight: root.shot-selected == idx ? 600 : 400;
-                                                color: root.shot-selected == idx ? Theme.fg : Theme.fg-dim;
-                                                overflow: elide;
-                                            }
-                                            Text {
-                                                text: shot.date + " · " + shot.size;
-                                                font-family: Theme.font-mono;
-                                                font-size: 10px;
-                                                color: Theme.fg-dimmer;
-                                            }
-                                        }
-
-                                        shot-item-touch := TouchArea {
-                                            width: 100%;
-                                            height: 100%;
-                                            clicked => {
-                                                Snd.play(1);
-                                                root.shot-select(idx);
-                                            }
-                                        }
-                                    }
-
-                                    // Прямая кнопка удаления файла из списка без предпросмотра
-                                    VerticalLayout {
-                                        alignment: center;
-
-                                        Rectangle {
-                                            width: 26px;
-                                            height: 26px;
-                                            border-radius: Theme.r-soft;
-                                            background: del-shot-touch.has-hover ? #ff4d6d33 : transparent;
-                                            border-width: 1px;
-                                            border-color: del-shot-touch.has-hover ? #ff4d6d66 : transparent;
-                                            animate background { duration: Theme.t-fast; }
-
-                                            IconCross {
-                                                width: 11px;
-                                                height: 11px;
-                                                c: del-shot-touch.has-hover ? #ff6b8b : Theme.fg-dimmer;
-                                                x: (parent.width - self.width) / 2;
-                                                y: (parent.height - self.height) / 2;
-                                            }
-
-                                            del-shot-touch := TouchArea {
-                                                clicked => {
-                                                    Snd.play(1);
-                                                    root.shot-delete(shot.path);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Линия разделения
-                        Rectangle {
-                            width: 1px;
-                            background: #ffffff0d;
-                        }
-
-                        // Область предпросмотра и действий справа
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            spacing: 12px;
-
-                            // Рамка предпросмотра изображения
-                            Rectangle {
-                                height: 320px;
-                                border-radius: Theme.r-soft;
-                                background: #00000055;
-                                border-width: 1px;
-                                border-color: #ffffff14;
-                                clip: true;
-
-                                Image {
-                                    width: 100%;
-                                    height: 100%;
-                                    source: root.shot-preview-img;
-                                    image-fit: contain;
-                                }
-                            }
-
-                            // Метаданные и быстрые действия
-                            HorizontalLayout {
-                                spacing: 10px;
-
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    spacing: 2px;
-                                    Text {
-                                        text: root.shot-preview-name;
-                                        font-weight: 600;
-                                        font-size: 13px;
-                                        color: Theme.fg;
-                                        overflow: elide;
-                                    }
-                                    Text {
-                                        text: root.shot-preview-date + "  •  " + root.shot-preview-size;
-                                        font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
-                                    }
-                                }
-
-                                Btn {
-                                    label: T.screenshots_copy_discord;
-                                    kind: 0;
-                                    width: 175px;
-                                    height: 32px;
-                                    clicked => { root.shot-copy(root.shot-preview-path); }
-                                }
-
-                                Btn {
-                                    label: T.screenshots_open;
-                                    kind: 1;
-                                    width: 100px;
-                                    height: 32px;
-                                    clicked => { root.shot-open(root.shot-preview-path); }
-                                }
-
-                                Btn {
-                                    label: T.screenshots_delete;
-                                    kind: 2;
-                                    width: 95px;
-                                    height: 32px;
-                                    clicked => { root.shot-delete(root.shot-preview-path); }
-                                }
-                            }
+                            label: T.screenshots_delete;
+                            kind: 3;
+                            height: 34px;
+                            enabled: root.shot-selected >= 0;
+                            clicked => { root.shot-delete(root.shot-preview-path); }
                         }
                     }
                 }

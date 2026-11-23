@@ -39,7 +39,7 @@ export component Btn inherits Rectangle {
     border-radius: self.height / 2;
 
     background: !root.enabled
-        ? (root.kind == 0 ? Theme.accent : (root.kind == 1 ? #1B1E2A : (root.kind == 3 ? #F871711A : transparent)))
+        ? (root.kind == 0 ? Theme.accent : (root.kind == 1 ? #1B1E2A : (root.kind == 3 ? #F871711A : (root.active ? #96A6FF1F : #FFFFFF08))))
         : root.kind == 0
             ? (touch.pressed ? Theme.accent-pressed : (touch.has-hover ? Theme.accent-hover : Theme.accent))
             : root.kind == 1
@@ -47,8 +47,8 @@ export component Btn inherits Rectangle {
                 : root.kind == 3
                     ? (touch.pressed ? #F8717133 : (touch.has-hover ? #F8717126 : #F871711A))
                     : root.active
-                        ? (touch.has-hover ? #FFFFFF1A : #FFFFFF12)
-                        : (touch.pressed ? #FFFFFF14 : (touch.has-hover ? #FFFFFF0D : transparent));
+                        ? (touch.pressed ? #96A6FF33 : (touch.has-hover ? #96A6FF29 : #96A6FF1F))
+                        : (touch.pressed ? #FFFFFF1A : (touch.has-hover ? #FFFFFF12 : #FFFFFF08));
     animate background { duration: Theme.t-fast; easing: ease-out; }
 
     border-width: root.kind == 0 ? 0px : 1px;
@@ -58,7 +58,7 @@ export component Btn inherits Rectangle {
             ? (touch.has-hover && root.enabled ? #F8717166 : #F8717140)
             : root.active
                 ? Theme.border-accent
-                : (touch.has-hover && root.enabled ? Theme.border : transparent);
+                : (touch.has-hover && root.enabled ? #FFFFFF26 : #FFFFFF14);
     animate border-color { duration: Theme.t-fast; easing: ease-out; }
 
     opacity: root.enabled ? 1.0 : 0.45;
@@ -81,7 +81,7 @@ export component Btn inherits Rectangle {
                     ? #FCA5A5
                     : root.active
                         ? Theme.accent
-                        : (touch.has-hover && root.enabled ? Theme.text-primary : (root.kind == 2 ? Theme.text-secondary : Theme.text-primary));
+                        : Theme.text-primary;
             horizontal-alignment: center;
             vertical-alignment: center;
             overflow: elide;

@@ -494,7 +494,6 @@ export component FlagsPage inherits PageFade {
                         Btn {
                             label: T.prof_load;
                             kind: 0;
-                            width: 90px;
                             height: 30px;
                             enabled: root.profile-sel-valid;
                             clicked => { root.profile-load(); }
@@ -507,14 +506,12 @@ export component FlagsPage inherits PageFade {
                         Btn {
                             label: T.prof_save_as;
                             kind: 2;
-                            width: 126px;
                             height: 30px;
                             clicked => { root.profile-save-as(); }
                         }
                         Btn {
                             label: T.prof_delete;
                             kind: 2;
-                            width: 90px;
                             height: 30px;
                             enabled: root.profile-sel-valid;
                             clicked => { root.profile-delete(); }
@@ -522,7 +519,6 @@ export component FlagsPage inherits PageFade {
                         if root.share : Btn {
                             label: T.prof_export;
                             kind: 2;
-                            width: 96px;
                             height: 30px;
                             enabled: root.profile-sel-valid;
                             clicked => { root.profile-export(); }
@@ -530,7 +526,6 @@ export component FlagsPage inherits PageFade {
                         if root.share : Btn {
                             label: T.prof_import;
                             kind: 2;
-                            width: 96px;
                             height: 30px;
                             clicked => { root.profile-import(); }
                         }

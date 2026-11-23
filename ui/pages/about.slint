@@ -2,6 +2,7 @@
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
+import { Snd } from "../snd.slint";
 import { PageFade, Btn, ProgressBar } from "../widgets.slint";
 import { IconStar, IconExternal } from "../icons.slint";
 
@@ -67,7 +68,7 @@ export component AboutPage inherits PageFade {
                             y: 2px;
                             width: 20px;
                             height: 20px;
-                            c: Theme.fg;
+                            c: Theme.accent;
                         }
 
                         Text {
@@ -79,68 +80,97 @@ export component AboutPage inherits PageFade {
                         }
                     }
 
-                    Rectangle {
-                        height: 26px;
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text {
-                                text: T.about_repo;
-                                font-size: 13px;
-                                color: Theme.fg-dim;
-                                vertical-alignment: center;
-                            }
-                            Rectangle {
-                                border-radius: 4px;
-                                background: repo-touch.has-hover ? #ffffff14 : #ffffff08;
-                                border-width: 1px;
-                                border-color: repo-touch.has-hover ? #ffffff33 : #ffffff14;
-                                animate background { duration: Theme.t-fast; }
-                                animate border-color { duration: Theme.t-fast; }
+                    HorizontalLayout {
+                        height: 30px;
 
-                                HorizontalLayout {
-                                    padding-left: 8px;
-                                    padding-right: 8px;
-                                    spacing: 6px;
-                                    alignment: center;
+                        Text {
+                            text: T.about_repo;
+                            font-size: 13px;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
 
-                                    Text {
-                                        text: "mesorg-dev/ByteStrap";
-                                        font-family: Theme.font-mono;
-                                        font-size: 12px;
-                                        color: repo-touch.has-hover ? Theme.fg : Theme.fg-dim;
-                                        vertical-alignment: center;
-                                    }
+                        Rectangle { horizontal-stretch: 1; }
 
-                                    IconExternal {
-                                        width: 12px;
-                                        height: 12px;
-                                        c: repo-touch.has-hover ? Theme.fg : Theme.fg-dim;
-                                        y: (parent.height - self.height) / 2;
-                                    }
+                        repo-btn := Rectangle {
+                            height: 28px;
+                            vertical-stretch: 0;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 14px;
+                            background: repo-touch.has-hover ? #FFFFFF14 : #FFFFFF08;
+                            border-width: 1px;
+                            border-color: repo-touch.has-hover ? #FFFFFF33 : #FFFFFF14;
+                            animate background { duration: Theme.t-fast; }
+                            animate border-color { duration: Theme.t-fast; }
+
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                spacing: 6px;
+                                alignment: center;
+
+                                Text {
+                                    text: "mesorg-dev/ByteStrap";
+                                    font-family: Theme.font-mono;
+                                    font-size: 12px;
+                                    color: repo-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                                    vertical-alignment: center;
+                                }
+
+                                IconExternal {
+                                    width: 12px;
+                                    height: 12px;
+                                    c: repo-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
+                                    y: (parent.height - self.height) / 2;
                                 }
                             }
-                        }
-                        repo-touch := TouchArea {
-                            width: 100%;
-                            height: 100%;
-                            clicked => { root.open-repo(); }
+
+                            repo-touch := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    Snd.play(0);
+                                    root.open-repo();
+                                }
+                            }
                         }
                     }
 
                     HorizontalLayout {
-                        spacing: 8px;
+                        height: 30px;
+
                         Text {
                             text: T.about_license;
                             font-size: 13px;
-                            color: Theme.fg-dim;
+                            color: Theme.text-secondary;
                             vertical-alignment: center;
                         }
-                        Text {
-                            text: "GPL-3.0";
-                            font-family: Theme.font-mono;
-                            font-size: 12px;
-                            color: Theme.fg;
-                            vertical-alignment: center;
+
+                        Rectangle { horizontal-stretch: 1; }
+
+                        Rectangle {
+                            height: 26px;
+                            vertical-stretch: 0;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 8px;
+                            background: #FFFFFF08;
+                            border-width: 1px;
+                            border-color: #FFFFFF14;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                alignment: center;
+
+                                Text {
+                                    text: "GPL-3.0";
+                                    font-family: Theme.font-mono;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
+                                    vertical-alignment: center;
+                                }
+                            }
                         }
                     }
                 }
