@@ -1,10 +1,13 @@
-// Главная: hero-карточка (играть/установить/обновить, прогресс, ссылка),
-// счётчики и топ мест по времени. Данные приходят свойствами из контроллера.
+// Главная страница: чистый центрированный Hero-блок,
+// компактная полоса быстрого запуска по ссылке,
+// ряд из 4 карточек метрик и нижняя бенто-сетка статистики.
 
 import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
+import { Snd } from "../snd.slint";
 import { PageFade, Btn, TextField, ProgressBar, StatusDot } from "../widgets.slint";
 import { PlaceRow } from "../models.slint";
+import { IconGamepad, IconLightning, IconSliders, IconWrench } from "../icons.slint";
 
 export component HomePage inherits PageFade {
     in-out property <string> status-text;
@@ -23,6 +26,7 @@ export component HomePage inherits PageFade {
     changed paste-token => {
         link-input.text = root.paste-text;
     }
+
     in-out property <string> version-text;
     in-out property <string> mods-count;
     in-out property <string> flags-count;
@@ -53,441 +57,621 @@ export component HomePage inherits PageFade {
 
         col := VerticalLayout {
             width: flick.width;
-            height: flick.content-height;
-            spacing: 0px;
+            spacing: 12px;
+            padding-bottom: 8px;
 
-            Text {
-                text: T.home_h1;
-                font-family: Theme.font-display;
-                font-weight: 700;
-                font-size: 22px;
-                letter-spacing: 0.5px;
-                color: Theme.fg;
-            }
-            Rectangle { height: 5px; }
-            Text {
-                text: T.home_sub;
-                font-size: 12.5px;
-                color: Theme.fg-dim;
-            }
-            Rectangle { height: 16px; }
-
-            // ===== Hero-карточка статуса =====
+            // 1. HERO-СЕКЦИЯ (центрированная, min-height 185px)
             Rectangle {
-                background: Theme.panel;
+                min-height: 185px;
+                background: #12141C;
+                border-radius: 16px;
                 border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000066;
-                drop-shadow-offset-y: 4px;
+                border-color: Theme.border;
+                clip: true;
 
-                // Верхняя световая кромка (стекло).
-                Rectangle {
-                    x: 12px;
+                // Левый декор (показывается только при ширине > 720px)
+                if root.width > 720px : Rectangle {
+                    x: 24px;
                     y: 0;
-                    width: parent.width - 24px;
-                    height: 1px;
-                    background: #ffffff1c;
+                    width: 90px;
+                    height: parent.height;
+
+                    Rectangle {
+                        x: 14px;
+                        y: parent.height * 0.32;
+                        width: 76px;
+                        height: 1px;
+                        background: #ffffff0a;
+                    }
+
+                    Rectangle {
+                        x: 0;
+                        y: parent.height * 0.32 - 14px;
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        IconGamepad {
+                            width: 13px;
+                            height: 13px;
+                            c: Theme.accent;
+                            opacity: 0.75;
+                            x: (parent.width - 13px) / 2;
+                            y: (parent.height - 13px) / 2;
+                        }
+                    }
+
+                    Rectangle {
+                        x: 24px;
+                        y: parent.height * 0.68;
+                        width: 66px;
+                        height: 1px;
+                        background: #ffffff0a;
+                    }
+
+                    Rectangle {
+                        x: 10px;
+                        y: parent.height * 0.68 - 14px;
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        IconLightning {
+                            width: 13px;
+                            height: 13px;
+                            c: Theme.accent;
+                            opacity: 0.75;
+                            x: (parent.width - 13px) / 2;
+                            y: (parent.height - 13px) / 2;
+                        }
+                    }
                 }
 
-                VerticalLayout {
-                    padding: 22px;
-                    spacing: 14px;
+                // Правый декор (показывается только при ширине > 720px)
+                if root.width > 720px : Rectangle {
+                    x: parent.width - 114px;
+                    y: 0;
+                    width: 90px;
+                    height: parent.height;
 
-                    // Строка: точка + статус + кнопки справа.
                     Rectangle {
-                        height: 48px;
-
-                        HorizontalLayout {
-                            width: 100%;
-                            height: 100%;
-                            spacing: 10px;
-
-                            StatusDot {
-                                kind: root.status-dot;
-                                horizontal-stretch: 0;
-                            }
-
-                            Text {
-                                text: root.status-text;
-                                font-family: Theme.font;
-                                font-size: 13px;
-                                font-weight: 500;
-                                color: Theme.fg;
-                                horizontal-stretch: 1;
-                                overflow: elide;
-                                vertical-alignment: center;
-                            }
-
-                            if root.busy : Btn {
-                                label: T.btn_cancel;
-                                kind: 2;
-                                width: 110px;
-                                height: 34px;
-                                horizontal-stretch: 0;
-                                clicked => { root.cancel(); }
-                            }
-
-                            if !root.busy && root.show-update : Btn {
-                                label: T.home_update;
-                                kind: 1;
-                                width: 130px;
-                                height: 40px;
-                                horizontal-stretch: 0;
-                                clicked => { root.update-client(); }
-                            }
-
-                            if !root.busy && root.show-update : Btn {
-                                label: T.home_play;
-                                kind: 0;
-                                width: 150px;
-                                height: 48px;
-                                horizontal-stretch: 0;
-                                clicked => { root.primary(); }
-                            }
-
-                            if !root.busy : Btn {
-                                label: "Roblox Studio";
-                                kind: 2;
-                                width: 130px;
-                                height: 48px;
-                                horizontal-stretch: 0;
-                                clicked => { root.studio(); }
-                            }
-
-                            if !root.busy && !root.show-update : Btn {
-                                label: root.primary-label;
-                                kind: 0;
-                                width: 200px;
-                                height: 48px;
-                                horizontal-stretch: 0;
-                                clicked => { root.primary(); }
-                            }
-                        }
+                        x: 0px;
+                        y: parent.height * 0.32;
+                        width: 76px;
+                        height: 1px;
+                        background: #ffffff0a;
                     }
 
-                    // Прогресс установки.
-                    if root.busy : Rectangle {
-                        height: root.progress-text == "" ? 4px : 24px;
-                        VerticalLayout {
-                            spacing: 7px;
-                            ProgressBar {
-                                value: root.progress;
-                            }
-                            if root.progress-text != "" : Text {
-                                text: root.progress-text;
-                                font-family: Theme.font-mono;
-                                font-size: 11px;
-                                color: Theme.fg-dim;
-                            }
-                        }
-                    }
-
-                    // Строка «запуск по ссылке».
                     Rectangle {
+                        x: 62px;
+                        y: parent.height * 0.32 - 14px;
+                        width: 28px;
                         height: 28px;
+                        border-radius: 14px;
+                        background: Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.border;
 
-                        HorizontalLayout {
-                            width: 100%;
-                            height: 100%;
-                            spacing: 8px;
+                        IconSliders {
+                            width: 13px;
+                            height: 13px;
+                            c: Theme.accent;
+                            opacity: 0.75;
+                            x: (parent.width - 13px) / 2;
+                            y: (parent.height - 13px) / 2;
+                        }
+                    }
 
-                            link-input := TextField {
-                                height: 28px;
-                                placeholder: T.home_link_hint;
-                                horizontal-stretch: 1;
-                                accepted => { root.link-go(self.text); }
-                                edited => { root.link-changed(); }
+                    Rectangle {
+                        x: 0px;
+                        y: parent.height * 0.68;
+                        width: 66px;
+                        height: 1px;
+                        background: #ffffff0a;
+                    }
+
+                    Rectangle {
+                        x: 52px;
+                        y: parent.height * 0.68 - 14px;
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 14px;
+                        background: Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        IconWrench {
+                            width: 13px;
+                            height: 13px;
+                            c: Theme.accent;
+                            opacity: 0.75;
+                            x: (parent.width - 13px) / 2;
+                            y: (parent.height - 13px) / 2;
+                        }
+                    }
+                }
+
+                // Центрированное содержимое Hero
+                VerticalLayout {
+                    width: 100%;
+                    padding-top: 16px;
+                    padding-bottom: 16px;
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    spacing: 10px;
+                    alignment: center;
+
+                    // Статус-пилюля
+                    HorizontalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            height: 28px;
+                            border-radius: 14px;
+                            background: Theme.surface-2;
+                            border-width: 1px;
+                            border-color: Theme.border;
+
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                spacing: 8px;
+                                alignment: center;
+
+                                StatusDot {
+                                    y: (parent.height - 8px) / 2;
+                                    kind: root.status-dot;
+                                }
+
+                                Text {
+                                    text: root.status-text;
+                                    font-family: Theme.font;
+                                    font-size: 12px;
+                                    font-weight: 500;
+                                    color: Theme.text-primary;
+                                    vertical-alignment: center;
+                                }
                             }
+                        }
+                    }
 
-                            if root.share : Btn {
-                                label: T.home_link_paste;
-                                kind: 2;
-                                width: 78px;
-                                height: 28px;
-                                horizontal-stretch: 0;
-                                clicked => { root.link-paste(); }
-                            }
+                    // Крупный заголовок
+                    Text {
+                        text: "ByteStrap";
+                        font-family: Theme.font-display;
+                        font-weight: 700;
+                        font-size: 30px;
+                        letter-spacing: 0.5px;
+                        color: Theme.text-primary;
+                        horizontal-alignment: center;
+                    }
 
-                            Btn {
-                                label: T.home_link_go;
-                                kind: 1;
-                                width: 88px;
-                                height: 28px;
-                                horizontal-stretch: 0;
-                                clicked => { root.link-go(link-input.text); }
+                    // Подзаголовок (живая сессия либо стандартная подпись)
+                    Text {
+                        text: root.session-text != "" ? root.session-text : T.home_sub;
+                        font-size: 12.5px;
+                        color: root.session-text != "" ? Theme.accent : Theme.text-secondary;
+                        horizontal-alignment: center;
+                    }
+
+                    // Ряд кнопок
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 10px;
+
+                        if !root.busy && root.show-update : Btn {
+                            label: T.home_update;
+                            kind: 1;
+                            height: 38px;
+                            clicked => { root.update-client(); }
+                        }
+
+                        if !root.busy : Btn {
+                            label: root.primary-label;
+                            kind: 0;
+                            height: 38px;
+                            min-width: 140px;
+                            clicked => { root.primary(); }
+                        }
+
+                        if !root.busy : Btn {
+                            label: "Roblox Studio";
+                            kind: 1;
+                            height: 38px;
+                            clicked => { root.studio(); }
+                        }
+
+                        if root.busy : Btn {
+                            label: T.btn_cancel;
+                            kind: 3;
+                            height: 38px;
+                            min-width: 130px;
+                            clicked => { root.cancel(); }
+                        }
+                    }
+
+                    // Прогресс-бар при установке/обновлении
+                    if root.busy || root.progress-text != "" : HorizontalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: min(420px, parent.width - 40px);
+
+                            VerticalLayout {
+                                spacing: 6px;
+
+                                ProgressBar {
+                                    value: root.progress;
+                                }
+
+                                if root.progress-text != "" : Text {
+                                    text: root.progress-text;
+                                    font-family: Theme.font-mono;
+                                    font-size: 11.5px;
+                                    color: Theme.text-secondary;
+                                    horizontal-alignment: center;
+                                }
                             }
+                        }
+                    }
+                }
+            }
+
+            // 2. ПОЛОСА БЫСТРОГО ЗАПУСКА ПО ССЫЛКЕ
+            Rectangle {
+                background: #12141C;
+                border-radius: 14px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                VerticalLayout {
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 6px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        link-input := TextField {
+                            height: 36px;
+                            placeholder: T.home_link_hint;
+                            horizontal-stretch: 1;
+                            accepted => { root.link-go(self.text); }
+                            edited => { root.link-changed(); }
+                        }
+
+                        if root.share : Btn {
+                            label: T.home_link_paste;
+                            kind: 1;
+                            height: 36px;
+                            horizontal-stretch: 0;
+                            clicked => { root.link-paste(); }
+                        }
+
+                        Btn {
+                            label: T.home_link_go;
+                            kind: 1;
+                            height: 36px;
+                            horizontal-stretch: 0;
+                            clicked => { root.link-go(link-input.text); }
                         }
                     }
 
                     if root.link-msg != "" : Text {
                         text: root.link-msg;
-                        font-size: 11px;
-                        color: root.link-msg-bad ? Theme.bad : Theme.good;
-                    }
-
-                    Rectangle {
-                        height: 1px;
-                        background: #ffffff0d;
-                    }
-
-                    Text {
-                        text: root.version-text;
-                        font-family: Theme.font-mono;
                         font-size: 11.5px;
-                        color: Theme.fg-dimmer;
+                        color: root.link-msg-bad ? Theme.danger : Theme.text-secondary;
                     }
                 }
             }
 
-            Rectangle { height: 14px; }
+            // 3. РЯД ИЗ 4 КАРТОЧЕК МЕТРИК
+            HorizontalLayout {
+                spacing: 12px;
 
-            // ===== Счётчики =====
-            Rectangle {
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                // Карточка 1: Версия клиента
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #12141C;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
 
-                VerticalLayout {
-                    padding: 22px;
-                    spacing: 0px;
+                    VerticalLayout {
+                        padding-top: 10px;
+                        padding-bottom: 10px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 4px;
 
-                    if root.session-text != "" : Text {
-                        text: root.session-text;
-                        font-family: Theme.font-mono;
-                        font-size: 12px;
-                        color: Theme.good;
+                        Text {
+                            text: "Версия клиента";
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-secondary;
+                        }
+
+                        Text {
+                            text: root.version-text != "" ? root.version-text : "—";
+                            font-family: Theme.font-mono;
+                            font-size: 13.5px;
+                            font-weight: 600;
+                            color: Theme.text-primary;
+                            overflow: elide;
+                        }
                     }
-                    if root.session-text != "" : Rectangle {
-                        height: 14px;
+                }
+
+                // Карточка 2: Активные моды
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #12141C;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    VerticalLayout {
+                        padding-top: 10px;
+                        padding-bottom: 10px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "Активные моды";
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-secondary;
+                        }
+
+                        Text {
+                            text: root.mods-count;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                            overflow: elide;
+                        }
                     }
+                }
 
-                    HorizontalLayout {
-                        spacing: 0px;
-                        alignment: start;
+                // Карточка 3: FastFlags
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #12141C;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
 
-                        VerticalLayout {
-                            width: 140px;
-                            horizontal-stretch: 0;
-                            spacing: 2px;
-                            Text {
-                                text: root.mods-count;
-                                font-family: Theme.font-display;
-                                font-weight: 700;
-                                font-size: 26px;
-                                color: Theme.fg;
-                            }
-                            Text {
-                                text: "MODS";
-                                font-family: Theme.font-mono;
-                                font-size: 10px;
-                                letter-spacing: 2px;
-                                color: Theme.fg-dimmer;
-                            }
+                    VerticalLayout {
+                        padding-top: 10px;
+                        padding-bottom: 10px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "FastFlags";
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-secondary;
                         }
 
-                        Rectangle {
-                            width: 1px;
-                            height: 46px;
-                            background: #ffffff0d;
+                        Text {
+                            text: root.flags-count;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                // Карточка 4: Время в игре
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #12141C;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    VerticalLayout {
+                        padding-top: 10px;
+                        padding-bottom: 10px;
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 4px;
+
+                        Text {
+                            text: "Наиграно часов";
+                            font-size: 11px;
+                            font-weight: 500;
+                            color: Theme.text-secondary;
                         }
 
-                        VerticalLayout {
-                            width: 168px;
-                            padding-left: 28px;
-                            horizontal-stretch: 0;
-                            spacing: 2px;
-                            Text {
-                                text: root.flags-count;
-                                font-family: Theme.font-display;
-                                font-weight: 700;
-                                font-size: 26px;
-                                color: Theme.fg;
-                            }
-                            Text {
-                                text: "FLAGS";
-                                font-family: Theme.font-mono;
-                                font-size: 10px;
-                                letter-spacing: 2px;
-                                color: Theme.fg-dimmer;
-                            }
-                        }
-
-                        Rectangle {
-                            width: 1px;
-                            height: 46px;
-                            background: #ffffff0d;
-                        }
-
-                        VerticalLayout {
-                            padding-left: 28px;
-                            horizontal-stretch: 0;
-                            spacing: 2px;
-                            Text {
-                                text: root.hours-count;
-                                font-family: Theme.font-display;
-                                font-weight: 700;
-                                font-size: 26px;
-                                color: Theme.fg;
-                            }
-                            Text {
-                                text: "HOURS";
-                                font-family: Theme.font-mono;
-                                font-size: 10px;
-                                letter-spacing: 2px;
-                                color: Theme.fg-dimmer;
-                            }
+                        Text {
+                            text: root.hours-count;
+                            font-size: 18px;
+                            font-weight: 700;
+                            color: Theme.text-primary;
+                            overflow: elide;
                         }
                     }
                 }
             }
 
-            // ===== Активность за 14 дней =====
-            if root.play-days.length > 0 : Rectangle {
-                clip: true;
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+            // 4. НИЖНЯЯ БЕНТО-СЕТКА
+            HorizontalLayout {
+                spacing: 12px;
+                min-height: 155px;
 
-                VerticalLayout {
-                    padding: 22px;
-                    spacing: 10px;
+                // Левая карточка: График активности за 14 дней
+                Rectangle {
+                    horizontal-stretch: 3;
+                    background: #12141C;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
 
-                    Text {
-                        text: T.home_chart;
-                        font-family: Theme.font-mono;
-                        font-size: 10px;
-                        letter-spacing: 2px;
-                        color: Theme.fg-dimmer;
-                    }
+                    VerticalLayout {
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        spacing: 10px;
 
-                    // 14 колонок: чем выше — тем больше минут; столбик тянется вверх.
-                    Rectangle {
-                        height: 56px;
-                        clip: true;
+                        Text {
+                            text: T.home_chart;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            font-weight: 600;
+                            letter-spacing: 0.6px;
+                            color: Theme.text-secondary;
+                        }
 
-                        bars := HorizontalLayout {
-                            spacing: 5px;
+                        VerticalLayout {
+                            spacing: 6px;
+                            vertical-stretch: 1;
 
-                            property <int> max-val: max(60, root.play-days-max);
-                            for i in 14 : Rectangle {
-                                clip: true;
-                                property <length> h: min(52px, max(0px, 52px * (root.play-days[i] / (bars.max-val * 1.0))));
-                                width: (parent.width - 65px) / 14;
-                                height: 56px;
+                            // Слой 1: строго 14 одинаковых столбиков-треков
+                            HorizontalLayout {
+                                spacing: 6px;
+                                vertical-stretch: 1;
 
-                                // «Пол» — всегда виден.
-                                Rectangle {
-                                    x: 0;
-                                    y: 54px;
-                                    width: parent.width;
-                                    height: 2px;
-                                    border-radius: 1px;
-                                    background: #ffffff0d;
-                                }
+                                for i in 14 : Rectangle {
+                                    horizontal-stretch: 1;
+                                    min-width: 0px;
+                                    height: 64px;
+                                    border-radius: 4px;
+                                    background: #ffffff08;
+                                    clip: true;
 
-                                Rectangle {
-                                    x: 0;
-                                    y: parent.height - parent.h - 2px;
-                                    width: parent.width;
-                                    height: parent.h;
-                                    border-radius: 2px;
-                                    background: Theme.accent;
-                                    opacity: bar-touch.has-hover ? 1.0 : (0.55 + 0.45 * (parent.h / 52px));
-                                    drop-shadow-blur: bar-touch.has-hover ? 8px : 0px;
-                                    drop-shadow-color: Theme.glow;
-                                    animate height { duration: Theme.t-mid; easing: ease-out; }
-                                    animate opacity { duration: Theme.t-fast; }
-                                }
+                                    bar := Rectangle {
+                                        property <float> val: (root.play-days.length > i && root.play-days[i] > 0) ? root.play-days[i] * 1.0 : 0.0;
+                                        property <length> h-target: bar.val > 0 ? max(4px, min(60px, 60px * (bar.val / max(60.0, root.play-days-max * 1.0)))) : 0px;
 
-                                bar-touch := TouchArea {
-                                    width: 100%;
-                                    height: 100%;
-                                    Tooltip {
-                                        text: @markdown("\{root.play-labels[i]} · \{root.play-days[i]} мин");
+                                        x: 0;
+                                        y: parent.height - self.height;
+                                        width: parent.width;
+                                        height: bar.h-target;
+                                        border-radius: 4px;
+                                        background: Theme.accent;
+                                        animate height { duration: Theme.t-mid; easing: ease-out; }
+                                    }
+
+                                    TouchArea {
+                                        width: 100%;
+                                        height: 100%;
+                                        Tooltip {
+                                            text: @markdown("\{root.play-labels.length > i ? root.play-labels[i] : ""} · \{root.play-days.length > i ? root.play-days[i] : 0} мин");
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
 
-                    // Подписи: первый и последний день.
-                    HorizontalLayout {
-                        height: 12px;
-                        Text {
-                            font-family: Theme.font-mono;
-                            font-size: 9px;
-                            color: Theme.fg-dimmer;
-                            text: root.play-labels[0];
-                            horizontal-stretch: 1;
-                        }
-                        Text {
-                            font-family: Theme.font-mono;
-                            font-size: 9px;
-                            color: Theme.fg-dimmer;
-                            text: root.play-labels[13];
-                            horizontal-alignment: right;
-                        }
-                    }
-                    Rectangle { height: 12px; }
-                }
-            }
+                            // Слой 2: подписи дат (первый и последний день)
+                            HorizontalLayout {
+                                Text {
+                                    text: root.play-labels.length > 0 ? root.play-labels[0] : "";
+                                    font-family: Theme.font-mono;
+                                    font-size: 10.5px;
+                                    color: Theme.text-muted;
+                                }
 
-            // ===== Топ мест =====
-            if root.top-places.length > 0 : Rectangle {
-                background: Theme.panel;
-                border-width: 1px;
-                border-color: #ffffff17;
-                border-radius: Theme.r-card;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #00000055;
-                drop-shadow-offset-y: 4px;
+                                Rectangle { horizontal-stretch: 1; }
 
-                VerticalLayout {
-                    padding: 22px;
-                    spacing: 10px;
-
-                    Text {
-                        text: T.home_places;
-                        font-family: Theme.font-mono;
-                        font-size: 10px;
-                        letter-spacing: 2px;
-                        color: Theme.fg-dimmer;
-                    }
-
-                    for place in root.top-places : Rectangle {
-                        height: 22px;
-
-                        HorizontalLayout {
-                            width: 100%;
-                            height: 100%;
-                            spacing: 8px;
-
-                            Text {
-                                text: place.name;
-                                font-size: 13px;
-                                color: Theme.fg;
-                                horizontal-stretch: 1;
-                                vertical-alignment: center;
-                                overflow: elide;
+                                Text {
+                                    text: root.play-labels.length > 13 ? root.play-labels[13] : "";
+                                    font-family: Theme.font-mono;
+                                    font-size: 10.5px;
+                                    color: Theme.text-muted;
+                                }
                             }
+                        }
+                    }
+                }
 
+                // Правая карточка: Топ мест
+                Rectangle {
+                    horizontal-stretch: 2;
+                    background: #12141C;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    VerticalLayout {
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        spacing: 8px;
+
+                        Text {
+                            text: T.home_places;
+                            font-family: Theme.font-mono;
+                            font-size: 11px;
+                            font-weight: 600;
+                            letter-spacing: 0.6px;
+                            color: Theme.text-secondary;
+                        }
+
+                        if root.top-places.length == 0 : Rectangle {
+                            vertical-stretch: 1;
                             Text {
-                                text: place.duration;
-                                font-family: Theme.font-mono;
+                                width: 100%;
+                                height: 100%;
+                                text: "История запусков пуста";
                                 font-size: 12px;
-                                color: Theme.fg-dim;
-                                horizontal-stretch: 0;
+                                color: Theme.text-muted;
+                                horizontal-alignment: center;
                                 vertical-alignment: center;
+                            }
+                        }
+
+                        if root.top-places.length > 0 : VerticalLayout {
+                            spacing: 3px;
+
+                            for place in root.top-places : Rectangle {
+                                height: 25px;
+                                border-radius: 6px;
+                                background: place-touch.has-hover ? #ffffff08 : transparent;
+                                animate background { duration: Theme.t-fast; }
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 8px;
+
+                                    Text {
+                                        text: place.name;
+                                        font-size: 12px;
+                                        color: Theme.text-primary;
+                                        horizontal-stretch: 1;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: place.duration;
+                                        font-family: Theme.font-mono;
+                                        font-size: 11.5px;
+                                        color: Theme.text-secondary;
+                                        horizontal-stretch: 0;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                place-touch := TouchArea {
+                                    width: 100%;
+                                    height: 100%;
+                                }
                             }
                         }
                     }

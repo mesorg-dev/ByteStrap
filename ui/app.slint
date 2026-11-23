@@ -15,7 +15,6 @@ import { T } from "i18n.slint";
 export { T, Theme, Snd, ScreenshotRow }
 import { TitleBar } from "titlebar.slint";
 import { Btn, TextField, Dd } from "widgets.slint";
-import { SideBar } from "sidebar.slint";
 import { Starfield } from "stars.slint";
 import { HomePage } from "pages/home.slint";
 import { LogsPage } from "pages/logs.slint";
@@ -23,10 +22,9 @@ import { SettingsPage } from "pages/settings.slint";
 import { ModsPage } from "pages/mods.slint";
 import { FlagsPage } from "pages/flags.slint";
 import { GamesPage } from "pages/games.slint";
-import { VersionsPage } from "pages/versions.slint";
 import { AboutPage } from "pages/about.slint";
 import { IconCross } from "icons.slint";
-import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow, RegionPingRow } from "models.slint";
+import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, ModRow, ModFileRow, FlagRow, PresetRow, RegionPingRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -105,14 +103,6 @@ export component AppWindow inherits Window {
     in-out property <string> log-info: "";
     in-out property <bool> log-missing: false;
     in-out property <int> log-jump-token: 0;
-
-    // Versions (page 3)
-    in-out property <string> ver-installed-guid: "";
-    in-out property <string> ver-selected-guid: "";
-    in-out property <[VersionRow]> ver-versions: [];
-    in-out property <string> ver-integrity-text: "";
-    in-out property <int> ver-integrity-kind: 0;
-    in-out property <string> ver-checked-text: "";
 
     // Mods (page 4)
     in-out property <string> mods-path: "";
@@ -272,11 +262,6 @@ export component AppWindow inherits Window {
     callback log-folder();
     callback log-follow-toggle();
     callback log-search(string);
-    callback ver-select(string);
-    callback ver-activate();
-    callback ver-delete();
-    callback ver-check();
-    callback ver-repair();
     callback about-check();
     callback about-download();
     callback about-open-repo();
@@ -373,11 +358,11 @@ export component AppWindow inherits Window {
         y: 0;
         width: 100%;
         height: 100%;
-        border-radius: root.is-maximized ? 0px : 12px;
+        border-radius: root.is-maximized ? 0px : 16px;
         clip: true;
         background: Theme.bg-deep;
         border-width: root.is-maximized ? 0px : 1px;
-        border-color: #ffffff20;
+        border-color: Theme.border;
 
     // ===== Пользовательский фон (под звёздами) =====
     if root.bg-image-on : Image {
@@ -398,48 +383,41 @@ export component AppWindow inherits Window {
         height: 100%;
     }
 
-    // ===== Контент =====
-    Rectangle {
+    // ===== Верхняя панель TitleBar =====
+    TitleBar {
         x: 0;
         y: 0;
-        width: 100%;
-        height: 100%;
-        background: transparent;
+        width: parent.width;
+        height: Theme.titlebar-h;
+        page: root.page;
+        show-logs: root.set-show-logs;
+        status-dot: root.status-dot;
+        status: root.status-text;
+        is-maximized: root.is-maximized;
+        navigate(p) => { root.page = p; Dd.open = false; }
+        win-min => { root.win-min(); }
+        win-max => { root.win-max(); }
+        drag => { root.titlebar-drag(); }
+        close-request => { root.close-request(); }
+    }
 
-        TitleBar {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            height: Theme.titlebar-h;
-            status: root.status-text;
-            win-min => { root.win-min(); }
-            win-max => { root.win-max(); }
-            drag => { root.titlebar-drag(); }
-            close-request => { root.close-request(); }
-        }
-
-        SideBar {
-            x: 0;
-            y: Theme.titlebar-h;
-            width: Theme.sidebar-w;
-            height: parent.height - Theme.titlebar-h;
-            page: root.page;
-            show-logs: root.set-show-logs;
-            navigate(p) => { root.page = p; Dd.open = false; }
-        }
+    // ===== Главная карточка контента =====
+    Rectangle {
+        x: 14px;
+        y: Theme.titlebar-h;
+        width: parent.width - 28px;
+        height: parent.height - Theme.titlebar-h - 14px;
+        background: Theme.surface;
+        border-radius: 18px;
+        border-width: 1px;
+        border-color: Theme.border;
+        clip: true;
 
         Rectangle {
-            x: Theme.sidebar-w;
-            y: Theme.titlebar-h;
-            width: parent.width - Theme.sidebar-w;
-            height: parent.height - Theme.titlebar-h;
-            background: transparent;
-
-            Rectangle {
-                x: 32px;
-                y: 26px;
-                width: parent.width - 64px;
-                height: parent.height - 52px;
+            x: 20px;
+            y: 20px;
+            width: parent.width - 40px;
+            height: parent.height - 40px;
 
                 if root.page == 0 : HomePage {
                     width: 100%;
@@ -570,21 +548,6 @@ export component AppWindow inherits Window {
                     profile-delete => { root.flags-profile-delete(); }
                     profile-export => { root.flags-profile-export(); }
                     profile-import => { root.flags-profile-import(); }
-                }
-                if root.page == 3 : VersionsPage {
-                    width: 100%;
-                    height: 100%;
-                    installed-guid: root.ver-installed-guid;
-                    selected-guid: root.ver-selected-guid;
-                    versions: root.ver-versions;
-                    integrity-text: root.ver-integrity-text;
-                    integrity-kind: root.ver-integrity-kind;
-                    checked-text: root.ver-checked-text;
-                    activate => { root.ver-activate(); }
-                    delete-version => { root.ver-delete(); }
-                    check-integrity => { root.ver-check(); }
-                    repair => { root.ver-repair(); }
-                    select(g) => { root.ver-select(g); }
                 }
                 if root.page == 4 : ModsPage {
                     width: 100%;
@@ -737,7 +700,6 @@ export component AppWindow inherits Window {
                 }
             }
         }
-    }
 
     // ===== Модальное подтверждение =====
     if root.confirm-body != "" : Rectangle {
@@ -745,7 +707,7 @@ export component AppWindow inherits Window {
         y: 0;
         width: 100%;
         height: 100%;
-        background: #00000099;
+        background: #06070bcc;
 
         TouchArea {
             width: 100%;
@@ -756,7 +718,7 @@ export component AppWindow inherits Window {
         modal-confirm := Rectangle {
             property <bool> shown: false;
             width: 400px;
-            height: 140px;
+            height: 144px;
             x: (parent.width - self.width) / 2;
             y: root.confirm-body != ""
                 ? ((parent.height - self.height) / 2
@@ -767,22 +729,20 @@ export component AppWindow inherits Window {
             animate opacity { duration: Theme.t-mid; }
             init => { modal-confirm.shown = true; }
 
-            background: Theme.panel;
+            background: Theme.surface;
             border-width: 1px;
-            border-color: #ffffff22;
-            border-radius: Theme.r-card;
-            drop-shadow-blur: 40px;
-            drop-shadow-color: #000000cc;
-            drop-shadow-offset-y: 8px;
+            border-color: Theme.border-hover;
+            border-radius: 20px;
+            clip: true;
 
             VerticalLayout {
                 padding: 22px;
-                spacing: 14px;
+                spacing: 16px;
 
                 Text {
                     text: root.confirm-body;
                     font-size: 13px;
-                    color: Theme.fg;
+                    color: Theme.text-primary;
                     wrap: word-wrap;
                 }
 
@@ -814,7 +774,7 @@ export component AppWindow inherits Window {
         y: 0;
         width: 100%;
         height: 100%;
-        background: #000000b3;
+        background: #06070bcc;
 
         TouchArea {
             width: 100%;
@@ -827,12 +787,10 @@ export component AppWindow inherits Window {
             y: (parent.height - self.height) / 2;
             width: 440px;
             height: 310px;
-            background: Theme.panel;
+            background: Theme.surface;
             border-width: 1px;
-            border-color: #ffffff29;
-            border-radius: Theme.r-card;
-            drop-shadow-blur: 32px;
-            drop-shadow-color: #00000088;
+            border-color: Theme.border-hover;
+            border-radius: 20px;
             clip: true;
 
             VerticalLayout {
@@ -845,7 +803,7 @@ export component AppWindow inherits Window {
                         font-family: Theme.font-display;
                         font-weight: 700;
                         font-size: 16px;
-                        color: Theme.fg;
+                        color: Theme.text-primary;
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
@@ -853,19 +811,20 @@ export component AppWindow inherits Window {
                     Rectangle {
                         width: 28px;
                         height: 28px;
-                        border-radius: Theme.r-soft;
-                        background: res-x-touch.has-hover ? #ffffff24 : transparent;
+                        border-radius: Theme.r-sm;
+                        background: res-x-touch.has-hover ? #ffffff14 : transparent;
                         animate background { duration: Theme.t-fast; }
 
                         IconCross {
-                            width: 12px;
-                            height: 12px;
-                            c: Theme.fg;
+                            width: 10px;
+                            height: 10px;
+                            c: res-x-touch.has-hover ? Theme.text-primary : Theme.text-secondary;
                             x: (parent.width - self.width) / 2;
                             y: (parent.height - self.height) / 2;
                         }
 
                         res-x-touch := TouchArea {
+                            mouse-cursor: MouseCursor.pointer;
                             clicked => { root.game-res-modal-close(); }
                         }
                     }
@@ -941,7 +900,7 @@ export component AppWindow inherits Window {
                     Text {
                         text: "Ширина:";
                         font-size: 12px;
-                        color: Theme.fg-dim;
+                        color: Theme.text-secondary;
                         vertical-alignment: center;
                     }
                     m-res-w := TextField {
@@ -953,13 +912,13 @@ export component AppWindow inherits Window {
                     Text {
                         text: "×";
                         font-size: 13px;
-                        color: Theme.fg-dim;
+                        color: Theme.text-secondary;
                         vertical-alignment: center;
                     }
                     Text {
                         text: "Высота:";
                         font-size: 12px;
-                        color: Theme.fg-dim;
+                        color: Theme.text-secondary;
                         vertical-alignment: center;
                     }
                     m-res-h := TextField {
@@ -1009,7 +968,7 @@ export component AppWindow inherits Window {
         y: 0;
         width: 100%;
         height: 100%;
-        background: #00000099;
+        background: #06070bcc;
 
         TouchArea {
             width: 100%;
@@ -1028,13 +987,11 @@ export component AppWindow inherits Window {
             animate opacity { duration: Theme.t-mid; }
             init => { modal-dlg.shown = true; }
 
-            background: Theme.panel;
+            background: Theme.surface;
             border-width: 1px;
-            border-color: #ffffff22;
-            border-radius: Theme.r-card;
-            drop-shadow-blur: 40px;
-            drop-shadow-color: #000000cc;
-            drop-shadow-offset-y: 8px;
+            border-color: Theme.border-hover;
+            border-radius: 20px;
+            clip: true;
 
             VerticalLayout {
                 padding: 22px;
@@ -1044,7 +1001,7 @@ export component AppWindow inherits Window {
                     text: root.dlg-desc;
                     font-size: 13px;
                     height: 17px;
-                    color: Theme.fg;
+                    color: Theme.text-primary;
                     overflow: elide;
                 }
 
@@ -1086,7 +1043,7 @@ export component AppWindow inherits Window {
         y: 0;
         width: 100%;
         height: 100%;
-        background: #00000099;
+        background: #06070bcc;
 
         TouchArea {
             width: 100%;
@@ -1105,13 +1062,11 @@ export component AppWindow inherits Window {
             animate opacity { duration: Theme.t-mid; }
             init => { modal-import.shown = true; }
 
-            background: Theme.panel;
+            background: Theme.surface;
             border-width: 1px;
-            border-color: #ffffff22;
-            border-radius: Theme.r-card;
-            drop-shadow-blur: 40px;
-            drop-shadow-color: #000000cc;
-            drop-shadow-offset-y: 8px;
+            border-color: Theme.border-hover;
+            border-radius: 20px;
+            clip: true;
 
             VerticalLayout {
                 padding: 22px;
@@ -1122,7 +1077,7 @@ export component AppWindow inherits Window {
                     font-weight: 600;
                     font-size: 13px;
                     height: 17px;
-                    color: Theme.fg;
+                    color: Theme.text-primary;
                     overflow: elide;
                 }
 
@@ -1130,7 +1085,7 @@ export component AppWindow inherits Window {
                     text: root.import-body;
                     font-size: 13px;
                     height: 36px;
-                    color: Theme.fg;
+                    color: Theme.text-secondary;
                     wrap: word-wrap;
                     overflow: elide;
                 }
@@ -1185,7 +1140,7 @@ export component AppWindow inherits Window {
     }
     // Список: у комбо, при нехватке места снизу — раскрывается вверх.
     if Dd.open : Rectangle {
-        property <length> list-h: min(Dd.items.length * 27px + 10px, 214px);
+        property <length> list-h: min(Dd.items.length * 28px + 10px, 214px);
         x: Dd.x - 1px;
         y: Dd.y + 4px + list-h > root.height - 8px
             ? max(8px, Dd.y - list-h - 4px - 36px)
@@ -1198,21 +1153,19 @@ export component AppWindow inherits Window {
         animate opacity { duration: Theme.t-fast; }
         init => { shown = true; }
 
-        background: Theme.panel;
+        background: Theme.surface;
         border-width: 1px;
-        border-color: #ffffff30;
-        border-radius: Theme.r-soft;
+        border-color: Theme.border-hover;
+        border-radius: 12px;
         clip: true;
-        drop-shadow-blur: 24px;
-        drop-shadow-color: #00000077;
 
         for it[i] in Dd.items : Rectangle {
             x: 0;
-            y: 5px + i * 27px;
+            y: 5px + i * 28px;
             width: parent.width;
-            height: 27px;
-            background: i == Dd.selected ? Theme.glass
-                : row-touch.has-hover ? Theme.glass-hover
+            height: 28px;
+            background: i == Dd.selected ? Theme.surface-hover
+                : row-touch.has-hover ? #ffffff0d
                 : transparent;
             animate background { duration: Theme.t-fast; }
 
@@ -1223,7 +1176,7 @@ export component AppWindow inherits Window {
                 height: parent.height;
                 text: it;
                 font-size: 12px;
-                color: i == Dd.selected ? Theme.fg : Theme.fg-dim;
+                color: i == Dd.selected ? Theme.text-primary : Theme.text-secondary;
                 vertical-alignment: center;
                 overflow: elide;
             }
@@ -1231,6 +1184,7 @@ export component AppWindow inherits Window {
             row-touch := TouchArea {
                 width: 100%;
                 height: 100%;
+                mouse-cursor: MouseCursor.pointer;
                 clicked => {
                     Snd.play(2);
                     Dd.open = false;
@@ -1263,7 +1217,7 @@ export component AppWindow inherits Window {
         height: root.height;
         visible: op > 0.01;
         opacity: op;
-        background: Theme.bg;
+        background: Theme.bg-deep;
 
         Image {
             x: 0;
@@ -1291,7 +1245,7 @@ export component AppWindow inherits Window {
                 font-weight: 800;
                 font-size: 44px;
                 letter-spacing: 2px;
-                color: Theme.fg;
+                color: Theme.text-primary;
                 horizontal-alignment: center;
                 visible: !root.splash-img-on;
             }
@@ -1300,7 +1254,7 @@ export component AppWindow inherits Window {
                 height: 20px;
                 text: T.settings_splash_hint;
                 font-size: 13px;
-                color: Theme.fg-dim;
+                color: Theme.text-secondary;
                 horizontal-alignment: center;
                 visible: !root.splash-img-on;
             }

@@ -214,10 +214,6 @@ struct Ctx {
     latest: Option<deploy::ClientVersion>,
     install: InstallUi,
     update: UpdateUi,
-    /// Выбранная в таблице версия (страница «Версии»).
-    selected_version: Option<String>,
-    /// Результат последней проверки целостности.
-    integrity: Option<versions::IntegrityReport>,
     quit: bool,
 
     // — Настройки —
@@ -1692,7 +1688,6 @@ impl Ctx {
                 self.installed = effective_installed(&self.config);
                 self.install = InstallUi::default();
                 self.cancel = None;
-                self.integrity = None;
                 // Моды и кастомизация: после чистой установки накладываем заново.
                 if !already {
                     self.refresh_mods();
@@ -1780,121 +1775,6 @@ impl Ctx {
                 Err(e) => Err(e),
             };
             let _ = tx.send(AsyncEvent::UpdateDone(done));
-        });
-    }
-
-    // ---- Версии (порт src/app.rs) ----
-
-    fn activate_version(&mut self, guid: &str) {
-        if !versions::is_version_guid(guid) {
-            return;
-        }
-        let old = std::mem::take(&mut self.config.installed_version);
-        if !old.is_empty() && old != guid {
-            self.config.previous_version = old;
-        }
-        self.config.installed_version = guid.to_string();
-        self.config.save();
-        self.installed = effective_installed(&self.config);
-        self.integrity = None;
-        self.refresh_counters();
-        logger::info(format!("Активирована версия {guid}"));
-    }
-
-    fn delete_version(&mut self, guid: &str) {
-        if self.install.active || Some(guid) == self.installed.as_deref() {
-            return;
-        }
-        if versions::delete(&self.config.base(), guid).is_ok() {
-            logger::info(format!("Версия {guid} удалена"));
-            if self.config.installed_version == guid {
-                self.config.installed_version.clear();
-                self.config.save();
-            }
-            if self.selected_version.as_deref() == Some(guid) {
-                self.selected_version = None;
-            }
-            self.integrity = None;
-            self.installed = effective_installed(&self.config);
-            self.refresh_counters();
-        }
-    }
-
-    fn check_integrity(&mut self) {
-        let Some(guid) = self
-            .selected_version
-            .clone()
-            .or_else(|| effective_installed(&self.config))
-        else {
-            return;
-        };
-        let dir = self.config.base().join("Versions").join(guid);
-        self.integrity = versions::check(&dir).ok();
-        logger::info("Проверка целостности завершена");
-    }
-
-    fn start_repair(&mut self, mut guid: String) {
-        if self.install.active {
-            return;
-        }
-        if guid == versions::STATIC_VERSION_DIR {
-            if let Some(installed_guid) = versions::get_installed_guid(&self.config.base()) {
-                guid = installed_guid;
-            } else if let Some(latest) = &self.latest {
-                guid = latest.guid.clone();
-            }
-        }
-        logger::info(format!("Запущен ремонт версии {guid}"));
-        self.install = InstallUi {
-            active: true,
-            phase: deploy::Phase::Check,
-            done: 0,
-            total: 0,
-            error: None,
-        };
-
-        let cfg = self.config.clone();
-        let repair_for = effective_installed(&self.config);
-        let tx = self.tx.clone();
-        let cancel = Arc::new(AtomicBool::new(false));
-        self.cancel = Some(Arc::clone(&cancel));
-
-        std::thread::spawn(move || {
-            let (etx, erx) = std::sync::mpsc::channel::<deploy::Event>();
-            let relay = {
-                let tx = tx.clone();
-                std::thread::spawn(move || {
-                    while let Ok(e) = erx.recv() {
-                        if tx.send(AsyncEvent::Install(e)).is_err() {
-                            break;
-                        }
-                    }
-                })
-            };
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .expect("tokio runtime");
-            let res = if guid == versions::STATIC_VERSION_DIR {
-                rt.block_on(deploy::ensure_installed(&cfg, &etx, &cancel, true))
-            } else {
-                rt.block_on(deploy::ensure_guid(
-                    &cfg,
-                    &guid,
-                    true,
-                    false,
-                    &etx,
-                    &cancel,
-                    repair_for.as_deref(),
-                ))
-            };
-            drop(etx);
-            let _ = relay.join();
-            if let Err(e) = res {
-                if !cancel.load(Ordering::Relaxed) {
-                    let _ = tx.send(AsyncEvent::Install(deploy::Event::Failed(e.to_string())));
-                }
-            }
         });
     }
 
@@ -2940,44 +2820,6 @@ impl Ctx {
         crate::core::window_mgr::apply_geometry(target_w, target_h, self.config.center_game);
     }
 
-    fn push_versions(&self, ui: &AppWindow) {
-        let lang = self.lang;
-        let list = versions::list(&self.config.base());
-        let rows: Vec<VersionRow> = list
-            .iter()
-            .enumerate()
-            .map(|(i, v)| VersionRow {
-                guid: v.guid.as_str().into(),
-                size: versions::format_size(v.size).into(),
-                active: self.installed.as_deref() == Some(v.guid.as_str()),
-                no_player: !v.has_player,
-                alt: i % 2 == 1,
-            })
-            .collect();
-        ui.set_ver_versions(ModelRc::new(VecModel::from(rows)));
-        ui.set_ver_selected_guid(
-            self.selected_version.as_deref().unwrap_or("").into(),
-        );
-        ui.set_ver_installed_guid(self.installed.as_deref().unwrap_or("").into());
-
-        let (text, kind) = match &self.integrity {
-            None => (tr(lang, "Ver_Check").to_string(), 0),
-            Some(r) if r.ok() => (fmt(lang, "Ver_IntegrityOk", &[]), 1),
-            Some(r) => (
-                fmt(lang, "Ver_IntegrityIssues", &[&r.issues().to_string()]),
-                2,
-            ),
-        };
-        ui.set_ver_integrity_text(text.as_str().into());
-        ui.set_ver_integrity_kind(kind);
-        let checked = self
-            .integrity
-            .as_ref()
-            .map(|r| format!("checked: {}", r.checked))
-            .unwrap_or_default();
-        ui.set_ver_checked_text(checked.as_str().into());
-    }
-
     fn push_about(&self, ui: &AppWindow) {
         let lang = self.lang;
         ui.set_about_version(updater::current_version().into());
@@ -3782,7 +3624,7 @@ fn winit_drag(_ui: &AppWindow) {}
 
 /// Акцентные цвета (r, g, b). Индексы совпадают с порядком в настройках.
 const ACCENTS: [(u8, u8, u8); 8] = [
-    (0xff, 0xff, 0xff), // белый
+    (0x96, 0xa6, 0xff), // лаванда
     (0x6e, 0xa8, 0xfe), // лазурь
     (0x7e, 0xe2, 0xb8), // мята
     (0xb7, 0x9c, 0xff), // фиалка
@@ -3794,7 +3636,7 @@ const ACCENTS: [(u8, u8, u8); 8] = [
 
 /// Фоновые палитры: (bg, bg-deep, sidebar).
 const BACKGROUNDS: [((u8, u8, u8), (u8, u8, u8), (u8, u8, u8)); 5] = [
-    ((0x05, 0x06, 0x0c), (0x03, 0x04, 0x09), (0x07, 0x08, 0x10)), // Stellar
+    ((0x11, 0x12, 0x18), (0x0d, 0x0e, 0x13), (0x16, 0x18, 0x22)), // Stellar / Deep
     ((0x07, 0x08, 0x17), (0x04, 0x05, 0x0e), (0x09, 0x0a, 0x1a)), // Indigo
     ((0x04, 0x10, 0x1a), (0x02, 0x09, 0x11), (0x05, 0x12, 0x1e)), // Ocean
     ((0x0c, 0x06, 0x14), (0x07, 0x03, 0x10), (0x10, 0x0a, 0x1c)), // Plum
@@ -3810,8 +3652,8 @@ fn apply_theme(ui: &AppWindow, cfg: &Config, gif_timer: &mut Option<slint::Timer
     let theme = ui.global::<Theme>();
     let a = ACCENTS[(cfg.theme_accent as usize) % ACCENTS.len()];
     theme.set_accent(rgb(a));
-    theme.set_on_accent(rgb((0x0b, 0x0e, 0x16)));
-    theme.set_glow(slint::Color::from_argb_u8(0x2b, a.0, a.1, a.2));
+    theme.set_on_accent(rgb((0x0e, 0x10, 0x18)));
+    theme.set_glow(slint::Color::from_argb_u8(0x18, a.0, a.1, a.2));
 
     let (bg, deep, sb) = BACKGROUNDS[(cfg.theme_bg as usize) % BACKGROUNDS.len()];
     theme.set_bg(rgb(bg));
@@ -3914,7 +3756,6 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_nav_home(tr(lang, "Nav_Home").into());
     t.set_nav_games(tr(lang, "Nav_Games").into());
     t.set_nav_flags(tr(lang, "Nav_Flags").into());
-    t.set_nav_versions(tr(lang, "Nav_Versions").into());
     t.set_nav_mods(tr(lang, "Nav_Mods").into());
     t.set_nav_logs(tr(lang, "Nav_Logs").into());
     t.set_nav_settings(tr(lang, "Nav_Settings").into());
@@ -3995,19 +3836,6 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_logs_empty(tr(lang, "Logs_Empty").into());
     t.set_logs_missing(tr(lang, "Logs_Missing").into());
     t.set_logs_no_files(tr(lang, "Logs_NoFiles").into());
-    t.set_ver_h1(tr(lang, "Ver_H1").into());
-    t.set_ver_sub(tr(lang, "Ver_Sub").into());
-    t.set_ver_activate(tr(lang, "Ver_Activate").into());
-    t.set_ver_delete(tr(lang, "Ver_Delete").into());
-    t.set_ver_empty(tr(lang, "Ver_Empty").into());
-    t.set_ver_col_guid(tr(lang, "Ver_ColGuid").into());
-    t.set_ver_col_size(tr(lang, "Ver_ColSize").into());
-    t.set_ver_col_status(tr(lang, "Ver_ColStatus").into());
-    t.set_ver_active(tr(lang, "Ver_Active").into());
-    t.set_ver_check(tr(lang, "Ver_Check").into());
-    t.set_ver_integrity_ok(tr(lang, "Ver_IntegrityOk").into());
-    t.set_ver_integrity_issues(tr(lang, "Ver_IntegrityIssues").into());
-    t.set_ver_repair(tr(lang, "Ver_Repair").into());
     t.set_about_h1(tr(lang, "About_H1").into());
     t.set_about_sub(tr(lang, "About_Sub").into());
     t.set_about_version(tr(lang, "About_Version").into());
@@ -4519,68 +4347,6 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.search = q.to_string();
             let ui = c.weak.clone().unwrap();
             c.logs_tick(&ui);
-        });
-    }
-
-    // — Версии —
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_ver_select(move |g: SharedString| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.selected_version = Some(g.to_string()).filter(|s| !s.is_empty());
-                c.integrity = None;
-            }
-            let c = ctx.borrow();
-            c.push_versions(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_ver_activate(move || {
-            {
-                let mut c = ctx.borrow_mut();
-                if let Some(g) = c.selected_version.clone() {
-                    c.activate_version(&g);
-                }
-            }
-            let c = ctx.borrow();
-            c.push_versions(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_ver_delete(move || {
-            {
-                let mut c = ctx.borrow_mut();
-                if let Some(g) = c.selected_version.clone() {
-                    c.delete_version(&g);
-                }
-            }
-            let c = ctx.borrow();
-            c.push_versions(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_ver_check(move || {
-            ctx.borrow_mut().check_integrity();
-            let c = ctx.borrow();
-            c.push_versions(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_ver_repair(move || {
-            let mut c = ctx.borrow_mut();
-            let g = c.selected_version.clone().or_else(|| c.installed.clone());
-            if let Some(g) = g {
-                c.start_repair(g);
-            }
         });
     }
 
@@ -5795,8 +5561,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
         latest: None,
         install: InstallUi::default(),
         update: UpdateUi::Idle,
-        selected_version: None,
-        integrity: None,
         quit: false,
         channel_draft,
         channel_preview: None,
@@ -5936,9 +5700,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
                     // Полный пуш только при входе: пересборка строк каждые
                     // 100 мс съедала бы фокус редактируемых ячеек.
                     c.push_flags(&ui);
-                }
-                if page == 3 {
-                    c.push_versions(&ui);
                 }
                 if page == 4 {
                     if !c.mods_scanned {
@@ -6139,20 +5900,6 @@ mod shots {
         ui.set_flags_profile_sel_index(0);
         ui.set_flags_profile_sel_valid(true);
         ui.set_flags_profiles_empty(false);
-
-        // ---- Versions ----
-        ui.set_ver_installed_guid("version-56d8f3a2c1b0e947".into());
-        ui.set_ver_selected_guid("version-7c1e9b44a2d0f836".into());
-        ui.set_ver_versions(rows(vec![
-            VersionRow { guid: "version-56d8f3a2c1b0e947".into(), size: "1,42 ГБ".into(), active: true, no_player: false, alt: false },
-            VersionRow { guid: "version-7c1e9b44a2d0f836".into(), size: "1,41 ГБ".into(), active: false, no_player: false, alt: true },
-            VersionRow { guid: "version-9a02c7e51b63d480".into(), size: "1,39 ГБ".into(), active: false, no_player: false, alt: false },
-            VersionRow { guid: "version-3f8d16c0e7a95b21".into(), size: "1,38 ГБ".into(), active: false, no_player: true, alt: true },
-            VersionRow { guid: "version-0b47e2d98c15af63".into(), size: "1,35 ГБ".into(), active: false, no_player: false, alt: false },
-        ]));
-        ui.set_ver_integrity_kind(1);
-        ui.set_ver_integrity_text("Хеш-сверка пройдена · 0 проблем".into());
-        ui.set_ver_checked_text("checked: сегодня, 14:32".into());
 
         // ---- Mods ----
         ui.set_mods_path("C:\\Users\\Linar\\AppData\\Local\\ByteStrap\\Versions\\version-56d8f3a2c1b0e947".into());

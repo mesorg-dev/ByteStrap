@@ -1,82 +1,98 @@
-// Библиотека виджетов «Stellar Mono»: кнопки со свечением и нажатием,
-// тумблеры, поля с фокус-орелолом, слайдер, комбо. Каждый клик звучит
-// через глобал Snd (0 — клик, 1 — тумблер, 2 — вкладка, 3 — успех, 4 — ошибка).
+// Библиотека виджетов ByteStrap: чистый тёмный стиль.
+// Матовые слои, тонкие 1px полупрозрачные обводки, кнопки-таблетки,
+// плавная анимация переходов и аккуратные микро-взаимодействия.
 
 import { Theme } from "theme.slint";
 import { Snd } from "snd.slint";
 import { IconRefresh, IconFolder, IconCopy, IconChevronDown, IconChevronUp } from "icons.slint";
 
 // ===== Появление страницы: fade + лёгкий сдвиг вверх =====
-// Страницы наследуют этот компонент — при смене вкладки контент
-// пересоздаётся (if root.page == N) и анимация срабатывает заново.
 export component PageFade inherits Rectangle {
     property <bool> shown: false;
     opacity: root.shown ? 1.0 : 0.0;
-    animate opacity { duration: 180ms; easing: ease-out; }
+    animate opacity { duration: 160ms; easing: ease-out; }
     y: root.shown ? 0px : 6px;
-    animate y { duration: 180ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
+    animate y { duration: 160ms; easing: cubic-bezier(0.16, 1, 0.3, 1); }
     init => { root.shown = true; }
 }
 
-// ===== Кнопка =====
-// kind: 0 — акцентная (белый свет + ореол), 1 — светлое стекло, 2 — призрачная.
+// ===== Карточка: приподнятая поверхность без теней =====
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.r-lg;
+    border-width: 1px;
+    border-color: Theme.border;
+}
+
+// ===== Кнопка (таблетка) =====
+// kind: 0 — Primary (лавандовый акцент), 1 — Secondary (матовая поверхность + обводка),
+//       2 — Ghost / Subtle (прозрачная / активная), 3 — Danger (приглушённо-красная).
 export component Btn inherits Rectangle {
     in-out property <string> label;
     in-out property <int> kind: 0;
     in-out property <bool> enabled: true;
-    /// Подсветка toggle-состояния (kind 2).
+    /// Подсветка активного состояния (например, для табов или фильтров).
     in-out property <bool> active: false;
     callback clicked;
 
     height: 34px;
-    border-radius: Theme.r-soft;
-    background: root.kind == 0
-        ? Theme.accent
-        : root.kind == 1
-            ? (touch.pressed ? Theme.glass-press
-                : touch.has-hover ? #ffffff30 : #ffffff24)
-            : root.active
-                ? (touch.has-hover ? Theme.glass-hover : Theme.glass)
-                : (touch.has-hover ? Theme.glass : (touch.pressed ? Theme.glass-press : transparent));
-    animate background { duration: Theme.t-fast; }
+    border-radius: self.height / 2;
+
+    background: !root.enabled
+        ? (root.kind == 0 ? Theme.accent : (root.kind == 1 ? #1B1E2A : (root.kind == 3 ? #F871711A : transparent)))
+        : root.kind == 0
+            ? (touch.pressed ? Theme.accent-pressed : (touch.has-hover ? Theme.accent-hover : Theme.accent))
+            : root.kind == 1
+                ? (touch.pressed ? #252A3B : (touch.has-hover ? Theme.surface-hover : #1B1E2A))
+                : root.kind == 3
+                    ? (touch.pressed ? #F8717133 : (touch.has-hover ? #F8717126 : #F871711A))
+                    : root.active
+                        ? (touch.has-hover ? #FFFFFF1A : #FFFFFF12)
+                        : (touch.pressed ? #FFFFFF14 : (touch.has-hover ? #FFFFFF0D : transparent));
+    animate background { duration: Theme.t-fast; easing: ease-out; }
 
     border-width: root.kind == 0 ? 0px : 1px;
     border-color: root.kind == 1
-        ? #ffffff38
-        : root.active ? #ffffff4d : Theme.line;
-    animate border-color { duration: Theme.t-fast; }
+        ? (touch.has-hover && root.enabled ? Theme.border-hover : Theme.border)
+        : root.kind == 3
+            ? (touch.has-hover && root.enabled ? #F8717166 : #F8717140)
+            : root.active
+                ? Theme.border-accent
+                : (touch.has-hover && root.enabled ? Theme.border : transparent);
+    animate border-color { duration: Theme.t-fast; easing: ease-out; }
 
-    // Нажатие — лёгкий «провал», наведение — подъём и ореол.
-    drop-shadow-offset-y: touch.pressed ? 3px
-        : root.kind == 0 && touch.has-hover ? 5px : 2px;
-    animate drop-shadow-offset-y { duration: Theme.t-fast; }
+    opacity: root.enabled ? 1.0 : 0.45;
 
-    // Ореол только у акцентной: растёт и ярче при наведении.
-    drop-shadow-blur: root.kind == 0 && root.enabled
-        ? (touch.has-hover ? 30px : 16px) : 0px;
-    drop-shadow-color: root.kind == 0 && root.enabled
-        ? (touch.has-hover ? Theme.glow : Theme.glow) : transparent;
-    animate drop-shadow-blur { duration: Theme.t-fast; }
-    animate drop-shadow-color { duration: Theme.t-fast; }
+    property <length> pad-h: root.height >= 38px ? 18px : 16px;
 
-    opacity: root.enabled ? 1.0 : 0.38;
+    HorizontalLayout {
+        padding-left: root.pad-h;
+        padding-right: root.pad-h;
+        alignment: center;
 
-    Text {
-        width: 100%;
-        height: 100%;
-        text: root.label;
-        font-size: 12.5px;
-        font-weight: root.kind == 0 ? 700 : 600;
-        color: root.kind == 0 ? Theme.on-accent : Theme.fg;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
+        Text {
+            text: root.label;
+            font-family: Theme.font;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: root.kind == 0
+                ? Theme.on-accent
+                : root.kind == 3
+                    ? #FCA5A5
+                    : root.active
+                        ? Theme.accent
+                        : (touch.has-hover && root.enabled ? Theme.text-primary : (root.kind == 2 ? Theme.text-secondary : Theme.text-primary));
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
     }
 
     touch := TouchArea {
         width: 100%;
         height: 100%;
         enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
             Snd.play(0);
             root.clicked();
@@ -84,49 +100,53 @@ export component Btn inherits Rectangle {
     }
 }
 
-// ===== Иконочная кнопка 28×28 =====
+// ===== Иконочная кнопка (круглая / таблетка 28×28) =====
 // icon: 0 — обновить, 1 — папка, 2 — копировать.
 export component IconBtn inherits Rectangle {
     in-out property <int> icon: 0;
     in-out property <string> tip;
+    in-out property <bool> enabled: true;
     callback clicked;
 
     width: 28px;
     height: 28px;
-    border-radius: Theme.r-soft;
+    border-radius: self.height / 2;
     border-width: 1px;
-    border-color: touch.has-hover ? #ffffff35 : #ffffff14;
-    background: touch.pressed ? Theme.glass-press
-        : touch.has-hover ? Theme.glass-hover
-        : #ffffff08;
-    animate background { duration: Theme.t-fast; }
-    animate border-color { duration: Theme.t-fast; }
+    border-color: touch.has-hover && root.enabled ? Theme.border-hover : Theme.border;
+    background: touch.pressed && root.enabled ? #2A2F42
+        : touch.has-hover && root.enabled ? Theme.surface-hover
+        : Theme.surface-2;
+    animate background { duration: Theme.t-fast; easing: ease-out; }
+    animate border-color { duration: Theme.t-fast; easing: ease-out; }
+    opacity: root.enabled ? 1.0 : 0.45;
 
     if root.icon == 0 : IconRefresh {
-        x: (parent.width - 15px) / 2;
-        y: (parent.height - 15px) / 2;
-        width: 15px;
-        height: 15px;
-        c: touch.has-hover ? Theme.fg : Theme.fg-dim;
+        x: (parent.width - 14px) / 2;
+        y: (parent.height - 14px) / 2;
+        width: 14px;
+        height: 14px;
+        c: touch.has-hover && root.enabled ? Theme.text-primary : Theme.text-secondary;
     }
     if root.icon == 1 : IconFolder {
-        x: (parent.width - 15px) / 2;
-        y: (parent.height - 15px) / 2;
-        width: 15px;
-        height: 15px;
-        c: touch.has-hover ? Theme.fg : Theme.fg-dim;
+        x: (parent.width - 14px) / 2;
+        y: (parent.height - 14px) / 2;
+        width: 14px;
+        height: 14px;
+        c: touch.has-hover && root.enabled ? Theme.text-primary : Theme.text-secondary;
     }
     if root.icon == 2 : IconCopy {
-        x: (parent.width - 15px) / 2;
-        y: (parent.height - 15px) / 2;
-        width: 15px;
-        height: 15px;
-        c: touch.has-hover ? Theme.fg : Theme.fg-dim;
+        x: (parent.width - 14px) / 2;
+        y: (parent.height - 14px) / 2;
+        width: 14px;
+        height: 14px;
+        c: touch.has-hover && root.enabled ? Theme.text-primary : Theme.text-secondary;
     }
 
     touch := TouchArea {
         width: 100%;
         height: 100%;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
             Snd.play(0);
             root.clicked();
@@ -137,99 +157,145 @@ export component IconBtn inherits Rectangle {
     }
 }
 
-// ===== Поле ввода =====
+// ===== Стрелочная кнопка-глиф 28×28 =====
+export component GlyphBtn inherits Rectangle {
+    in-out property <string> glyph;
+    in-out property <bool> enabled: true;
+    in-out property <string> tip;
+    callback clicked;
+
+    width: 28px;
+    height: 28px;
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: touch.has-hover && root.enabled ? Theme.border-hover : Theme.border;
+    background: touch.pressed && root.enabled ? #2A2F42
+        : touch.has-hover && root.enabled ? Theme.surface-hover
+        : Theme.surface-2;
+    animate background { duration: Theme.t-fast; easing: ease-out; }
+    animate border-color { duration: Theme.t-fast; easing: ease-out; }
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.glyph;
+        font-family: Theme.font-mono;
+        font-size: 13px;
+        color: root.enabled
+            ? (touch.has-hover ? Theme.text-primary : Theme.text-secondary)
+            : Theme.text-muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            Snd.play(0);
+            root.clicked();
+        }
+        Tooltip {
+            text: @markdown("\{root.tip}");
+        }
+    }
+}
+
+// ===== Поле ввода (TextField) =====
 export component TextField inherits Rectangle {
     in-out property <string> text <=> input.text;
     in-out property <string> placeholder;
+    in-out property <bool> enabled: true;
     callback accepted;
     callback edited;
 
-    height: 32px;
-    border-radius: Theme.r-soft;
-    background: Theme.field;
+    height: 36px;
+    border-radius: Theme.r-md;
+    background: #12141C;
     border-width: 1px;
-    border-color: input.has-focus ? #ffffff52 : Theme.line;
-    animate border-color { duration: Theme.t-fast; }
-    drop-shadow-blur: input.has-focus ? 10px : 0px;
-    drop-shadow-color: #ffffff14;
-    animate drop-shadow-blur { duration: Theme.t-mid; }
+    border-color: input.has-focus
+        ? Theme.accent
+        : (touch.has-hover && root.enabled ? Theme.border-hover : Theme.border);
+    animate border-color { duration: Theme.t-fast; easing: ease-out; }
 
     input := TextInput {
-        x: 11px;
+        x: 12px;
         y: 0;
-        width: parent.width - 22px;
+        width: parent.width - 24px;
         height: parent.height;
+        enabled: root.enabled;
         vertical-alignment: center;
         single-line: true;
-        font-size: 12px;
+        font-size: 12.5px;
         font-family: Theme.font;
-        color: Theme.fg;
+        color: Theme.text-primary;
         accepted => { root.accepted(); }
         edited => { root.edited(); }
     }
 
-    /// Фокус + выделение всего текста (для вводных диалогов).
+    /// Фокус + выделение всего текста.
     public function focus-select-all() {
         input.focus();
         input.select-all();
     }
 
     Text {
-        x: 11px;
+        x: 12px;
         y: 0;
-        width: parent.width - 22px;
+        width: parent.width - 24px;
         height: parent.height;
         visible: root.text == "";
         text: root.placeholder;
-        font-size: 12px;
+        font-size: 12.5px;
         font-family: Theme.font;
-        color: Theme.fg-dimmer;
+        color: Theme.text-muted;
         vertical-alignment: center;
         overflow: elide;
-    }
-}
-
-// ===== Тумблер 38×22 =====
-export component Toggle inherits Rectangle {
-    in-out property <bool> on: false;
-    callback toggled(bool);
-
-    width: 38px;
-    height: 22px;
-    border-radius: 11px;
-    background: root.on ? #ffffff2e : #ffffff0a;
-    border-width: 1px;
-    border-color: root.on ? #ffffff5c : Theme.line;
-    animate background { duration: Theme.t-mid; }
-    animate border-color { duration: Theme.t-mid; }
-
-    // Мягкая заливка акцентным цветом при включении
-    Rectangle {
-        width: 100%;
-        height: 100%;
-        border-radius: parent.border-radius;
-        background: Theme.accent;
-        opacity: root.on ? 0.22 : 0.0;
-        animate opacity { duration: Theme.t-mid; }
-    }
-
-    knob := Rectangle {
-        x: root.on ? parent.width - self.width - 3px : 3px;
-        animate x { duration: Theme.t-mid; easing: ease-out; }
-        y: (parent.height - self.height) / 2;
-        width: 16px;
-        height: 16px;
-        border-radius: 8px;
-        background: root.on ? Theme.accent : Theme.fg-dimmer;
-        animate background { duration: Theme.t-mid; }
-        drop-shadow-blur: root.on ? 8px : 0px;
-        drop-shadow-color: Theme.glow;
-        animate drop-shadow-blur { duration: Theme.t-mid; }
     }
 
     touch := TouchArea {
         width: 100%;
         height: 100%;
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+}
+
+// ===== Тумблер (Toggle 40×22) =====
+export component Toggle inherits Rectangle {
+    in-out property <bool> on: false;
+    in-out property <bool> enabled: true;
+    callback toggled(bool);
+
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.on ? Theme.accent : #232736;
+    border-width: 1px;
+    border-color: root.on ? Theme.accent : Theme.border;
+    animate background, border-color { duration: Theme.t-fast; easing: ease-out; }
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    knob := Rectangle {
+        x: root.on ? parent.width - self.width - 3px : 3px;
+        animate x { duration: Theme.t-fast; easing: ease-out; }
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: root.on ? Theme.on-accent : Theme.text-secondary;
+        animate background { duration: Theme.t-fast; easing: ease-out; }
+    }
+
+    touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
             Snd.play(1);
             root.toggled(!root.on);
@@ -241,9 +307,11 @@ export component Toggle inherits Rectangle {
 export component ProgressBar inherits Rectangle {
     in-out property <float> value: 0;
 
-    height: 4px;
-    border-radius: 2px;
-    background: #ffffff14;
+    height: 6px;
+    border-radius: 3px;
+    background: Theme.surface-2;
+    border-width: 1px;
+    border-color: Theme.border;
     clip: true;
 
     Rectangle {
@@ -251,33 +319,31 @@ export component ProgressBar inherits Rectangle {
         y: 0;
         width: parent.width * min(max(root.value, 0.0), 1.0);
         height: parent.height;
-        border-radius: 2px;
+        border-radius: 3px;
         background: Theme.accent;
-        drop-shadow-blur: 6px;
-        drop-shadow-color: Theme.glow;
-        animate width { duration: Theme.t-mid; easing: ease-in-out; }
+        animate width { duration: Theme.t-fast; easing: ease-out; }
     }
 }
 
-// ===== Точка статуса: 0 — неактивно, 1 — готово, 2 — занято, 3 — ошибка =====
+// ===== Точка статуса (StatusDot / бейдж) =====
+// kind: 0 — неактивно (muted), 1 — готово (success), 2 — занято (warning), 3 — ошибка (danger).
 export component StatusDot inherits Rectangle {
     in-out property <int> kind: 0;
 
-    width: 10px;
-    height: 10px;
-    background: root.kind == 1 ? Theme.good
-        : root.kind == 2 ? Theme.warn
-        : root.kind == 3 ? Theme.bad
-        : Theme.fg-dimmer;
-    border-radius: 5px;
-    animate background { duration: Theme.t-mid; }
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: root.kind == 1 ? Theme.success
+        : root.kind == 2 ? Theme.warning
+        : root.kind == 3 ? Theme.danger
+        : Theme.text-muted;
+    animate background { duration: Theme.t-fast; }
 
-    // Занято — точка пульсирует.
-    opacity: root.kind == 2 ? (0.45 + 0.55 * Theme.twinkle(3.7, animation-tick() / 1ms)) : 1.0;
+    // Занято — деликатная пульсация
+    opacity: root.kind == 2 ? (0.55 + 0.45 * Theme.twinkle(3.7, animation-tick() / 1ms)) : 1.0;
 
-    // Готово — мягкий ореол.
-    drop-shadow-blur: root.kind == 1 ? 6px : 0px;
-    drop-shadow-color: #8ed6a44d;
+    drop-shadow-blur: root.kind == 1 ? 4px : 0px;
+    drop-shadow-color: #4ADE8033;
 }
 
 // ===== Строка настройки: заголовок (+описание) слева, тумблер справа =====
@@ -285,23 +351,19 @@ export component OptionRow inherits Rectangle {
     in-out property <string> title;
     in-out property <string> desc: "";
     in-out property <bool> checked: false;
+    in-out property <bool> enabled: true;
     callback toggled(bool);
 
-    min-height: root.desc == "" ? 28px : 40px;
-
-    // Клик по всей строке — переключение.
-    touch := TouchArea {
-        width: 100%;
-        height: 100%;
-        clicked => {
-            Snd.play(1);
-            root.toggled(!root.checked);
-        }
-    }
+    min-height: root.desc == "" ? 32px : 44px;
+    border-radius: Theme.r-md;
+    background: touch.has-hover && root.enabled ? #FFFFFF05 : transparent;
+    animate background { duration: Theme.t-fast; }
 
     HorizontalLayout {
         width: 100%;
         spacing: 12px;
+        padding-left: 4px;
+        padding-right: 4px;
 
         VerticalLayout {
             horizontal-stretch: 1;
@@ -310,16 +372,18 @@ export component OptionRow inherits Rectangle {
 
             Text {
                 text: root.title;
-                font-size: root.desc == "" ? 12px : 13px;
+                font-family: Theme.font;
+                font-size: root.desc == "" ? 12.5px : 13px;
                 font-weight: root.desc == "" ? 400 : 600;
-                color: Theme.fg;
+                color: Theme.text-primary;
                 overflow: elide;
             }
 
             if root.desc != "" : Text {
                 text: root.desc;
-                font-size: 11px;
-                color: Theme.fg-dimmer;
+                font-family: Theme.font;
+                font-size: 11.5px;
+                color: Theme.text-secondary;
                 overflow: elide;
             }
         }
@@ -330,59 +394,25 @@ export component OptionRow inherits Rectangle {
 
             Toggle {
                 on: root.checked;
+                enabled: root.enabled;
                 toggled(v) => { root.toggled(v); }
             }
         }
-    }
-}
-
-// ===== Стрелочная кнопка-глиф 28×28 (порядок модов) =====
-export component GlyphBtn inherits Rectangle {
-    in-out property <string> glyph;
-    in-out property <bool> enabled: true;
-    in-out property <string> tip;
-    callback clicked;
-
-    width: 28px;
-    height: 28px;
-    border-radius: Theme.r-soft;
-    border-width: 1px;
-    border-color: touch.has-hover && root.enabled ? #ffffff35 : #ffffff14;
-    background: touch.pressed && root.enabled ? Theme.glass-press
-        : touch.has-hover && root.enabled ? Theme.glass-hover
-        : #ffffff08;
-    animate background { duration: Theme.t-fast; }
-    animate border-color { duration: Theme.t-fast; }
-    opacity: root.enabled ? 1.0 : 0.35;
-
-    Text {
-        width: 100%;
-        height: 100%;
-        text: root.glyph;
-        font-family: Theme.font-mono;
-        font-size: 13px;
-        color: root.enabled ? (touch.has-hover ? Theme.fg : Theme.fg-dim) : Theme.fg-dimmer;
-        horizontal-alignment: center;
-        vertical-alignment: center;
     }
 
     touch := TouchArea {
         width: 100%;
         height: 100%;
         enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
-            Snd.play(0);
-            root.clicked();
-        }
-        Tooltip {
-            text: @markdown("\{root.tip}");
+            Snd.play(1);
+            root.toggled(!root.checked);
         }
     }
 }
 
-// ===== Оверлей дропдаунов =====
-// Список рисуется в AppWindow поверх всего содержимого (см. dd-list) —
-// PopupWindow под frameless-окном на Windows может рисоваться под родителем.
+// ===== Оверлей дропдаунов (маршрутизация выбора через Dd) =====
 export global Dd {
     in-out property <bool> open: false;
     /// Позиция списка (левый верх комбо) и его ширина.
@@ -390,42 +420,45 @@ export global Dd {
     in-out property <length> y;
     in-out property <length> w;
     /// Маршрутизация выбора: 0..99 — пресеты флагов, 100 — профили флагов,
-    /// 200 — профили модов (см. обработчик dd-list в AppWindow).
+    /// 200 — профили модов, 300+ — настройки клиента.
     in-out property <int> owner: -1;
     in-out property <[string]> items;
     in-out property <int> selected: -1;
     callback pick(int);
 }
 
-// ===== Выпадающий список (профили) =====
+// ===== Выпадающий список (Combo) =====
 export component Combo inherits Rectangle {
     in-out property <[string]> items;
     in-out property <int> selected: -1;
     in-out property <string> current-text;
-    /// Идентификатор для маршрутизации выбора через Dd.
     in-out property <int> dd-id: 0;
+    in-out property <bool> enabled: true;
     callback pick(int);
     /// Состояние списка изменилось (для высоты скролла у вызывающего).
     callback open-changed(bool);
 
-    /// Список этого комбо сейчас раскрыт?
     property <bool> opened: Dd.open && Dd.owner == root.dd-id;
 
-    height: 32px;
-    border-radius: Theme.r-soft;
-    background: Theme.field;
+    height: 34px;
+    border-radius: Theme.r-md;
+    background: #12141C;
     border-width: 1px;
-    border-color: root.opened ? #ffffff52 : Theme.line;
-    animate border-color { duration: Theme.t-fast; }
+    border-color: root.opened
+        ? Theme.accent
+        : (touch.has-hover && root.enabled ? Theme.border-hover : Theme.border);
+    animate border-color { duration: Theme.t-fast; easing: ease-out; }
+    opacity: root.enabled ? 1.0 : 0.45;
 
     Text {
-        x: 11px;
+        x: 12px;
         y: 0;
         width: parent.width - 34px;
         height: parent.height;
         text: root.current-text;
+        font-family: Theme.font;
         font-size: 12px;
-        color: Theme.fg;
+        color: Theme.text-primary;
         vertical-alignment: center;
         overflow: elide;
     }
@@ -435,19 +468,21 @@ export component Combo inherits Rectangle {
         y: (parent.height - self.height) / 2;
         width: 12px;
         height: 12px;
-        c: Theme.fg;
+        c: Theme.accent;
     }
     if !root.opened : IconChevronDown {
         x: parent.width - 22px;
         y: (parent.height - self.height) / 2;
         width: 12px;
         height: 12px;
-        c: touch.has-hover ? Theme.fg : Theme.fg-dim;
+        c: touch.has-hover && root.enabled ? Theme.text-primary : Theme.text-secondary;
     }
 
     touch := TouchArea {
         width: 100%;
         height: 100%;
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
             Snd.play(0);
             if root.opened {
@@ -480,7 +515,7 @@ export component Slider inherits Rectangle {
     clip: false;
 
     property <float> v: min(max(root.value, 0.0), 1.0);
-    property <length> knob-size: 16px;
+    property <length> knob-size: 14px;
     property <length> track-w: max(1px, self.width - root.knob-size);
     property <length> knob-x: root.v * root.track-w;
     property <bool> dragging: false;
@@ -492,7 +527,7 @@ export component Slider inherits Rectangle {
         width: parent.width;
         height: 4px;
         border-radius: 2px;
-        background: #ffffff14;
+        background: #232736;
     }
 
     // Заполнение активной части от левого края до центра бегунка
@@ -502,9 +537,7 @@ export component Slider inherits Rectangle {
         width: min(parent.width, root.knob-x + root.knob-size / 2);
         height: 4px;
         border-radius: 2px;
-        background: root.enabled ? #ffffff : #ffffff40;
-        drop-shadow-blur: root.enabled ? 6px : 0px;
-        drop-shadow-color: #ffffff2e;
+        background: root.enabled ? Theme.accent : #5A5F75;
     }
 
     // Бегунок (Knob)
@@ -514,22 +547,22 @@ export component Slider inherits Rectangle {
         width: root.knob-size;
         height: root.knob-size;
         border-radius: root.knob-size / 2;
-        background: root.enabled ? #ffffff : #888888;
+        background: root.enabled ? Theme.accent : #5A5F75;
         border-width: 1px;
-        border-color: root.dragging || touch.has-hover ? #ffffff : #ffffffaa;
-        drop-shadow-blur: root.dragging ? 12px : (touch.has-hover ? 8px : 4px);
-        drop-shadow-color: #ffffff66;
+        border-color: root.dragging || (touch.has-hover && root.enabled) ? #FFFFFF : #FFFFFF88;
+        drop-shadow-blur: root.dragging ? 6px : 2px;
+        drop-shadow-color: Theme.glow;
         animate drop-shadow-blur { duration: 100ms; }
     }
 
-    // Зона ввода — увеличена по высоте (42px), чтобы курсор не терялся при вертикальных колебаниях руки
+    // Зона ввода
     touch := TouchArea {
         x: 0;
         y: (parent.height - self.height) / 2;
         width: parent.width;
         height: parent.height + 16px;
         enabled: root.enabled;
-        mouse-cursor: pointer;
+        mouse-cursor: root.enabled ? pointer : default;
 
         pointer-event(event) => {
             if (event.button != PointerEventButton.left) {

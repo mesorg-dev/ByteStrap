@@ -23,6 +23,7 @@ jobs:
       - name: Tests
         shell: pwsh
         run: |
+          $env:BYTESTRAP_SHOTS = "1"
           cargo test --locked *>&1 | Tee-Object -FilePath test-out.txt | Write-Host
           if ($LASTEXITCODE -ne 0) {
             # Ошибки компиляции — в аннотации чек-рана (публичный API):
@@ -38,6 +39,13 @@ jobs:
             }
             exit $LASTEXITCODE
           }
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UI-Screenshots
+          path: target/shots/*.png
+          if-no-files-found: ignore
 
       - name: Release build (smoke)
         run: cargo build --release --locked

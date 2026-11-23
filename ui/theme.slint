@@ -1,67 +1,114 @@
-// Дизайн-токены ByteStrap «Stellar Mono»: звёздный монохром, холодный белый.
-// Глубокий тёмный фон, стеклянные панели, единственный акцент — белый свет.
-// Здесь же — математика звёздного неба (детерминированный «шум» + мерцание).
+// Дизайн-система ByteStrap: чистый тёмный стиль (глубокие матовые слои,
+// тонкие 1px обводки, лавандовый акцент, строгая типографика).
 
 export global Theme {
-    // ===== Палитра =====
-    in-out property <color> bg: #05060c;
-    in-out property <color> bg-deep: #030409;
-    in-out property <color> sidebar: #070810;
-    in-out property <color> panel: #0c0f17;
-    in-out property <color> panel-alt: #090b12;
-    in-out property <color> field: #0a0d14;
-    in-out property <color> line: #1f232e;
-    in-out property <color> line-soft: #14161e;
-    in-out property <color> fg: #f4f6fb;
-    in-out property <color> fg-dim: #a2aab9;
-    in-out property <color> fg-dimmer: #7c8599;
+    // ===== Палитра слоёв =====
+    /// Внешний фон окна
+    in-out property <color> bg-deep: #0D0E13;
+    /// Основная подложка
+    in-out property <color> bg: #111218;
+    /// Главная карточка / приподнятая поверхность / сайдбар
+    in-out property <color> sidebar: #161822;
+    in-out property <color> surface: #161822;
+    /// Вложенные блоки, инпуты, вторичные элементы
+    in-out property <color> surface-2: #1C1F2B;
+    /// Наведение на элементы
+    in-out property <color> surface-hover: #232736;
+    /// Базовая обводка (1px, полупрозрачная)
+    in-out property <color> border: #FFFFFF12;
+    /// Обводка при наведении / фокусе
+    in-out property <color> border-hover: #FFFFFF26;
+    /// Акцентная обводка
+    in-out property <color> border-accent: #96A6FF55;
 
-    // Холодный белый — единственный акцент.
-    in-out property <color> accent: #ffffff;
-    in-out property <color> on-accent: #07090f;
+    // ===== Акцент и текст =====
+    /// Мягкий лавандовый акцент
+    in-out property <color> accent: #96A6FF;
+    in-out property <color> accent-hover: #A8B6FF;
+    in-out property <color> accent-pressed: #8294F5;
+    /// Тёмный контрастный текст на акцентных элементах
+    in-out property <color> on-accent: #0E1018;
+    /// Едва заметное свечение
+    in-out property <color> glow: #96A6FF18;
 
-    // Семантика — приглушённая, чтобы не ломать монохром.
-    in-out property <color> good: #8ed6a4;
-    in-out property <color> bad: #e2959f;
-    in-out property <color> warn: #dcc28d;
+    /// Основной текст
+    in-out property <color> text-primary: #F4F5F8;
+    /// Вторичный текст
+    in-out property <color> text-secondary: #8A8FA6;
+    /// Приглушённый текст / подсказки
+    in-out property <color> text-muted: #5A5F75;
 
-    // Стекло: заливки и свечения поверх фона.
-    in-out property <color> glass: #ffffff08;
-    in-out property <color> glass-hover: #ffffff12;
-    in-out property <color> glass-press: #ffffff1c;
-    in-out property <color> glow: #ffffff2b;
+    // ===== Семантика =====
+    in-out property <color> success: #4ADE80;
+    in-out property <color> warning: #FBBF24;
+    in-out property <color> danger: #F87171;
+    in-out property <color> info: #96A6FF;
 
-    // ===== Метрики =====
-    in-out property <length> r-card: 10px;
-    in-out property <length> r-soft: 7px;
+    // ===== Алиасы совместимости для существующих страниц =====
+    in-out property <color> panel: #161822;
+    in-out property <color> panel-alt: #1C1F2B;
+    in-out property <color> field: #1C1F2B;
+    in-out property <color> line: #FFFFFF12;
+    in-out property <color> line-soft: #FFFFFF0A;
+    in-out property <color> fg: #F4F5F8;
+    in-out property <color> fg-dim: #8A8FA6;
+    in-out property <color> fg-dimmer: #5A5F75;
+    in-out property <color> good: #4ADE80;
+    in-out property <color> warn: #FBBF24;
+    in-out property <color> bad: #F87171;
+    in-out property <color> glass: #FFFFFF08;
+    in-out property <color> glass-hover: #FFFFFF12;
+    in-out property <color> glass-press: #FFFFFF1C;
 
-    in-out property <string> font: "Segoe UI";
-    in-out property <string> font-mono: "Consolas";
-    in-out property <string> font-display: "Segoe UI";
+    // ===== Типографика =====
+    in-out property <string> font: "Inter";
+    in-out property <string> font-display: "Inter";
+    in-out property <string> font-mono: "JetBrains Mono";
 
-    in-out property <length> titlebar-h: 44px;
+    // Шкала размеров
+    in-out property <length> font-size-xs: 11px;
+    in-out property <length> font-size-sm: 12px;
+    in-out property <length> font-size-md: 13.5px;
+    in-out property <length> font-size-lg: 16px;
+    in-out property <length> font-size-xl: 22px;
+    in-out property <length> font-size-hero: 36px;
+
+    // ===== Геометрия и ритм =====
+    // Отступы
+    in-out property <length> spacing-xs: 4px;
+    in-out property <length> spacing-sm: 8px;
+    in-out property <length> spacing-md: 12px;
+    in-out property <length> spacing-lg: 16px;
+    in-out property <length> spacing-xl: 24px;
+
+    // Радиусы скруглений
+    in-out property <length> r-sm: 8px;
+    in-out property <length> r-md: 10px;
+    in-out property <length> r-lg: 16px;
+    in-out property <length> r-xl: 20px;
+    in-out property <length> r-card: 16px;
+    in-out property <length> r-soft: 10px;
+
+    // Размеры навигации
+    in-out property <length> titlebar-h: 54px;
     in-out property <length> sidebar-w: 236px;
     in-out property <length> nav-item-h: 46px;
     in-out property <length> nav-step: 50px;
 
-    // ===== Тайминги анимаций =====
-    in-out property <duration> t-fast: 120ms;
+    // Тайминги анимаций
+    in-out property <duration> t-fast: 140ms;
     in-out property <duration> t-mid: 220ms;
     in-out property <duration> t-slow: 380ms;
 
-    // ===== Математика неба =====
-    // Дробная часть числа.
+    // ===== Математика неба (процедурный фон stars.slint) =====
     pure public function frac(x: float) -> float {
         x - Math.floor(x);
     }
 
-    // Детерминированный «шум» по индексу: 0..1, стабилен между кадрами.
     pure public function hash(i: float) -> float {
         Theme.frac(Math.sin((i * 127.1 + 311.7) * 1deg) * 43758.5453);
     }
 
-    // Мерцание звезды 0..1: i — фаза, t — время в мс (animation-tick() / 1ms).
-    // Синусы Slint принимают угол; умножаем градусы на 1deg.
     pure public function twinkle(i: float, t: float) -> float {
         0.5 + 0.5 * Math.sin(
             (t * (0.045 + Theme.hash(i * 3.1) * 0.07)
@@ -70,7 +117,6 @@ export global Theme {
         );
     }
 
-    // Плавный дрейф по синусу: t — время в мс, phase — начальная фаза в градусах.
     pure public function drift(t: float, phase: float) -> float {
         Math.sin((t * 0.003 + phase) * 1deg) * 40.0;
     }
