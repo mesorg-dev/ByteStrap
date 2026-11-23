@@ -8,6 +8,7 @@ on:
     branches: [main, feat/slint-ui]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -40,3 +41,10 @@ jobs:
 
       - name: Release build (smoke)
         run: cargo build --release --locked
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ByteStrap-windows-x64
+          path: target/release/bytestrap.exe
+          if-no-files-found: error

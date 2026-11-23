@@ -76,6 +76,7 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     // Окно
     "Win_Min" => "Свернуть",
     "Win_Max" => "Развернуть",
+    "Win_Restore" => "Восстановить в окно",
     "Win_Close" => "Закрыть",
     // Общее
     "Btn_OK" => "ОК",
@@ -468,6 +469,7 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     // Window
     "Win_Min" => "Minimize",
     "Win_Max" => "Maximize",
+    "Win_Restore" => "Restore down",
     "Win_Close" => "Close",
     // Common
     "Btn_OK" => "OK",

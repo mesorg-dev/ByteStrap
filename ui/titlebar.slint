@@ -47,6 +47,7 @@ component WinBtn inherits Rectangle {
 
 export component TitleBar inherits Rectangle {
     in-out property <string> status;
+    in-out property <bool> is-maximized: false;
     callback win-min();
     callback win-max();
     /// Начать перетаскивание окна (winit).
@@ -108,9 +109,9 @@ export component TitleBar inherits Rectangle {
 
     // Статус по центру.
     Text {
-        x: 280px;
+        x: 180px;
         y: 0;
-        width: parent.width - 560px;
+        width: parent.width - 320px;
         height: parent.height;
         visible: root.status != "";
         text: root.status;
@@ -147,8 +148,8 @@ export component TitleBar inherits Rectangle {
     WinBtn {
         x: parent.width - 92px;
         y: 0;
-        glyph: "▢";
-        tip: T.win_max;
+        glyph: root.is-maximized ? "❐" : "▢";
+        tip: root.is-maximized ? T.win_restore : T.win_max;
         clicked => { root.win-max(); }
     }
     WinBtn {

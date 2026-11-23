@@ -3761,6 +3761,7 @@ fn winit_toggle_max(ui: &AppWindow) {
     let _ = ui.window().with_winit_window(|x| {
         let max = x.is_maximized();
         x.set_maximized(!max);
+        ui.set_is_maximized(!max);
     });
 }
 
@@ -3921,6 +3922,7 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_app_sub(tr(lang, "App_Sub").into());
     t.set_win_min(tr(lang, "Win_Min").into());
     t.set_win_max(tr(lang, "Win_Max").into());
+    t.set_win_restore(tr(lang, "Win_Restore").into());
     t.set_win_close(tr(lang, "Win_Close").into());
     t.set_footer_ready(tr(lang, "Footer_Ready").into());
     t.set_btn_cancel(tr(lang, "Btn_Cancel").into());
@@ -4169,23 +4171,21 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     // — Окно —
     {
         let w = weak.clone();
-        #[cfg_attr(not(windows), allow(unused_variables))]
-        let ctx2 = Rc::clone(ctx);
         ui.on_win_min(move || {
             let ui = &w.unwrap();
-            // Режим «сворачивать в трей»: кнопка «—» прячет окно с панели
-            // задач, процесс остаётся в трее.
-            #[cfg(windows)]
-            if ctx2.borrow().config.close_to_tray {
-                let _ = ui.hide();
-                return;
-            }
             winit_min(ui);
         });
     }
     {
         let w = weak.clone();
-        ui.on_win_max(move || winit_toggle_max(&w.unwrap()));
+        let ctx = Rc::clone(ctx);
+        ui.on_win_max(move || {
+            let ui = w.unwrap();
+            winit_toggle_max(&ui);
+            let mut c = ctx.borrow_mut();
+            c.config.window_max = ui.get_is_maximized();
+            c.config.save();
+        });
     }
     {
         let w = weak.clone();
@@ -5678,6 +5678,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let config = Config::load();
     if config.center_window {
         center_window_on_screen(&ui);
+    }
+    if config.window_max {
+        #[cfg(windows)]
+        let _ = ui.window().with_winit_window(|x| {
+            x.set_maximized(true);
+        });
+        ui.set_is_maximized(true);
     }
     let lang = Lang::resolve(&config.language);
     apply_i18n(&ui, lang);

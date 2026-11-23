@@ -23,6 +23,7 @@ import { SettingsPage } from "pages/settings.slint";
 import { ModsPage } from "pages/mods.slint";
 import { FlagsPage } from "pages/flags.slint";
 import { GamesPage } from "pages/games.slint";
+import { VersionsPage } from "pages/versions.slint";
 import { AboutPage } from "pages/about.slint";
 import { IconCross } from "icons.slint";
 import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, VersionRow, ModRow, ModFileRow, FlagRow, PresetRow, RegionPingRow } from "models.slint";
@@ -35,11 +36,12 @@ export component AppWindow inherits Window {
     min-height: 520px;
     preferred-width: 1120px;
     preferred-height: 700px;
-    background: Theme.bg-deep;
+    background: transparent;
     default-font-family: Theme.font;
 
     // ===== Состояние (заполняет контроллер) =====
     in-out property <int> page: 0;
+    in-out property <bool> is-maximized: false;
 
     /// Пользовательский фон лаунчера.
     in-out property <image> bg-image;
@@ -365,6 +367,18 @@ export component AppWindow inherits Window {
     /// 0 — оставить, 1 — заменить, 2 — заменить все, 3 — отмена.
     callback import-decision(int);
 
+    // ===== Корневой контейнер с закруглёнными углами =====
+    root-clip := Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: root.is-maximized ? 0px : 12px;
+        clip: true;
+        background: Theme.bg-deep;
+        border-width: root.is-maximized ? 0px : 1px;
+        border-color: #ffffff20;
+
     // ===== Пользовательский фон (под звёздами) =====
     if root.bg-image-on : Image {
         x: 0;
@@ -556,6 +570,21 @@ export component AppWindow inherits Window {
                     profile-delete => { root.flags-profile-delete(); }
                     profile-export => { root.flags-profile-export(); }
                     profile-import => { root.flags-profile-import(); }
+                }
+                if root.page == 3 : VersionsPage {
+                    width: 100%;
+                    height: 100%;
+                    installed-guid: root.ver-installed-guid;
+                    selected-guid: root.ver-selected-guid;
+                    versions: root.ver-versions;
+                    integrity-text: root.ver-integrity-text;
+                    integrity-kind: root.ver-integrity-kind;
+                    checked-text: root.ver-checked-text;
+                    activate => { root.ver-activate(); }
+                    delete-version => { root.ver-delete(); }
+                    check-integrity => { root.ver-check(); }
+                    repair => { root.ver-repair(); }
+                    select(g) => { root.ver-select(g); }
                 }
                 if root.page == 4 : ModsPage {
                     width: 100%;
@@ -1277,4 +1306,5 @@ export component AppWindow inherits Window {
             }
         }
     }
+    } // root-clip
 }
