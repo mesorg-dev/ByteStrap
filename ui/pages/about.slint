@@ -94,6 +94,7 @@ export component AboutPage inherits PageFade {
                         Rectangle { horizontal-stretch: 1; }
 
                         repo-btn := Rectangle {
+                            width: repo-layout.preferred-width;
                             height: 28px;
                             horizontal-stretch: 0;
                             vertical-stretch: 0;
@@ -105,7 +106,7 @@ export component AboutPage inherits PageFade {
                             animate background { duration: Theme.t-fast; }
                             animate border-color { duration: Theme.t-fast; }
 
-                            HorizontalLayout {
+                            repo-layout := HorizontalLayout {
                                 padding-left: 12px;
                                 padding-right: 12px;
                                 spacing: 6px;
@@ -152,6 +153,7 @@ export component AboutPage inherits PageFade {
                         Rectangle { horizontal-stretch: 1; }
 
                         tg-btn := Rectangle {
+                            width: tg-layout.preferred-width;
                             height: 28px;
                             horizontal-stretch: 0;
                             vertical-stretch: 0;
@@ -163,7 +165,7 @@ export component AboutPage inherits PageFade {
                             animate background { duration: Theme.t-fast; }
                             animate border-color { duration: Theme.t-fast; }
 
-                            HorizontalLayout {
+                            tg-layout := HorizontalLayout {
                                 padding-left: 12px;
                                 padding-right: 12px;
                                 spacing: 6px;
@@ -210,6 +212,7 @@ export component AboutPage inherits PageFade {
                         Rectangle { horizontal-stretch: 1; }
 
                         Rectangle {
+                            width: lic-layout.preferred-width;
                             height: 26px;
                             horizontal-stretch: 0;
                             vertical-stretch: 0;
@@ -219,7 +222,7 @@ export component AboutPage inherits PageFade {
                             border-width: 1px;
                             border-color: #FFFFFF14;
 
-                            HorizontalLayout {
+                            lic-layout := HorizontalLayout {
                                 padding-left: 10px;
                                 padding-right: 10px;
                                 alignment: center;
