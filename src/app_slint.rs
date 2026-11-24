@@ -6021,6 +6021,7 @@ mod shots {
         ui.set_update_text("Доступна версия 0.9.41".into());
         ui.set_update_notes("- Исправлено окно логов\n- Ускорен запуск клиента\n- Новый счётчик сессии в профиле".into());
         ui.set_update_pct(0.0);
+        ui.set_splash_open(false);
 
         ui
     }
@@ -6039,7 +6040,6 @@ mod shots {
 
         let shots: Vec<(i32, String)> = vec![
             (0, "0-home".into()),
-            (0, "0-splash".into()),
             (1, "1-games".into()),
             (1, "1-games-servers".into()),
             (2, "2-flags".into()),
@@ -6055,6 +6055,7 @@ mod shots {
             (4, "4-mods-saveas".into()),
             (2, "2-flags-import".into()),
             (0, "0-home-confirm".into()),
+            (0, "0-splash".into()),
         ];
 
         for (page, name) in shots {
@@ -6065,6 +6066,7 @@ mod shots {
             ui.set_dlg_open(false);
             ui.set_import_open(false);
             ui.set_confirm_body("".into());
+            ui.set_splash_open(false);
             match name.as_str() {
                 "2-flags-table" | "4-mods-files" => {
                     scroll(&ui, -120.0, 6);
@@ -6103,7 +6105,7 @@ mod shots {
                 _ => {}
             }
 
-            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(300));
+            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(400));
             let buf = ui.window().take_snapshot().unwrap_or_else(|e| {
                 panic!("snapshot {name}: {e}");
             });
