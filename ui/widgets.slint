@@ -63,11 +63,10 @@ export component Btn inherits Rectangle {
 
     opacity: root.enabled ? 1.0 : 0.45;
 
-    property <length> pad-h: root.height >= 38px ? 18px : 16px;
-
     HorizontalLayout {
-        padding-left: root.pad-h;
-        padding-right: root.pad-h;
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 6px;
         alignment: center;
 
         Text {
