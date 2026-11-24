@@ -265,6 +265,7 @@ export component AppWindow inherits Window {
     callback about-check();
     callback about-download();
     callback about-open-repo();
+    callback about-open-tg();
     callback ch-pick(string);
     callback ch-apply();
     callback lang-pick(int);
@@ -697,6 +698,7 @@ export component AppWindow inherits Window {
                     check-updates => { root.about-check(); }
                     download => { root.about-download(); }
                     open-repo => { root.about-open-repo(); }
+                    open-tg => { root.about-open-tg(); }
                 }
             }
         }

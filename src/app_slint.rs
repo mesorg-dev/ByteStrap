@@ -3840,6 +3840,7 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_about_sub(tr(lang, "About_Sub").into());
     t.set_about_version(tr(lang, "About_Version").into());
     t.set_about_repo(tr(lang, "About_Repo").into());
+    t.set_about_tg(tr(lang, "About_Tg").into());
     t.set_about_license(tr(lang, "About_License").into());
     t.set_about_check_updates(tr(lang, "About_CheckUpdates").into());
     t.set_about_checking(tr(lang, "About_Checking").into());
@@ -4379,6 +4380,9 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
     }
     ui.on_about_open_repo(move || {
         open_url("https://github.com/mesorg-dev/ByteStrap");
+    });
+    ui.on_about_open_tg(move || {
+        open_url("https://t.me/mesorgdev");
     });
 
     // — Настройки —

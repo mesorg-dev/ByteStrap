@@ -183,6 +183,7 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "About_UpdateErr" => "Не удалось проверить обновления: {0}",
     "About_Lang" => "Язык",
     "About_Repo" => "Репозиторий",
+    "About_Tg" => "Telegram",
     "About_License" => "Лицензия",
     // Навигация (доп.)
     "Nav_Mods" => "Моды",
@@ -559,6 +560,7 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "About_UpdateErr" => "Couldn't check for updates: {0}",
     "About_Lang" => "Language",
     "About_Repo" => "Repository",
+    "About_Tg" => "Telegram",
     "About_License" => "License",
     // Navigation (extra)
     "Nav_Mods" => "Mods",
