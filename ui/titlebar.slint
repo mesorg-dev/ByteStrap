@@ -78,20 +78,19 @@ component NavTab inherits Rectangle {
     in-out property <int> kind;
     in-out property <bool> active: false;
     in-out property <string> label;
+    in-out property <bool> shown: true;
+    out property <bool> hovered: touch.has-hover;
     callback clicked;
 
+    visible: root.shown;
     height: 32px;
-    border-radius: 16px;
-    background: root.active
-        ? Theme.surface-hover
-        : (touch.has-hover ? #ffffff0d : transparent);
-    border-width: 1px;
-    border-color: root.active ? #ffffff1a : transparent;
-    animate background, border-color { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+    clip: true;
+    width: !root.shown ? 0px : (root.active ? (34px + txt.preferred-width + 14px) : 34px);
+    animate width { duration: 260ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
 
     HorizontalLayout {
-        padding-left: root.active ? 12px : 8px;
-        padding-right: root.active ? 12px : 8px;
+        padding-left: 9px;
+        padding-right: 9px;
         spacing: 6px;
         alignment: center;
 
@@ -100,50 +99,33 @@ component NavTab inherits Rectangle {
             height: 16px;
             y: (parent.height - 16px) / 2;
 
-            if root.kind == 0 : IconHome {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
-            if root.kind == 1 : IconGamepad {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
-            if root.kind == 2 : IconSliders {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
-            if root.kind == 4 : IconWrench {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
-            if root.kind == 5 : IconTerminal {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
-            if root.kind == 6 : IconGear {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
-            if root.kind == 7 : IconInfo {
-                width: 16px;
-                height: 16px;
-                c: root.active ? Theme.accent : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            }
+            property <color> icon-c: root.active 
+                ? Theme.accent 
+                : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
+            animate icon-c { duration: 180ms; }
+
+            if root.kind == 0 : IconHome { width: 16px; height: 16px; c: parent.icon-c; }
+            if root.kind == 1 : IconGamepad { width: 16px; height: 16px; c: parent.icon-c; }
+            if root.kind == 2 : IconSliders { width: 16px; height: 16px; c: parent.icon-c; }
+            if root.kind == 4 : IconWrench { width: 16px; height: 16px; c: parent.icon-c; }
+            if root.kind == 5 : IconTerminal { width: 16px; height: 16px; c: parent.icon-c; }
+            if root.kind == 6 : IconGear { width: 16px; height: 16px; c: parent.icon-c; }
+            if root.kind == 7 : IconInfo { width: 16px; height: 16px; c: parent.icon-c; }
         }
 
-        if root.active : Text {
-            text: root.label;
-            font-family: Theme.font;
-            font-size: 12px;
-            font-weight: 600;
-            color: Theme.text-primary;
-            vertical-alignment: center;
+        Rectangle {
+            clip: true;
+            opacity: root.active ? 1.0 : 0.0;
+            animate opacity { duration: 180ms; easing: ease-out; }
+
+            txt := Text {
+                text: root.label;
+                font-family: Theme.font;
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.text-primary;
+                vertical-alignment: center;
+            }
         }
     }
 
@@ -189,142 +171,178 @@ export component TitleBar inherits Rectangle {
         double-clicked => { root.win-max(); }
     }
 
-    // Верхний контент: левая часть (логотип + статус), центр (капсула), правая часть (кнопки)
+    // Слева: квадратный логотип + компактная точка статуса
     HorizontalLayout {
-        width: 100%;
+        x: 14px;
+        y: 0;
+        width: 140px;
         height: 100%;
-        padding-left: 14px;
-        padding-right: 14px;
+        alignment: start;
+        spacing: 10px;
 
-        // Слева: квадратный логотип + компактная точка статуса
-        HorizontalLayout {
-            width: 140px;
-            alignment: start;
-            spacing: 10px;
-
-            Rectangle {
-                width: 32px;
-                height: 32px;
-                y: (parent.height - 32px) / 2;
-                border-radius: 10px;
-                background: Theme.surface-2;
-                border-width: 1px;
-                border-color: Theme.border;
-
-                IconStar {
-                    x: (parent.width - 16px) / 2;
-                    y: (parent.height - 16px) / 2;
-                    width: 16px;
-                    height: 16px;
-                    c: Theme.accent;
-                }
-            }
-
-            if root.status-dot > 0 : Rectangle {
-                width: 8px;
-                height: 8px;
-                y: (parent.height - 8px) / 2;
-                StatusDot {
-                    kind: root.status-dot;
-                }
-                if root.status != "" : TouchArea {
-                    width: 100%;
-                    height: 100%;
-                    Tooltip {
-                        text: @markdown("\{root.status}");
-                    }
-                }
-            }
-        }
-
-        // Пространство слева от капсулы для центрирования
-        Rectangle { horizontal-stretch: 1; }
-
-        // По центру: плавающая капсула навигации
         Rectangle {
-            horizontal-stretch: 0;
-            y: (parent.height - 38px) / 2;
-            height: 38px;
-            border-radius: 19px;
-            background: Theme.surface;
+            width: 32px;
+            height: 32px;
+            y: (parent.height - 32px) / 2;
+            border-radius: 10px;
+            background: Theme.surface-2;
             border-width: 1px;
             border-color: Theme.border;
 
-            HorizontalLayout {
-                padding: 3px;
-                spacing: 4px;
-
-                NavTab {
-                    kind: 0;
-                    label: T.nav_home;
-                    active: root.page == 0;
-                    clicked => { root.navigate(0); }
-                }
-                NavTab {
-                    kind: 1;
-                    label: T.nav_games;
-                    active: root.page == 1;
-                    clicked => { root.navigate(1); }
-                }
-                NavTab {
-                    kind: 2;
-                    label: T.nav_flags;
-                    active: root.page == 2;
-                    clicked => { root.navigate(2); }
-                }
-                NavTab {
-                    kind: 4;
-                    label: T.nav_mods;
-                    active: root.page == 4;
-                    clicked => { root.navigate(4); }
-                }
-                if root.show-logs : NavTab {
-                    kind: 5;
-                    label: T.nav_logs;
-                    active: root.page == 5;
-                    clicked => { root.navigate(5); }
-                }
-                NavTab {
-                    kind: 6;
-                    label: T.nav_settings;
-                    active: root.page == 6;
-                    clicked => { root.navigate(6); }
-                }
-                NavTab {
-                    kind: 7;
-                    label: T.nav_about;
-                    active: root.page == 7;
-                    clicked => { root.navigate(7); }
-                }
+            IconStar {
+                x: (parent.width - 16px) / 2;
+                y: (parent.height - 16px) / 2;
+                width: 16px;
+                height: 16px;
+                c: Theme.accent;
             }
         }
 
-        // Пространство справа от капсулы для центрирования
-        Rectangle { horizontal-stretch: 1; }
+        if root.status-dot > 0 : Rectangle {
+            width: 8px;
+            height: 8px;
+            y: (parent.height - 8px) / 2;
+            StatusDot {
+                kind: root.status-dot;
+            }
+            if root.status != "" : TouchArea {
+                width: 100%;
+                height: 100%;
+                Tooltip {
+                    text: @markdown("\{root.status}");
+                }
+            }
+        }
+    }
 
-        // Справа: трио кнопок управления окном
-        HorizontalLayout {
-            width: 140px;
-            alignment: end;
-            spacing: 6px;
+    // Справа: трио кнопок управления окном
+    HorizontalLayout {
+        x: parent.width - self.width - 14px;
+        y: 0;
+        width: 140px;
+        height: 100%;
+        alignment: end;
+        spacing: 6px;
 
-            WinBtn {
-                y: (parent.height - 28px) / 2;
+        WinBtn {
+            y: (parent.height - 28px) / 2;
+            kind: 0;
+            tip: T.win_min;
+            clicked => { root.win-min(); }
+        }
+        WinBtn {
+            y: (parent.height - 28px) / 2;
+            kind: root.is-maximized ? 2 : 1;
+            tip: root.is-maximized ? T.win_restore : T.win_max;
+            clicked => { root.win-max(); }
+        }
+        WinBtn {
+            y: (parent.height - 28px) / 2;
+            kind: 3;
+            tip: T.win_close;
+            clicked => { root.close-request(); }
+        }
+    }
+
+    // По центру: плавающая капсула навигации (Dynamic Island)
+    island := Rectangle {
+        property <bool> island-hovered: island-bg-ta.has-hover
+            || t0.hovered || t1.hovered || t2.hovered || t4.hovered
+            || t5.hovered || t6.hovered || t7.hovered;
+
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        height: island.island-hovered ? 42px : 38px;
+        width: nav-row.preferred-width + 8px;
+        border-radius: self.height / 2;
+        clip: true;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: island.island-hovered ? #ffffff22 : Theme.border;
+        animate height, border-color { duration: 240ms; easing: cubic-bezier(0.34, 1.35, 0.64, 1); }
+
+        island-bg-ta := TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        // Переезжающая активная пилюля
+        pill := Rectangle {
+            height: parent.height - 6px;
+            y: 3px;
+            border-radius: self.height / 2;
+            background: Theme.surface-hover;
+            border-width: 1px;
+            border-color: #ffffff22;
+
+            x: nav-row.x + (root.page == 0 ? t0.x
+                : root.page == 1 ? t1.x
+                : root.page == 2 ? t2.x
+                : root.page == 4 ? t4.x
+                : root.page == 5 ? t5.x
+                : root.page == 6 ? t6.x
+                : t7.x);
+
+            width: root.page == 0 ? t0.width
+                : root.page == 1 ? t1.width
+                : root.page == 2 ? t2.width
+                : root.page == 4 ? t4.width
+                : root.page == 5 ? t5.width
+                : root.page == 6 ? t6.width
+                : t7.width;
+
+            animate x, width { duration: 280ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+        }
+
+        nav-row := HorizontalLayout {
+            x: 4px;
+            y: (parent.height - self.preferred-height) / 2;
+            height: 32px;
+            padding: 0px;
+            spacing: 0px;
+
+            t0 := NavTab {
                 kind: 0;
-                tip: T.win_min;
-                clicked => { root.win-min(); }
+                label: T.nav_home;
+                active: root.page == 0;
+                clicked => { root.navigate(0); }
             }
-            WinBtn {
-                y: (parent.height - 28px) / 2;
-                kind: root.is-maximized ? 2 : 1;
-                tip: root.is-maximized ? T.win_restore : T.win_max;
-                clicked => { root.win-max(); }
+            t1 := NavTab {
+                kind: 1;
+                label: T.nav_games;
+                active: root.page == 1;
+                clicked => { root.navigate(1); }
             }
-            WinBtn {
-                y: (parent.height - 28px) / 2;
-                kind: 3;
-                tip: T.win_close;
-                clicked => { root.close-request(); }
+            t2 := NavTab {
+                kind: 2;
+                label: T.nav_flags;
+                active: root.page == 2;
+                clicked => { root.navigate(2); }
+            }
+            t4 := NavTab {
+                kind: 4;
+                label: T.nav_mods;
+                active: root.page == 4;
+                clicked => { root.navigate(4); }
+            }
+            t5 := NavTab {
+                kind: 5;
+                label: T.nav_logs;
+                shown: root.show-logs;
+                active: root.page == 5;
+                clicked => { root.navigate(5); }
+            }
+            t6 := NavTab {
+                kind: 6;
+                label: T.nav_settings;
+                active: root.page == 6;
+                clicked => { root.navigate(6); }
+            }
+            t7 := NavTab {
+                kind: 7;
+                label: T.nav_about;
+                active: root.page == 7;
+                clicked => { root.navigate(7); }
             }
         }
     }

@@ -80,19 +80,36 @@ export component GamesPage inherits PageFade {
                 background: #12141C;
                 border-width: 1px;
                 border-color: Theme.border;
+                clip: true;
+                width: games-tab-row.preferred-width + 6px;
 
-                HorizontalLayout {
-                    padding: 3px;
+                // Скользящая активная пилюля
+                games-pill := Rectangle {
+                    height: 30px;
+                    y: 3px;
+                    border-radius: 15px;
+                    background: Theme.surface-hover;
+                    border-width: 1px;
+                    border-color: #ffffff22;
+
+                    x: games-tab-row.x + (root.active-tab == 0 ? stab0.x : stab1.x);
+                    width: root.active-tab == 0 ? stab0.width : stab1.width;
+                    animate x, width { duration: 240ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+                }
+
+                games-tab-row := HorizontalLayout {
+                    x: 3px;
+                    y: 3px;
+                    height: 30px;
+                    padding: 0px;
                     spacing: 4px;
 
                     // Подвкладка 0: Игры и серверы
-                    Rectangle {
+                    stab0 := Rectangle {
                         height: 30px;
                         border-radius: 15px;
-                        background: root.active-tab == 0 ? Theme.surface-hover : (tab0-touch.has-hover ? #ffffff0d : transparent);
-                        border-width: 1px;
-                        border-color: root.active-tab == 0 ? #ffffff1a : transparent;
-                        animate background, border-color { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                        background: (tab0-touch.has-hover && root.active-tab != 0) ? #ffffff0d : transparent;
+                        animate background { duration: Theme.t-fast; }
 
                         HorizontalLayout {
                             padding-left: 14px;
@@ -103,7 +120,9 @@ export component GamesPage inherits PageFade {
                             IconGamepad {
                                 width: 14px;
                                 height: 14px;
-                                c: root.active-tab == 0 ? Theme.accent : Theme.text-secondary;
+                                property <color> icon-c: root.active-tab == 0 ? Theme.accent : (tab0-touch.has-hover ? Theme.text-primary : Theme.text-secondary);
+                                animate icon-c { duration: 180ms; }
+                                c: self.icon-c;
                             }
 
                             Text {
@@ -125,13 +144,11 @@ export component GamesPage inherits PageFade {
                     }
 
                     // Подвкладка 1: Скриншоты
-                    Rectangle {
+                    stab1 := Rectangle {
                         height: 30px;
                         border-radius: 15px;
-                        background: root.active-tab == 1 ? Theme.surface-hover : (tab1-touch.has-hover ? #ffffff0d : transparent);
-                        border-width: 1px;
-                        border-color: root.active-tab == 1 ? #ffffff1a : transparent;
-                        animate background, border-color { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                        background: (tab1-touch.has-hover && root.active-tab != 1) ? #ffffff0d : transparent;
+                        animate background { duration: Theme.t-fast; }
 
                         HorizontalLayout {
                             padding-left: 14px;
@@ -142,7 +159,9 @@ export component GamesPage inherits PageFade {
                             IconCamera {
                                 width: 14px;
                                 height: 14px;
-                                c: root.active-tab == 1 ? Theme.accent : Theme.text-secondary;
+                                property <color> icon-c: root.active-tab == 1 ? Theme.accent : (tab1-touch.has-hover ? Theme.text-primary : Theme.text-secondary);
+                                animate icon-c { duration: 180ms; }
+                                c: self.icon-c;
                             }
 
                             Text {

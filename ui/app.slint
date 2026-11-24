@@ -419,15 +419,17 @@ export component AppWindow inherits Window {
             y: 20px;
             width: parent.width - 40px;
             height: parent.height - 40px;
+            clip: true;
 
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 0;
-                opacity: root.page == 0 ? 1.0 : 0.0;
-                y: root.page == 0 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 0;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 HomePage {
                     width: 100%;
@@ -464,13 +466,14 @@ export component AppWindow inherits Window {
             }
 
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 1;
-                opacity: root.page == 1 ? 1.0 : 0.0;
-                y: root.page == 1 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 1;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 GamesPage {
                     width: 100%;
@@ -515,13 +518,14 @@ export component AppWindow inherits Window {
             }
 
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 5;
-                opacity: root.page == 5 ? 1.0 : 0.0;
-                y: root.page == 5 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 5;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 LogsPage {
                     width: 100%;
@@ -543,13 +547,14 @@ export component AppWindow inherits Window {
             }
 
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 2;
-                opacity: root.page == 2 ? 1.0 : 0.0;
-                y: root.page == 2 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 2;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 FlagsPage {
                     width: 100%;
@@ -591,13 +596,14 @@ export component AppWindow inherits Window {
                 }
             }
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 4;
-                opacity: root.page == 4 ? 1.0 : 0.0;
-                y: root.page == 4 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 4;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 ModsPage {
                     width: 100%;
@@ -641,13 +647,14 @@ export component AppWindow inherits Window {
                 }
             }
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 6;
-                opacity: root.page == 6 ? 1.0 : 0.0;
-                y: root.page == 6 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 6;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 SettingsPage {
                     width: 100%;
@@ -748,13 +755,14 @@ export component AppWindow inherits Window {
                 }
             }
             Rectangle {
-                width: 100%;
-                height: 100%;
-                visible: root.page == 7;
-                opacity: root.page == 7 ? 1.0 : 0.0;
-                y: root.page == 7 ? 0px : 8px;
-                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                property <bool> shown: root.page == 7;
+                width: parent.width;
+                height: parent.height;
+                y: shown ? 0px : 18px;
+                opacity: shown ? 1.0 : 0.0;
+                visible: shown || self.opacity > 0.001;
+                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 AboutPage {
                     width: 100%;
@@ -777,8 +785,8 @@ export component AppWindow inherits Window {
     Rectangle {
         property <bool> is-open: root.confirm-body != "";
         opacity: is-open ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 150ms; easing: ease-out; }
+        visible: is-open || self.opacity > 0.001;
+        animate opacity { duration: 180ms; easing: ease-out; }
 
         x: 0;
         y: 0;
@@ -796,10 +804,10 @@ export component AppWindow inherits Window {
             width: 420px;
             height: confirm-col.preferred-height;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 + (root.confirm-body != "" ? 0px : 10px);
-            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-            opacity: root.confirm-body != "" ? 1.0 : 0.0;
-            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            y: ((parent.height - self.height) / 2) + (is-open ? 0px : 20px);
+            animate y { duration: 260ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+            opacity: is-open ? 1.0 : 0.0;
+            animate opacity { duration: 180ms; easing: ease-out; }
 
             background: Theme.surface;
             border-width: 1px;
@@ -845,8 +853,8 @@ export component AppWindow inherits Window {
     Rectangle {
         property <bool> is-open: root.game-res-modal-open;
         opacity: is-open ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 150ms; easing: ease-out; }
+        visible: is-open || self.opacity > 0.001;
+        animate opacity { duration: 180ms; easing: ease-out; }
 
         x: 0;
         y: 0;
@@ -862,10 +870,10 @@ export component AppWindow inherits Window {
 
         modal-res := Rectangle {
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 + (root.game-res-modal-open ? 0px : 10px);
-            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-            opacity: root.game-res-modal-open ? 1.0 : 0.0;
-            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            y: ((parent.height - self.height) / 2) + (is-open ? 0px : 20px);
+            animate y { duration: 260ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+            opacity: is-open ? 1.0 : 0.0;
+            animate opacity { duration: 180ms; easing: ease-out; }
             width: 440px;
             height: 310px;
             background: Theme.surface;
@@ -1047,8 +1055,8 @@ export component AppWindow inherits Window {
     Rectangle {
         property <bool> is-open: root.dlg-open;
         opacity: is-open ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 150ms; easing: ease-out; }
+        visible: is-open || self.opacity > 0.001;
+        animate opacity { duration: 180ms; easing: ease-out; }
 
         x: 0;
         y: 0;
@@ -1066,10 +1074,10 @@ export component AppWindow inherits Window {
             width: 420px;
             height: 172px;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 + (root.dlg-open ? 0px : 10px);
-            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-            opacity: root.dlg-open ? 1.0 : 0.0;
-            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            y: ((parent.height - self.height) / 2) + (is-open ? 0px : 20px);
+            animate y { duration: 260ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+            opacity: is-open ? 1.0 : 0.0;
+            animate opacity { duration: 180ms; easing: ease-out; }
 
             background: Theme.surface;
             border-width: 1px;
@@ -1125,8 +1133,8 @@ export component AppWindow inherits Window {
     Rectangle {
         property <bool> is-open: root.import-open;
         opacity: is-open ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 150ms; easing: ease-out; }
+        visible: is-open || self.opacity > 0.001;
+        animate opacity { duration: 180ms; easing: ease-out; }
 
         x: 0;
         y: 0;
@@ -1144,10 +1152,10 @@ export component AppWindow inherits Window {
             width: 480px;
             height: 170px;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 - 40px + (root.import-open ? 0px : 10px);
-            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-            opacity: root.import-open ? 1.0 : 0.0;
-            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            y: ((parent.height - self.height) / 2 - 40px) + (is-open ? 0px : 20px);
+            animate y { duration: 260ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+            opacity: is-open ? 1.0 : 0.0;
+            animate opacity { duration: 180ms; easing: ease-out; }
 
             background: Theme.surface;
             border-width: 1px;
@@ -1216,8 +1224,8 @@ export component AppWindow inherits Window {
     // Клик-вне закрывает список.
     Rectangle {
         opacity: Dd.open ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 150ms; easing: ease-out; }
+        visible: Dd.open || self.opacity > 0.001;
+        animate opacity { duration: 180ms; easing: ease-out; }
 
         x: 0;
         y: 0;
@@ -1240,8 +1248,8 @@ export component AppWindow inherits Window {
         height: list-h;
 
         opacity: Dd.open ? 1.0 : 0.0;
-        visible: self.opacity > 0.01;
-        animate opacity { duration: 150ms; easing: ease-out; }
+        visible: Dd.open || self.opacity > 0.001;
+        animate opacity { duration: 180ms; easing: ease-out; }
 
         background: Theme.surface;
         border-width: 1px;
