@@ -167,7 +167,7 @@ fn load_sources() -> HashMap<&'static str, Vec<u8>> {
     map
 }
 
-// ===== Синтез заглушек =====
+// ===== Синтез мягких тактильных звуков =====
 
 /// Собрать WAV (16-bit PCM mono 44100) из f32-сэмплов [-1..1].
 fn wav_bytes(samples: &[f32]) -> Vec<u8> {
@@ -194,126 +194,191 @@ fn wav_bytes(samples: &[f32]) -> Vec<u8> {
     out
 }
 
-/// Нежная огибающая Ханна на n сэмплов.
-fn hann(n: usize) -> Vec<f32> {
-    (0..n)
-        .map(|i| {
-            let t = i as f32 / (n.max(2) - 1) as f32;
-            0.5 - 0.5 * (2.0 * std::f32::consts::PI * t).cos()
-        })
-        .collect()
-}
-
-/// Короткий тон с экспоненциальным затуханием.
-fn tone(freq: f32, ms: usize, decay: f32, amp: f32) -> Vec<f32> {
-    let n = ms * 441 / 1000;
-    let env = hann(n);
-    (0..n)
-        .map(|i| {
-            let t = i as f32 / 44_100.0;
-            env[i] * amp * (2.0 * std::f32::consts::PI * freq * t).sin() * (-t * decay).exp()
-        })
-        .collect()
-}
-
-/// Смешать дорожки (обрезать по самой длинной).
-fn mix(tracks: Vec<Vec<f32>>) -> Vec<f32> {
-    let len = tracks.iter().map(|t| t.len()).max().unwrap_or(0);
-    let mut out = vec![0.0f32; len];
-    for t in tracks {
-        for (i, s) in t.iter().enumerate() {
-            out[i] += s;
-        }
+/// Мягкий Low-Pass фильтр 1-го порядка (y = prev + alpha * (x - prev)).
+fn low_pass(samples: &mut [f32], alpha: f32) {
+    let mut prev = 0.0f32;
+    for s in samples.iter_mut() {
+        prev += alpha * (*s - prev);
+        *s = prev;
     }
-    for s in out.iter_mut() {
-        *s = s.clamp(-1.0, 1.0);
+}
+
+/// Псевдослучайный генератор белого шума [-1.0..1.0].
+struct Rng(u32);
+impl Rng {
+    fn new(seed: u32) -> Self { Self(seed) }
+    fn next_f32(&mut self) -> f32 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 17;
+        self.0 ^= self.0 << 5;
+        (self.0 % 65536) as f32 / 32768.0 - 1.0
     }
-    out
 }
 
-/// Сдвиг дорожки на ms.
-fn delay(track: Vec<f32>, ms: usize) -> Vec<f32> {
-    let mut out = vec![0.0f32; ms * 441 / 1000];
-    out.extend(track);
-    out
-}
-
-/// Синтез пяти звуков-заглушек: сухой тик, мягкий блик, «вжух», динь, глухой бумп.
+/// Синтез пяти мягких тактильных звуков без резких щелчков и высоких писков.
 fn synth(kind: usize) -> Vec<u8> {
-    let samples = match kind {
-        // click: сухой стеклянный тик — высокий тон + щелчок.
-        0 => mix(vec![
-            tone(2100.0, 42, 120.0, 0.32),
-            tone(3600.0, 22, 200.0, 0.14),
-        ]),
-        // toggle: мягкий блип 520→700 Гц.
-        1 => {
-            let n = 80 * 441 / 1000;
-            let env = hann(n);
-            let track: Vec<f32> = (0..n)
-                .map(|i| {
-                    let t = i as f32 / 44_100.0;
-                    let f = 520.0 + 180.0 * (i as f32 / n as f32);
-                    env[i] * 0.3 * (2.0 * std::f32::consts::PI * f * t).sin()
-                })
-                .collect();
+    const SAMPLE_RATE: f32 = 44_100.0;
+    const PI2: f32 = 2.0 * std::f32::consts::PI;
+
+    let samples: Vec<f32> = match kind as i32 {
+        // CLICK: короткий матовый «ток» (28 мс), спад частоты ~480 -> ~170 Гц + 12% отфильтрованного шума в первые 5 мс.
+        CLICK => {
+            let ms = 28.0;
+            let n = (ms * SAMPLE_RATE / 1000.0) as usize;
+            let attack_samples = (0.0025 * SAMPLE_RATE) as usize; // 2.5 мс мягкая атака
+            let tau = 0.007; // экспоненциальный спад
+            let mut rng = Rng::new(0x4D5A1234);
+            let mut phase = 0.0f32;
+            let mut track = Vec::with_capacity(n);
+
+            for i in 0..n {
+                let t = i as f32 / SAMPLE_RATE;
+                let attack = if i < attack_samples { i as f32 / attack_samples as f32 } else { 1.0 };
+                let decay = (-t / tau).exp();
+                // Спад частоты синуса от 480 Гц до 170 Гц
+                let freq = 170.0 + (480.0 - 170.0) * (-t / 0.007).exp();
+                phase += PI2 * freq / SAMPLE_RATE;
+                let mut s = phase.sin();
+
+                // Капля отфильтрованного шума в первые 5 мс
+                if t < 0.005 {
+                    let noise_fade = 1.0 - t / 0.005;
+                    s += rng.next_f32() * 0.12 * noise_fade;
+                }
+
+                track.push(s * attack * decay * 0.30);
+            }
+            low_pass(&mut track, 0.28);
             track
         }
-        // tab: «вжух» — шумовой свип с мягкой огибающей.
-        2 => {
-            let n = 140 * 441 / 1000;
-            let env = hann(n);
-            let mut seed = 0x2545F491u32;
-            let mut rnd = move || {
-                seed ^= seed << 13;
-                seed ^= seed >> 17;
-                seed ^= seed << 5;
-                (seed % 65536) as f32 / 65536.0 - 0.5
-            };
-            let mut prev = 0.0f32;
-            let track: Vec<f32> = (0..n)
-                .map(|i| {
-                    let k = i as f32 / n as f32;
-                    // низкочастотный шум + тон, поднимающийся на подъёме свипа
-                    let lp = prev + 0.22 * (rnd() - prev);
-                    prev = lp;
-                    let f = 240.0 + 660.0 * k;
-                    let t = i as f32 / 44_100.0;
-                    env[i] * (0.5 * lp * 0.9 + 0.12 * (2.0 * std::f32::consts::PI * f * t).sin())
-                })
-                .collect();
+
+        // TOGGLE: мягкий поп (38 мс) с плавным подъёмом частоты ~330 Гц -> ~470 Гц.
+        TOGGLE => {
+            let ms = 38.0;
+            let n = (ms * SAMPLE_RATE / 1000.0) as usize;
+            let attack_samples = (0.003 * SAMPLE_RATE) as usize; // 3 мс
+            let tau = 0.012;
+            let mut phase = 0.0f32;
+            let mut track = Vec::with_capacity(n);
+
+            for i in 0..n {
+                let t = i as f32 / SAMPLE_RATE;
+                let attack = if i < attack_samples { i as f32 / attack_samples as f32 } else { 1.0 };
+                let decay = (-t / tau).exp();
+                let progress = (i as f32 / n as f32).min(1.0);
+                let freq = 330.0 + (470.0 - 330.0) * progress;
+                phase += PI2 * freq / SAMPLE_RATE;
+                let s = phase.sin();
+
+                track.push(s * attack * decay * 0.28);
+            }
+            low_pass(&mut track, 0.32);
             track
         }
-        // success: двузвучный «динь» (A5 → E6).
-        3 => mix(vec![
-            tone(880.0, 120, 22.0, 0.22),
-            delay(tone(1318.5, 160, 16.0, 0.24), 95),
-        ]),
-        // error: глухой бумп 150 Гц + шумовой толчок.
-        4 => mix(vec![
-            tone(150.0, 190, 18.0, 0.5),
-            tone(98.0, 190, 14.0, 0.3),
-            {
-                let n = 60 * 441 / 1000;
-                let env = hann(n);
-                let mut seed = 0x9E3779B9u32;
-                let mut rnd = move || {
-                    seed ^= seed << 13;
-                    seed ^= seed >> 17;
-                    seed ^= seed << 5;
-                    (seed % 65536) as f32 / 65536.0 - 0.5
-                };
-                let mut prev = 0.0f32;
-                (0..n)
-                    .map(|i| {
-                        let lp = prev + 0.12 * (rnd() - prev);
-                        prev = lp;
-                        env[i] * lp * 0.7
-                    })
-                    .collect()
-            },
-        ]),
+
+        // TAB: ещё более тихий, воздушный тактильный щелчок (22 мс, ~560 -> ~260 Гц).
+        TAB => {
+            let ms = 22.0;
+            let n = (ms * SAMPLE_RATE / 1000.0) as usize;
+            let attack_samples = (0.002 * SAMPLE_RATE) as usize; // 2 мс
+            let tau = 0.0055;
+            let mut phase = 0.0f32;
+            let mut track = Vec::with_capacity(n);
+
+            for i in 0..n {
+                let t = i as f32 / SAMPLE_RATE;
+                let attack = if i < attack_samples { i as f32 / attack_samples as f32 } else { 1.0 };
+                let decay = (-t / tau).exp();
+                let freq = 260.0 + (560.0 - 260.0) * (-t / 0.005).exp();
+                phase += PI2 * freq / SAMPLE_RATE;
+                let s = phase.sin();
+
+                track.push(s * attack * decay * 0.22);
+            }
+            low_pass(&mut track, 0.26);
+            track
+        }
+
+        // SUCCESS: мягкий приглушённый двойной тон (~440 Гц и затем ~660 Гц, тёплый синус).
+        SUCCESS => {
+            let total_n = (160.0 * SAMPLE_RATE / 1000.0) as usize;
+            let mut track = vec![0.0f32; total_n];
+
+            // Тон 1: 440 Гц, старт на 0 мс
+            let n1 = (60.0 * SAMPLE_RATE / 1000.0) as usize;
+            let attack1 = (0.003 * SAMPLE_RATE) as usize;
+            let tau1 = 0.022;
+            let mut phase1 = 0.0f32;
+            for i in 0..n1 {
+                let t = i as f32 / SAMPLE_RATE;
+                let att = if i < attack1 { i as f32 / attack1 as f32 } else { 1.0 };
+                let decay = (-t / tau1).exp();
+                phase1 += PI2 * 440.0 / SAMPLE_RATE;
+                track[i] += phase1.sin() * att * decay * 0.24;
+            }
+
+            // Тон 2: 660 Гц, старт на 45 мс
+            let start2 = (45.0 * SAMPLE_RATE / 1000.0) as usize;
+            let n2 = (80.0 * SAMPLE_RATE / 1000.0) as usize;
+            let attack2 = (0.003 * SAMPLE_RATE) as usize;
+            let tau2 = 0.028;
+            let mut phase2 = 0.0f32;
+            for i in 0..n2 {
+                let idx = start2 + i;
+                if idx >= total_n { break; }
+                let t = i as f32 / SAMPLE_RATE;
+                let att = if i < attack2 { i as f32 / attack2 as f32 } else { 1.0 };
+                let decay = (-t / tau2).exp();
+                phase2 += PI2 * 660.0 / SAMPLE_RATE;
+                track[idx] += phase2.sin() * att * decay * 0.25;
+            }
+
+            low_pass(&mut track, 0.35);
+            track
+        }
+
+        // ERROR: короткий глухой низкий двойной «тук» (~190 -> ~130 Гц).
+        ERROR => {
+            let total_n = (110.0 * SAMPLE_RATE / 1000.0) as usize;
+            let mut track = vec![0.0f32; total_n];
+
+            // Тук 1: 190 -> 130 Гц
+            let n1 = (35.0 * SAMPLE_RATE / 1000.0) as usize;
+            let attack1 = (0.0025 * SAMPLE_RATE) as usize;
+            let tau1 = 0.010;
+            let mut phase1 = 0.0f32;
+            for i in 0..n1 {
+                let t = i as f32 / SAMPLE_RATE;
+                let att = if i < attack1 { i as f32 / attack1 as f32 } else { 1.0 };
+                let decay = (-t / tau1).exp();
+                let freq = 130.0 + (190.0 - 130.0) * (-t / 0.008).exp();
+                phase1 += PI2 * freq / SAMPLE_RATE;
+                track[i] += phase1.sin() * att * decay * 0.26;
+            }
+
+            // Тук 2: 170 -> 120 Гц (тише и глуше, старт на 35 мс)
+            let start2 = (35.0 * SAMPLE_RATE / 1000.0) as usize;
+            let n2 = (40.0 * SAMPLE_RATE / 1000.0) as usize;
+            let attack2 = (0.0025 * SAMPLE_RATE) as usize;
+            let tau2 = 0.012;
+            let mut phase2 = 0.0f32;
+            for i in 0..n2 {
+                let idx = start2 + i;
+                if idx >= total_n { break; }
+                let t = i as f32 / SAMPLE_RATE;
+                let att = if i < attack2 { i as f32 / attack2 as f32 } else { 1.0 };
+                let decay = (-t / tau2).exp();
+                let freq = 120.0 + (170.0 - 120.0) * (-t / 0.009).exp();
+                phase2 += PI2 * freq / SAMPLE_RATE;
+                track[idx] += phase2.sin() * att * decay * 0.22;
+            }
+
+            low_pass(&mut track, 0.22);
+            track
+        }
+
         _ => Vec::new(),
     };
+
     wav_bytes(&samples)
 }

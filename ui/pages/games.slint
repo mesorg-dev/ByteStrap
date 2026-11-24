@@ -90,9 +90,9 @@ export component GamesPage inherits PageFade {
                         height: 30px;
                         border-radius: 15px;
                         background: root.active-tab == 0 ? Theme.surface-hover : (tab0-touch.has-hover ? #ffffff0d : transparent);
-                        border-width: root.active-tab == 0 ? 1px : 0px;
-                        border-color: #ffffff1a;
-                        animate background { duration: Theme.t-fast; }
+                        border-width: 1px;
+                        border-color: root.active-tab == 0 ? #ffffff1a : transparent;
+                        animate background, border-color { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                         HorizontalLayout {
                             padding-left: 14px;
@@ -129,9 +129,9 @@ export component GamesPage inherits PageFade {
                         height: 30px;
                         border-radius: 15px;
                         background: root.active-tab == 1 ? Theme.surface-hover : (tab1-touch.has-hover ? #ffffff0d : transparent);
-                        border-width: root.active-tab == 1 ? 1px : 0px;
-                        border-color: #ffffff1a;
-                        animate background { duration: Theme.t-fast; }
+                        border-width: 1px;
+                        border-color: root.active-tab == 1 ? #ffffff1a : transparent;
+                        animate background, border-color { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                         HorizontalLayout {
                             padding-left: 14px;

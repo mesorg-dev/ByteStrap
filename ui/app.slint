@@ -420,7 +420,16 @@ export component AppWindow inherits Window {
             width: parent.width - 40px;
             height: parent.height - 40px;
 
-                if root.page == 0 : HomePage {
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 0;
+                opacity: root.page == 0 ? 1.0 : 0.0;
+                y: root.page == 0 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                HomePage {
                     width: 100%;
                     height: 100%;
                     status-text: root.status-text;
@@ -452,8 +461,18 @@ export component AppWindow inherits Window {
                     link-changed => { root.link-changed(); }
                     link-paste => { root.link-paste(); }
                 }
+            }
 
-                if root.page == 1 : GamesPage {
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 1;
+                opacity: root.page == 1 ? 1.0 : 0.0;
+                y: root.page == 1 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                GamesPage {
                     width: 100%;
                     height: 100%;
                     rows: root.games-rows;
@@ -493,8 +512,18 @@ export component AppWindow inherits Window {
                     shot-delete(p) => { root.shot-delete(p); }
                     shot-refresh => { root.shot-refresh(); }
                 }
+            }
 
-                if root.page == 5 : LogsPage {
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 5;
+                opacity: root.page == 5 ? 1.0 : 0.0;
+                y: root.page == 5 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                LogsPage {
                     width: 100%;
                     height: 100%;
                     lines: root.log-lines;
@@ -511,8 +540,18 @@ export component AppWindow inherits Window {
                     follow-toggle => { root.log-follow-toggle(); }
                     search-edited(q) => { root.log-search(q); }
                 }
+            }
 
-                if root.page == 2 : FlagsPage {
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 2;
+                opacity: root.page == 2 ? 1.0 : 0.0;
+                y: root.page == 2 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                FlagsPage {
                     width: 100%;
                     height: 100%;
                     has-client: root.flags-has-client;
@@ -550,7 +589,17 @@ export component AppWindow inherits Window {
                     profile-export => { root.flags-profile-export(); }
                     profile-import => { root.flags-profile-import(); }
                 }
-                if root.page == 4 : ModsPage {
+            }
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 4;
+                opacity: root.page == 4 ? 1.0 : 0.0;
+                y: root.page == 4 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                ModsPage {
                     width: 100%;
                     height: 100%;
                     mods-path: root.mods-path;
@@ -590,7 +639,17 @@ export component AppWindow inherits Window {
                     profile-export => { root.mods-profile-export(); }
                     profile-import => { root.mods-profile-import(); }
                 }
-                if root.page == 6 : SettingsPage {
+            }
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 6;
+                opacity: root.page == 6 ? 1.0 : 0.0;
+                y: root.page == 6 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                SettingsPage {
                     width: 100%;
                     height: 100%;
                     busy: root.busy;
@@ -687,7 +746,17 @@ export component AppWindow inherits Window {
                     splash-pick => { root.splash-pick(); }
                     splash-reset => { root.splash-reset(); }
                 }
-                if root.page == 7 : AboutPage {
+            }
+            Rectangle {
+                width: 100%;
+                height: 100%;
+                visible: root.page == 7;
+                opacity: root.page == 7 ? 1.0 : 0.0;
+                y: root.page == 7 ? 0px : 8px;
+                animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+                AboutPage {
                     width: 100%;
                     height: 100%;
                     app-version: root.about-version;
@@ -701,10 +770,16 @@ export component AppWindow inherits Window {
                     open-tg => { root.about-open-tg(); }
                 }
             }
+            }
         }
 
     // ===== Модальное подтверждение =====
-    if root.confirm-body != "" : Rectangle {
+    Rectangle {
+        property <bool> is-open: root.confirm-body != "";
+        opacity: is-open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 150ms; easing: ease-out; }
+
         x: 0;
         y: 0;
         width: 100%;
@@ -718,15 +793,13 @@ export component AppWindow inherits Window {
         }
 
         modal-confirm := Rectangle {
-            property <bool> shown: false;
             width: 420px;
             height: confirm-col.preferred-height;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 + (modal-confirm.shown ? 0px : 14px);
-            animate y { duration: Theme.t-mid; easing: ease-out; }
-            opacity: modal-confirm.shown ? 1.0 : 0.0;
-            animate opacity { duration: Theme.t-mid; }
-            init => { modal-confirm.shown = true; }
+            y: (parent.height - self.height) / 2 + (root.confirm-body != "" ? 0px : 10px);
+            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            opacity: root.confirm-body != "" ? 1.0 : 0.0;
+            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
             background: Theme.surface;
             border-width: 1px;
@@ -769,7 +842,12 @@ export component AppWindow inherits Window {
     }
 
     // ===== Модальное окно кастомного разрешения плейса =====
-    if root.game-res-modal-open : Rectangle {
+    Rectangle {
+        property <bool> is-open: root.game-res-modal-open;
+        opacity: is-open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 150ms; easing: ease-out; }
+
         x: 0;
         y: 0;
         width: 100%;
@@ -784,7 +862,10 @@ export component AppWindow inherits Window {
 
         modal-res := Rectangle {
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
+            y: (parent.height - self.height) / 2 + (root.game-res-modal-open ? 0px : 10px);
+            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            opacity: root.game-res-modal-open ? 1.0 : 0.0;
+            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
             width: 440px;
             height: 310px;
             background: Theme.surface;
@@ -963,7 +1044,12 @@ export component AppWindow inherits Window {
     }
 
     // ===== Вводной диалог =====
-    if root.dlg-open : Rectangle {
+    Rectangle {
+        property <bool> is-open: root.dlg-open;
+        opacity: is-open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 150ms; easing: ease-out; }
+
         x: 0;
         y: 0;
         width: 100%;
@@ -977,15 +1063,13 @@ export component AppWindow inherits Window {
         }
 
         modal-dlg := Rectangle {
-            property <bool> shown: false;
             width: 420px;
             height: 172px;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 + (modal-dlg.shown ? 0px : 14px);
-            animate y { duration: Theme.t-mid; easing: ease-out; }
-            opacity: modal-dlg.shown ? 1.0 : 0.0;
-            animate opacity { duration: Theme.t-mid; }
-            init => { modal-dlg.shown = true; }
+            y: (parent.height - self.height) / 2 + (root.dlg-open ? 0px : 10px);
+            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            opacity: root.dlg-open ? 1.0 : 0.0;
+            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
             background: Theme.surface;
             border-width: 1px;
@@ -1038,7 +1122,12 @@ export component AppWindow inherits Window {
     }
 
     // ===== Конфликт импорта (страница Flags) =====
-    if root.import-open : Rectangle {
+    Rectangle {
+        property <bool> is-open: root.import-open;
+        opacity: is-open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 150ms; easing: ease-out; }
+
         x: 0;
         y: 0;
         width: 100%;
@@ -1052,15 +1141,13 @@ export component AppWindow inherits Window {
         }
 
         modal-import := Rectangle {
-            property <bool> shown: false;
             width: 480px;
             height: 170px;
             x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2 - 40px + (modal-import.shown ? 0px : 14px);
-            animate y { duration: Theme.t-mid; easing: ease-out; }
-            opacity: modal-import.shown ? 1.0 : 0.0;
-            animate opacity { duration: Theme.t-mid; }
-            init => { modal-import.shown = true; }
+            y: (parent.height - self.height) / 2 - 40px + (root.import-open ? 0px : 10px);
+            animate y { duration: 170ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+            opacity: root.import-open ? 1.0 : 0.0;
+            animate opacity { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
             background: Theme.surface;
             border-width: 1px;
@@ -1127,7 +1214,11 @@ export component AppWindow inherits Window {
 
     // ===== Оверлей дропдаунов (Combo) — поверх всего содержимого =====
     // Клик-вне закрывает список.
-    if Dd.open : Rectangle {
+    Rectangle {
+        opacity: Dd.open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 150ms; easing: ease-out; }
+
         x: 0;
         y: 0;
         width: 100%;
@@ -1139,7 +1230,7 @@ export component AppWindow inherits Window {
         }
     }
     // Список: у комбо, при нехватке места снизу — раскрывается вверх.
-    if Dd.open : Rectangle {
+    Rectangle {
         property <length> list-h: min(Dd.items.length * 28px + 10px, 214px);
         x: Dd.x - 1px;
         y: Dd.y + 4px + list-h > root.height - 8px
@@ -1148,10 +1239,9 @@ export component AppWindow inherits Window {
         width: Dd.w + 2px;
         height: list-h;
 
-        property <bool> shown: false;
-        opacity: shown ? 1.0 : 0.0;
-        animate opacity { duration: Theme.t-fast; }
-        init => { shown = true; }
+        opacity: Dd.open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: 150ms; easing: ease-out; }
 
         background: Theme.surface;
         border-width: 1px;

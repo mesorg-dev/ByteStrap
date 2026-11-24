@@ -85,9 +85,9 @@ component NavTab inherits Rectangle {
     background: root.active
         ? Theme.surface-hover
         : (touch.has-hover ? #ffffff0d : transparent);
-    border-width: root.active ? 1px : 0px;
-    border-color: #ffffff1a;
-    animate background { duration: Theme.t-fast; }
+    border-width: 1px;
+    border-color: root.active ? #ffffff1a : transparent;
+    animate background, border-color { duration: 160ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
     HorizontalLayout {
         padding-left: root.active ? 12px : 8px;

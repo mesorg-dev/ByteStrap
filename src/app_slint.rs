@@ -6103,6 +6103,7 @@ mod shots {
                 _ => {}
             }
 
+            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(300));
             let buf = ui.window().take_snapshot().unwrap_or_else(|e| {
                 panic!("snapshot {name}: {e}");
             });
