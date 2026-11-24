@@ -3,8 +3,9 @@
 //! Также определение региона и реального пинга активного игрового сервера.
 
 use std::collections::HashMap;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -544,56 +545,61 @@ pub struct RegionPing {
     pub ping_ms: Option<u32>,
 }
 
-/// Замер задержки до ключевых дата-центров через высоконадёжные региональные эндпоинты S3.
-pub async fn measure_regions_ping() -> Vec<RegionPing> {
+/// Замер честного TCP RTT до ключевых дата-центров (порт 443 без TLS/HTTP оверхеда).
+pub fn measure_regions_ping() -> Vec<RegionPing> {
     let targets = [
-        (1, "Германия (Франкфурт)", "DE", "https://s3.eu-central-1.amazonaws.com/"),
-        (2, "Великобритания (Лондон)", "GB", "https://s3.eu-west-2.amazonaws.com/"),
-        (3, "Нидерланды (Амстердам)", "NL", "https://s3.eu-west-1.amazonaws.com/"),
-        (4, "Франция (Париж)", "FR", "https://s3.eu-west-3.amazonaws.com/"),
-        (5, "США Восток (Нью-Йорк)", "US", "https://s3.us-east-2.amazonaws.com/"),
-        (6, "США Восток (Ашберн)", "US", "https://s3.us-east-1.amazonaws.com/"),
-        (7, "США Запад (Калифорния)", "US", "https://s3.us-west-1.amazonaws.com/"),
-        (8, "США Запад (Орегон)", "US", "https://s3.us-west-2.amazonaws.com/"),
-        (9, "Сингапур", "SG", "https://s3.ap-southeast-1.amazonaws.com/"),
-        (10, "Япония (Токио)", "JP", "https://s3.ap-northeast-1.amazonaws.com/"),
-        (11, "Австралия (Сидней)", "AU", "https://s3.ap-southeast-2.amazonaws.com/"),
+        (1, "Германия (Франкфурт)", "DE", "s3.eu-central-1.amazonaws.com"),
+        (2, "Великобритания (Лондон)", "GB", "s3.eu-west-2.amazonaws.com"),
+        (3, "Нидерланды (Амстердам)", "NL", "s3.eu-west-1.amazonaws.com"),
+        (4, "Франция (Париж)", "FR", "s3.eu-west-3.amazonaws.com"),
+        (5, "США Восток (Нью-Йорк)", "US", "s3.us-east-2.amazonaws.com"),
+        (6, "США Восток (Ашберн)", "US", "s3.us-east-1.amazonaws.com"),
+        (7, "США Запад (Калифорния)", "US", "s3.us-west-1.amazonaws.com"),
+        (8, "США Запад (Орегон)", "US", "s3.us-west-2.amazonaws.com"),
+        (9, "Сингапур", "SG", "s3.ap-southeast-1.amazonaws.com"),
+        (10, "Япония (Токио)", "JP", "s3.ap-northeast-1.amazonaws.com"),
+        (11, "Австралия (Сидней)", "AU", "s3.ap-southeast-2.amazonaws.com"),
     ];
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(1800))
-        .build()
-        .unwrap_or_default();
+    let mut handles = Vec::with_capacity(targets.len());
+    for (id, name, flag, host) in targets {
+        handles.push(std::thread::spawn(move || {
+            // 1. Разделяем DNS и замер: сначала резолвим хост в SocketAddr вне таймера
+            let addr = (host, 443)
+                .to_socket_addrs()
+                .ok()
+                .and_then(|mut iter| iter.next());
 
-    let mut handles = Vec::new();
-    for (id, name, flag, url) in targets {
-        let client = client.clone();
-        handles.push(tokio::spawn(async move {
-            let start = std::time::Instant::now();
-            let ping = match client.head(url).send().await {
-                Ok(_) => {
-                    let elapsed = start.elapsed().as_millis() as u32;
-                    if elapsed >= 5 {
-                        Some(elapsed)
-                    } else {
-                        None
+            // 2. Чистый TCP connect_timeout на порт 443 (2 попытки, берём min)
+            let ping_ms = if let Some(addr) = addr {
+                let timeout = Duration::from_millis(3000);
+                let mut best: Option<u32> = None;
+
+                for _ in 0..2 {
+                    let start = Instant::now();
+                    if let Ok(_stream) = TcpStream::connect_timeout(&addr, timeout) {
+                        let elapsed = (start.elapsed().as_millis() as u32).max(1);
+                        best = Some(best.map_or(elapsed, |b| b.min(elapsed)));
                     }
                 }
-                Err(_) => None,
+                best
+            } else {
+                None
             };
+
             RegionPing {
                 id,
                 name: name.to_string(),
                 flag: flag.to_string(),
-                ip: url.to_string(),
-                ping_ms: ping,
+                ip: host.to_string(),
+                ping_ms,
             }
         }));
     }
 
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(handles.len());
     for h in handles {
-        if let Ok(res) = h.await {
+        if let Ok(res) = h.join() {
             results.push(res);
         }
     }

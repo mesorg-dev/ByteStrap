@@ -22,7 +22,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel, 
 use crate::core::config::Config;
 use crate::core::logview::{self, Follow, Line as SrcLine};
 use crate::core::playtime::{self, Playtime, SessionEvent};
-use crate::core::places::{Places};
+use crate::core::places::{self, Places};
 use crate::core::flags::FlagError;
 use crate::core::overlay;
 use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, screenshots, servers, updater, versions};
@@ -62,6 +62,7 @@ pub enum AsyncEvent {
     /// Результаты замера пинга до дата-центров Roblox.
     RegionPings(Vec<crate::core::servers::RegionPing>),
     Session(SessionEvent),
+    PlaceIconsLoaded,
 }
 
 /// Состояние карточки «обновление лаунчера» на странице About.
@@ -234,6 +235,7 @@ struct Ctx {
     playtime: Playtime,
     /// Избранное/недавние места (страница Games).
     places: Places,
+    icons_loading: bool,
     /// (текст, ошибка) — строка под полем ссылки на Home.
     link_msg: Option<(String, bool)>,
     /// (текст, ошибка) — строка под полем placeId на Games.
@@ -606,9 +608,16 @@ impl Ctx {
         ));
     }
 
-    /// Загрузить список публичных серверов места (кнопка «Загрузить»).
+    /// Загрузить список публичных серверов места (кнопка «Загрузить» или клик по плейсу).
     fn refresh_servers(&mut self, input: &str) {
-        let Some(id) = Self::parse_place(input) else {
+        let id_opt = Self::parse_place(input).or_else(|| {
+            if self.servers_place > 0 {
+                Some(self.servers_place)
+            } else {
+                None
+            }
+        });
+        let Some(id) = id_opt else {
             self.servers_msg = Some((tr(self.lang, "Games_Servers_BadId").to_string(), true));
             return;
         };
@@ -674,7 +683,7 @@ impl Ctx {
         }
     }
 
-    /// Замер пинга до дата-центров Roblox по всему миру.
+    /// Замер пинга до дата-центров Roblox по всему миру (чистый TCP RTT в параллельных потоках).
     fn test_regions_ping(&mut self) {
         if self.ping_busy {
             return;
@@ -682,13 +691,35 @@ impl Ctx {
         self.ping_busy = true;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
+            let pings = servers::measure_regions_ping();
+            let _ = tx.send(AsyncEvent::RegionPings(pings));
+        });
+    }
+
+    /// Проверка и фоновая загрузка иконок для топ-плейсов.
+    fn check_fetch_place_icons(&mut self) {
+        if self.icons_loading {
+            return;
+        }
+        let top = self.playtime.top(4);
+        let missing: Vec<String> = top
+            .iter()
+            .filter(|(id, _)| places::get_cached_place_icon_path(id).is_none())
+            .map(|(id, _)| (*id).clone())
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        self.icons_loading = true;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build();
             if let Ok(rt) = rt {
-                let pings = rt.block_on(servers::measure_regions_ping());
-                let _ = tx.send(AsyncEvent::RegionPings(pings));
+                rt.block_on(places::fetch_place_icons(&missing));
             }
+            let _ = tx.send(AsyncEvent::PlaceIconsLoaded);
         });
     }
 
@@ -918,8 +949,8 @@ impl Ctx {
             .iter()
             .map(|r| {
                 let kind = match r.ping_ms {
-                    Some(p) if p <= 80 => 0,
-                    Some(p) if p <= 150 => 1,
+                    Some(p) if p <= 120 => 0,
+                    Some(p) if p <= 200 => 1,
                     _ => 2,
                 };
                 let ping_text = r
@@ -935,6 +966,8 @@ impl Ctx {
             })
             .collect();
         ui.set_games_region_pings(ModelRc::new(VecModel::from(rp_rows)));
+
+        self.push_top_places(ui);
 
         // Активный сервер во время игры
         if let Some(srv) = &self.active_server {
@@ -1642,6 +1675,12 @@ impl Ctx {
                         self.push_games(&ui);
                     }
                 }
+                AsyncEvent::PlaceIconsLoaded => {
+                    self.icons_loading = false;
+                    if let Some(ui) = self.weak.upgrade() {
+                        self.push_top_places(&ui);
+                    }
+                }
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
@@ -1711,6 +1750,7 @@ impl Ctx {
                         self.sync_discord();
                         // Топ игр по времени мог измениться.
                         self.refresh_tray();
+                        self.check_fetch_place_icons();
                         // Окно возвращалось из трея только если его туда
                         // спрятали при запуске игры.
                         if self.hidden_for_game {
@@ -2819,15 +2859,44 @@ impl Ctx {
         ui.set_play_labels(ModelRc::new(VecModel::from(labels)));
         ui.set_play_days_max(max_val);
 
+        self.push_top_places(ui);
+    }
+
+    fn push_top_places(&self, ui: &AppWindow) {
         let rows: Vec<PlaceRow> = self
             .playtime
-            .top(5)
+            .top(4)
             .into_iter()
             .map(|(id, e)| {
-                let name = if e.name.is_empty() { id } else { &e.name };
+                let name = if e.name.is_empty() { (*id).clone() } else { e.name.clone() };
+                let duration = if e.secs < 60 {
+                    "< 1 мин".to_string()
+                } else if e.secs < 3600 {
+                    format!("{} мин", e.secs / 60)
+                } else {
+                    let h = e.secs as f64 / 3600.0;
+                    if h < 10.0 {
+                        format!("{h:.1} ч")
+                    } else {
+                        format!("{} ч", h.round() as u64)
+                    }
+                };
+                let (icon, has_icon) = if let Some(path) = places::get_cached_place_icon_path(id) {
+                    if let Ok(img) = slint::Image::load_from_path(&path) {
+                        (img, true)
+                    } else {
+                        (slint::Image::default(), false)
+                    }
+                } else {
+                    (slint::Image::default(), false)
+                };
+
                 PlaceRow {
-                    name: name.as_str().into(),
-                    duration: playtime::fmt_duration(e.secs).into(),
+                    id: (*id).clone().into(),
+                    name: name.into(),
+                    duration: duration.into(),
+                    icon,
+                    has_icon,
                 }
             })
             .collect();
@@ -5786,6 +5855,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         flags_count,
         playtime,
         places,
+        icons_loading: false,
         link_msg: None,
         games_msg: None,
         servers_place: 0,
@@ -5849,6 +5919,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         ctx.borrow_mut().check_updates(false);
     }
     ctx.borrow().push_home(&ui);
+    ctx.borrow_mut().check_fetch_place_icons();
 
     // Клик по roblox:// в командной строке (друзья, приватки, плейсы):
     // сразу запускаем игру с этой ссылкой (счётчик сессии и RP работают).
@@ -6053,11 +6124,34 @@ mod shots {
         // ---- Home ----
         ui.set_session_text("В игре 01:24:05 · Bloxburg".into());
         ui.set_top_places(rows(vec![
-            PlaceRow { name: "Bloxburg".into(), duration: "14 ч 05 мин".into() },
-            PlaceRow { name: "Grow a Garden".into(), duration: "9 ч 41 мин".into() },
-            PlaceRow { name: "Rivals".into(), duration: "6 ч 12 мин".into() },
-            PlaceRow { name: "Dead Rails".into(), duration: "3 ч 57 мин".into() },
-            PlaceRow { name: "Blade Ball".into(), duration: "2 ч 30 мин".into() },
+            PlaceRow {
+                id: "920587237".into(),
+                name: "Bloxburg".into(),
+                duration: "14.5 ч".into(),
+                icon: slint::Image::default(),
+                has_icon: false,
+            },
+            PlaceRow {
+                id: "189707".into(),
+                name: "Grow a Garden".into(),
+                duration: "9.7 ч".into(),
+                icon: slint::Image::default(),
+                has_icon: false,
+            },
+            PlaceRow {
+                id: "17625359962".into(),
+                name: "Rivals".into(),
+                duration: "6.2 ч".into(),
+                icon: slint::Image::default(),
+                has_icon: false,
+            },
+            PlaceRow {
+                id: "18540115".into(),
+                name: "Dead Rails".into(),
+                duration: "3.9 ч".into(),
+                icon: slint::Image::default(),
+                has_icon: false,
+            },
         ]));
         ui.set_link_paste_text("roblox://experiences/start?placeId=920587237".into());
         ui.set_link_msg("Ссылка скопирована".into());

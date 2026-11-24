@@ -6,7 +6,7 @@ import { Theme } from "../theme.slint";
 import { T } from "../i18n.slint";
 import { Snd } from "../snd.slint";
 import { PageFade, Btn, TextField, StatusDot } from "../widgets.slint";
-import { GameRow, ServerRow, ScreenshotRow, RegionPingRow } from "../models.slint";
+import { GameRow, ServerRow, ScreenshotRow, RegionPingRow, PlaceRow } from "../models.slint";
 import { IconGamepad, IconCamera, IconCross, IconStar } from "../icons.slint";
 
 export component GamesPage inherits PageFade {
@@ -14,6 +14,7 @@ export component GamesPage inherits PageFade {
     in-out property <int> active-tab: 0;
 
     in-out property <[GameRow]> rows;
+    in-out property <[PlaceRow]> top-places: [];
     in-out property <string> msg;
     in-out property <bool> msg-err: false;
 
@@ -228,11 +229,133 @@ export component GamesPage inherits PageFade {
         }
 
         // 2. ПОДВКЛАДКА 0: ИГРЫ И СЕРВЕРЫ
-        if root.active-tab == 0 : HorizontalLayout {
+        if root.active-tab == 0 : VerticalLayout {
             vertical-stretch: 1;
             spacing: 12px;
 
-            // ЛЕВАЯ КОЛОНКА: сохранённые игры
+            // Блок «ЛУЧШИЕ ПЛЕЙСЫ» (если есть плейсы в статистике)
+            if root.top-places.length > 0 : VerticalLayout {
+                spacing: 8px;
+
+                HorizontalLayout {
+                    height: 18px;
+                    spacing: 8px;
+                    alignment: center;
+
+                    Text {
+                        text: "ЛУЧШИЕ ПЛЕЙСЫ";
+                        font-family: Theme.font-mono;
+                        font-size: 11px;
+                        font-weight: 600;
+                        letter-spacing: 0.6px;
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    for place[idx] in root.top-places : top-card := Rectangle {
+                        horizontal-stretch: 1;
+                        height: 72px;
+                        border-radius: 14px;
+                        background: #12141C;
+                        border-width: 1px;
+                        border-color: top-card-touch.has-hover ? Theme.border-hover : Theme.border;
+                        animate border-color { duration: Theme.t-fast; }
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 10px;
+                            alignment: center;
+
+                            // Квадратная скруглённая аватарка 52x52px
+                            Rectangle {
+                                width: 52px;
+                                height: 52px;
+                                border-radius: 12px;
+                                clip: true;
+                                background: Theme.surface-2;
+
+                                if place.has-icon : Image {
+                                    width: 100%;
+                                    height: 100%;
+                                    source: place.icon;
+                                    image-fit: cover;
+                                }
+
+                                if !place.has-icon : Rectangle {
+                                    width: 100%;
+                                    height: 100%;
+                                    background: #1e2230;
+
+                                    IconGamepad {
+                                        width: 22px;
+                                        height: 22px;
+                                        c: Theme.accent;
+                                        x: (parent.width - 22px) / 2;
+                                        y: (parent.height - 22px) / 2;
+                                    }
+                                }
+                            }
+
+                            // Название и время игры
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 3px;
+
+                                Text {
+                                    text: place.name;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    color: Theme.text-primary;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: place.duration;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
+                                    overflow: elide;
+                                }
+                            }
+
+                            // Кнопка быстрого входа
+                            Btn {
+                                label: "Зайти";
+                                kind: 1;
+                                height: 30px;
+                                width: 62px;
+                                clicked => {
+                                    Snd.play(0);
+                                    root.launch(place.id);
+                                }
+                            }
+                        }
+
+                        top-card-touch := TouchArea {
+                            width: parent.width - 72px;
+                            height: 100%;
+                            mouse-cursor: MouseCursor.pointer;
+                            clicked => {
+                                Snd.play(2);
+                                root.servers-refresh(place.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                vertical-stretch: 1;
+                spacing: 12px;
+
+                // ЛЕВАЯ КОЛОНКА: сохранённые игры
             Rectangle {
                 horizontal-stretch: 5;
                 background: #12141C;
@@ -741,6 +864,7 @@ export component GamesPage inherits PageFade {
                 }
             }
         }
+    }
 
         // 3. ПОДВКЛАДКА 1: ГАЛЕРЕЯ СКРИНШОТОВ
         if root.active-tab == 1 : HorizontalLayout {

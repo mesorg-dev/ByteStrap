@@ -111,6 +111,87 @@ impl Places {
     }
 }
 
+/// Директория кеша иконок плейсов: %LOCALAPPDATA%\ByteStrap\cache\place_icons
+pub fn place_icons_cache_dir() -> PathBuf {
+    crate::core::config::Config::base_dir().join("cache").join("place_icons")
+}
+
+/// Путь к локально закешированной иконке плейса (если файл существует и не пуст)
+pub fn get_cached_place_icon_path(place_id: &str) -> Option<PathBuf> {
+    let p = place_icons_cache_dir().join(format!("{place_id}.png"));
+    if p.exists() && std::fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false) {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+/// Фоновая загрузка и сохранение иконок плейсов через публичный Roblox Thumbnails API
+pub async fn fetch_place_icons(place_ids: &[String]) -> Vec<(String, PathBuf)> {
+    if place_ids.is_empty() {
+        return Vec::new();
+    }
+    let cache_dir = place_icons_cache_dir();
+    let _ = std::fs::create_dir_all(&cache_dir);
+
+    let missing: Vec<String> = place_ids
+        .iter()
+        .filter(|id| {
+            let p = cache_dir.join(format!("{id}.png"));
+            !p.exists() || std::fs::metadata(&p).map(|m| m.len() == 0).unwrap_or(true)
+        })
+        .cloned()
+        .collect();
+
+    if !missing.is_empty() {
+        let ids_param = missing.join(",");
+        let url = format!(
+            "https://thumbnails.roblox.com/v1/places/gameicons?placeIds={ids_param}&returnPolicy=PlaceHolder&size=150x150&format=Png&isCircular=false"
+        );
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .build()
+            .unwrap_or_default();
+
+        if let Ok(resp) = client.get(&url).send().await {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(data) = json["data"].as_array() {
+                    for item in data {
+                        if let (Some(target_id), Some(img_url)) = (
+                            item["targetId"].as_u64().map(|n| n.to_string()),
+                            item["imageUrl"].as_str(),
+                        ) {
+                            if !img_url.is_empty() {
+                                if let Ok(img_resp) = client.get(img_url).send().await {
+                                    if let Ok(bytes) = img_resp.bytes().await {
+                                        if !bytes.is_empty() {
+                                            let out_path = cache_dir.join(format!("{target_id}.png"));
+                                            let _ = std::fs::write(&out_path, &bytes);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    place_ids
+        .iter()
+        .filter_map(|id| {
+            let p = cache_dir.join(format!("{id}.png"));
+            if p.exists() && std::fs::metadata(&p).map(|m| m.len() > 0).unwrap_or(false) {
+                Some((id.clone(), p))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
