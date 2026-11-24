@@ -362,19 +362,20 @@ export component OptionRow inherits Rectangle {
     HorizontalLayout {
         width: 100%;
         spacing: 12px;
+        alignment: space-between;
         padding-left: 4px;
         padding-right: 4px;
 
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 2px;
+            spacing: 3px;
 
             Text {
                 text: root.title;
                 font-family: Theme.font;
-                font-size: root.desc == "" ? 12px : 13px;
-                font-weight: root.desc == "" ? 400 : 600;
+                font-size: 14px;
+                font-weight: 600;
                 color: Theme.text-primary;
                 overflow: elide;
             }
@@ -450,32 +451,38 @@ export component Combo inherits Rectangle {
     animate border-color { duration: Theme.t-fast; easing: ease-out; }
     opacity: root.enabled ? 1.0 : 0.45;
 
-    Text {
-        x: 12px;
-        y: 0;
-        width: parent.width - 34px;
-        height: parent.height;
-        text: root.current-text;
-        font-family: Theme.font;
-        font-size: 12px;
-        color: Theme.text-primary;
-        vertical-alignment: center;
-        overflow: elide;
-    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: space-between;
 
-    if root.opened : IconChevronUp {
-        x: parent.width - 22px;
-        y: (parent.height - self.height) / 2;
-        width: 12px;
-        height: 12px;
-        c: Theme.accent;
-    }
-    if !root.opened : IconChevronDown {
-        x: parent.width - 22px;
-        y: (parent.height - self.height) / 2;
-        width: 12px;
-        height: 12px;
-        c: touch.has-hover && root.enabled ? Theme.text-primary : Theme.text-secondary;
+        Text {
+            horizontal-stretch: 1;
+            text: root.current-text;
+            font-family: Theme.font;
+            font-size: 13px;
+            color: Theme.text-primary;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 0;
+            alignment: center;
+            width: 12px;
+
+            if root.opened : IconChevronUp {
+                width: 12px;
+                height: 12px;
+                c: Theme.accent;
+            }
+            if !root.opened : IconChevronDown {
+                width: 12px;
+                height: 12px;
+                c: touch.has-hover && root.enabled ? Theme.text-primary : Theme.text-secondary;
+            }
+        }
     }
 
     touch := TouchArea {

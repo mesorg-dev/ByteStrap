@@ -207,13 +207,13 @@ export component SettingsPage inherits PageFade {
                         Text {
                             text: T.settings_channel;
                             font-weight: 600;
-                            font-size: 13px;
-                            color: Theme.fg;
+                            font-size: 14px;
+                            color: Theme.text-primary;
                         }
                         Text {
                             text: T.settings_channel_desc;
-                            font-size: 11px;
-                            color: Theme.fg-dimmer;
+                            font-size: 12px;
+                            color: Theme.text-secondary;
                         }
 
                         HorizontalLayout {
@@ -282,8 +282,8 @@ export component SettingsPage inherits PageFade {
                         Text {
                             text: T.settings_lang;
                             font-weight: 600;
-                            font-size: 13px;
-                            color: Theme.fg;
+                            font-size: 14px;
+                            color: Theme.text-primary;
                         }
 
                         HorizontalLayout {
@@ -326,13 +326,13 @@ export component SettingsPage inherits PageFade {
                         Text {
                             text: T.settings_threads;
                             font-weight: 600;
-                            font-size: 13px;
-                            color: Theme.fg;
+                            font-size: 14px;
+                            color: Theme.text-primary;
                         }
                         Text {
                             text: T.settings_threads_desc;
-                            font-size: 11px;
-                            color: Theme.fg-dimmer;
+                            font-size: 12px;
+                            color: Theme.text-secondary;
                         }
 
                         // Сегментный слайдер потоков 1..8 во всю ширину карточки
@@ -398,13 +398,13 @@ export component SettingsPage inherits PageFade {
                         Text {
                             text: T.settings_behavior;
                             font-weight: 600;
-                            font-size: 13px;
-                            color: Theme.fg;
+                            font-size: 14px;
+                            color: Theme.text-primary;
                         }
                         Text {
                             text: T.settings_behavior_desc;
-                            font-size: 11px;
-                            color: Theme.fg-dimmer;
+                            font-size: 12px;
+                            color: Theme.text-secondary;
                         }
 
                         OptionRow {
@@ -447,39 +447,6 @@ export component SettingsPage inherits PageFade {
                             checked: root.notify-server;
                             toggled(v) => { root.notify-server-set(v); }
                         }
-
-                        // Предпочитаемый регион игровых серверов
-                        HorizontalLayout {
-                            spacing: 12px;
-                            alignment: center;
-                            padding-top: 4px;
-                            padding-bottom: 4px;
-
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                spacing: 2px;
-                                Text {
-                                    text: T.settings_pref_region;
-                                    font-weight: 500;
-                                    font-size: 13px;
-                                    color: Theme.fg;
-                                }
-                                Text {
-                                    text: T.settings_pref_region_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dim;
-                                }
-                            }
-
-                            Combo {
-                                width: 280px;
-                                dd-id: 303;
-                                items: root.region-options;
-                                selected: root.pref-region;
-                                current-text: root.region-label(root.pref-region);
-                                pick(i) => { root.pref-region-set(i); }
-                            }
-                        }
                         OptionRow {
                             title: T.settings_discord_rp;
                             desc: T.settings_discord_rp_desc;
@@ -506,21 +473,23 @@ export component SettingsPage inherits PageFade {
                                     padding-bottom: 4px;
 
                                     HorizontalLayout {
-                                        height: 30px;
+                                        width: 100%;
+                                        height: 32px;
                                         spacing: 8px;
+                                        alignment: space-between;
 
                                         Text {
                                             text: T.settings_rp_custom;
-                                            font-size: 11px;
-                                            color: Theme.fg-dim;
+                                            font-size: 12px;
+                                            color: Theme.text-secondary;
                                             vertical-alignment: center;
-                                            width: 86px;
+                                            width: 90px;
                                         }
                                         cust-input := TextField {
                                             text: root.discord-custom;
                                             placeholder: T.settings_rp_custom_hint;
                                             horizontal-stretch: 1;
-                                            height: 30px;
+                                            height: 32px;
                                             edited => { root.discord-custom-set(cust-input.text); }
                                         }
                                     }
@@ -554,15 +523,17 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     HorizontalLayout {
-                                        height: 18px;
+                                        width: 100%;
+                                        height: 20px;
                                         spacing: 8px;
+                                        alignment: start;
 
                                         StatusDot {
                                             kind: root.discord-status == 2 ? 3 : root.discord-status;
                                         }
                                         Text {
                                             text: root.discord-text;
-                                            font-size: 11px;
+                                            font-size: 12px;
                                             color: root.discord-status == 1 ? Theme.good
                                                 : root.discord-status == 2 ? Theme.bad
                                                 : Theme.fg-dimmer;
@@ -590,19 +561,68 @@ export component SettingsPage inherits PageFade {
                         }
 
                         if root.deeplink-ok != 0 : HorizontalLayout {
-                            height: 18px;
+                            width: 100%;
+                            height: 20px;
                             spacing: 8px;
+                            alignment: start;
 
                             StatusDot {
                                 kind: root.deeplink-ok == 1 ? 1 : 3;
                             }
                             Text {
                                 text: root.deeplink-ok == 1 ? T.settings_deeplink_on : T.settings_deeplink_fail;
-                                font-size: 11px;
+                                font-size: 12px;
                                 color: root.deeplink-ok == 1 ? Theme.good : Theme.bad;
                                 vertical-alignment: center;
                                 overflow: elide;
                                 horizontal-stretch: 1;
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #ffffff0d; }
+
+                        // Предпочитаемый регион игровых серверов
+                        HorizontalLayout {
+                            width: 100%;
+                            spacing: 12px;
+                            alignment: space-between;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 3px;
+
+                                Text {
+                                    text: T.settings_pref_region;
+                                    font-family: Theme.font;
+                                    font-weight: 600;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: T.settings_pref_region_desc;
+                                    font-family: Theme.font;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
+                                    overflow: elide;
+                                }
+                            }
+
+                            VerticalLayout {
+                                horizontal-stretch: 0;
+                                alignment: center;
+
+                                Combo {
+                                    width: 280px;
+                                    dd-id: 303;
+                                    items: root.region-options;
+                                    selected: root.pref-region;
+                                    current-text: root.region-label(root.pref-region);
+                                    pick(i) => { root.pref-region-set(i); }
+                                }
                             }
                         }
                     }
@@ -625,13 +645,13 @@ export component SettingsPage inherits PageFade {
                         Text {
                             text: T.settings_game_res;
                             font-weight: 600;
-                            font-size: 13px;
-                            color: Theme.fg;
+                            font-size: 14px;
+                            color: Theme.text-primary;
                         }
                         Text {
                             text: T.settings_game_res_desc;
-                            font-size: 11px;
-                            color: Theme.fg-dimmer;
+                            font-size: 12px;
+                            color: Theme.text-secondary;
                         }
 
                         // Сетка кнопок пресетов
@@ -709,7 +729,7 @@ export component SettingsPage inherits PageFade {
                             Text {
                                 text: T.settings_res_w + ":";
                                 font-size: 12px;
-                                color: Theme.fg-dim;
+                                color: Theme.text-secondary;
                                 vertical-alignment: center;
                             }
                             res-w-input := TextField {
@@ -723,13 +743,13 @@ export component SettingsPage inherits PageFade {
                             Text {
                                 text: "×";
                                 font-size: 13px;
-                                color: Theme.fg-dim;
+                                color: Theme.text-secondary;
                                 vertical-alignment: center;
                             }
                             Text {
                                 text: T.settings_res_h + ":";
                                 font-size: 12px;
-                                color: Theme.fg-dim;
+                                color: Theme.text-secondary;
                                 vertical-alignment: center;
                             }
                             res-h-input := TextField {
@@ -762,16 +782,17 @@ export component SettingsPage inherits PageFade {
                                 Text {
                                     text: T.settings_path;
                                     font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
                                 }
                                 Text {
                                     text: T.settings_path_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 HorizontalLayout {
+                                    width: 100%;
                                     spacing: 8px;
                                     path-field := TextField {
                                         text: root.path;
@@ -807,13 +828,13 @@ export component SettingsPage inherits PageFade {
                                 Text {
                                     text: T.settings_cleanup;
                                     font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
                                 }
                                 Text {
                                     text: T.settings_cleanup_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 OptionRow {
@@ -824,6 +845,7 @@ export component SettingsPage inherits PageFade {
                                 }
 
                                 HorizontalLayout {
+                                    width: 100%;
                                     spacing: 12px;
                                     Btn {
                                         label: root.cleanup-busy ? T.settings_cleanup_busy : T.settings_cleanup_btn;
@@ -864,19 +886,19 @@ export component SettingsPage inherits PageFade {
                                 Text {
                                     text: T.settings_appearance;
                                     font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
                                 }
                                 Text {
                                     text: T.settings_appearance_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 Text {
                                     text: T.settings_accent;
-                                    font-size: 11px;
-                                    color: Theme.fg-dim;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 // Акцентные цвета.
@@ -901,8 +923,8 @@ export component SettingsPage inherits PageFade {
 
                                 Text {
                                     text: T.settings_bg;
-                                    font-size: 11px;
-                                    color: Theme.fg-dim;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 // Базовые фоновые палитры.
@@ -945,8 +967,8 @@ export component SettingsPage inherits PageFade {
                                     if root.bg-image-name != "" : Text {
                                         text: root.bg-image-name;
                                         font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
+                                        font-size: 12px;
+                                        color: Theme.text-secondary;
                                         vertical-alignment: center;
                                         overflow: elide;
                                         horizontal-stretch: 1;
@@ -991,8 +1013,8 @@ export component SettingsPage inherits PageFade {
                                     if root.splash-image-name != "" : Text {
                                         text: root.splash-image-name;
                                         font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
+                                        font-size: 12px;
+                                        color: Theme.text-secondary;
                                         vertical-alignment: center;
                                         overflow: elide;
                                         horizontal-stretch: 1;
@@ -1018,13 +1040,13 @@ export component SettingsPage inherits PageFade {
                                 Text {
                                     text: T.settings_sound;
                                     font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
                                 }
                                 Text {
                                     text: T.settings_sound_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 OptionRow {
@@ -1035,14 +1057,17 @@ export component SettingsPage inherits PageFade {
 
                                 // Громкость: подпись + слайдер + процент.
                                 HorizontalLayout {
-                                    height: 26px;
+                                    width: 100%;
+                                    height: 28px;
                                     spacing: 12px;
+                                    alignment: space-between;
 
                                     Text {
-                                        width: 80px;
+                                        width: 90px;
                                         text: T.settings_sound_volume;
-                                        font-size: 12px;
-                                        color: Theme.fg;
+                                        font-size: 13px;
+                                        font-weight: 500;
+                                        color: Theme.text-primary;
                                         vertical-alignment: center;
                                         overflow: elide;
                                     }
@@ -1060,11 +1085,11 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     Text {
-                                        width: 38px;
+                                        width: 44px;
                                         text: root.sound-vol + "%";
                                         font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
+                                        font-size: 12px;
+                                        color: Theme.text-secondary;
                                         horizontal-alignment: right;
                                         vertical-alignment: center;
                                     }
@@ -1089,13 +1114,13 @@ export component SettingsPage inherits PageFade {
                                 Text {
                                     text: T.settings_picture;
                                     font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
                                 }
                                 Text {
                                     text: T.settings_picture_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 OptionRow {
@@ -1105,14 +1130,17 @@ export component SettingsPage inherits PageFade {
                                 }
 
                                 HorizontalLayout {
-                                    height: 26px;
+                                    width: 100%;
+                                    height: 28px;
                                     spacing: 12px;
+                                    alignment: space-between;
 
                                     Text {
                                         width: 120px;
                                         text: T.settings_pic_bright;
-                                        font-size: 12px;
-                                        color: Theme.fg;
+                                        font-size: 13px;
+                                        font-weight: 500;
+                                        color: Theme.text-primary;
                                         vertical-alignment: center;
                                         overflow: elide;
                                     }
@@ -1133,22 +1161,25 @@ export component SettingsPage inherits PageFade {
                                         width: 44px;
                                         text: (root.overlay-bright > 0 ? "+" : "") + root.overlay-bright;
                                         font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
+                                        font-size: 12px;
+                                        color: Theme.text-secondary;
                                         horizontal-alignment: right;
                                         vertical-alignment: center;
                                     }
                                 }
 
                                 HorizontalLayout {
-                                    height: 26px;
+                                    width: 100%;
+                                    height: 28px;
                                     spacing: 12px;
+                                    alignment: space-between;
 
                                     Text {
                                         width: 120px;
                                         text: T.settings_pic_sat;
-                                        font-size: 12px;
-                                        color: Theme.fg;
+                                        font-size: 13px;
+                                        font-weight: 500;
+                                        color: Theme.text-primary;
                                         vertical-alignment: center;
                                         overflow: elide;
                                     }
@@ -1169,22 +1200,25 @@ export component SettingsPage inherits PageFade {
                                         width: 44px;
                                         text: root.overlay-sat + "%";
                                         font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
+                                        font-size: 12px;
+                                        color: Theme.text-secondary;
                                         horizontal-alignment: right;
                                         vertical-alignment: center;
                                     }
                                 }
 
                                 HorizontalLayout {
-                                    height: 26px;
+                                    width: 100%;
+                                    height: 28px;
                                     spacing: 12px;
+                                    alignment: space-between;
 
                                     Text {
                                         width: 120px;
                                         text: T.settings_pic_contrast;
-                                        font-size: 12px;
-                                        color: Theme.fg;
+                                        font-size: 13px;
+                                        font-weight: 500;
+                                        color: Theme.text-primary;
                                         vertical-alignment: center;
                                         overflow: elide;
                                     }
@@ -1205,8 +1239,8 @@ export component SettingsPage inherits PageFade {
                                         width: 44px;
                                         text: root.overlay-contrast + "%";
                                         font-family: Theme.font-mono;
-                                        font-size: 11px;
-                                        color: Theme.fg-dim;
+                                        font-size: 12px;
+                                        color: Theme.text-secondary;
                                         horizontal-alignment: right;
                                         vertical-alignment: center;
                                     }
@@ -1231,16 +1265,17 @@ export component SettingsPage inherits PageFade {
                                 Text {
                                     text: T.settings_profile;
                                     font-weight: 600;
-                                    font-size: 13px;
-                                    color: Theme.fg;
+                                    font-size: 14px;
+                                    color: Theme.text-primary;
                                 }
                                 Text {
                                     text: T.settings_profile_desc;
-                                    font-size: 11px;
-                                    color: Theme.fg-dimmer;
+                                    font-size: 12px;
+                                    color: Theme.text-secondary;
                                 }
 
                                 HorizontalLayout {
+                                    width: 100%;
                                     spacing: 8px;
                                     Btn {
                                         label: T.settings_profile_export;
