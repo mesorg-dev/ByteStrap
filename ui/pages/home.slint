@@ -255,7 +255,7 @@ export component HomePage inherits PageFade {
                     // Подзаголовок (живая сессия либо стандартная подпись)
                     Text {
                         text: root.session-text != "" ? root.session-text : T.home_sub;
-                        font-size: 12.5px;
+                        font-size: 13px;
                         color: root.session-text != "" ? Theme.accent : Theme.text-secondary;
                         horizontal-alignment: center;
                     }
@@ -313,7 +313,7 @@ export component HomePage inherits PageFade {
                                 if root.progress-text != "" : Text {
                                     text: root.progress-text;
                                     font-family: Theme.font-mono;
-                                    font-size: 11.5px;
+                                    font-size: 12px;
                                     color: Theme.text-secondary;
                                     horizontal-alignment: center;
                                 }
@@ -367,7 +367,7 @@ export component HomePage inherits PageFade {
 
                     if root.link-msg != "" : Text {
                         text: root.link-msg;
-                        font-size: 11.5px;
+                        font-size: 12px;
                         color: root.link-msg-bad ? Theme.danger : Theme.text-secondary;
                     }
                 }
@@ -402,7 +402,7 @@ export component HomePage inherits PageFade {
                         Text {
                             text: root.version-text != "" ? root.version-text : "—";
                             font-family: Theme.font-mono;
-                            font-size: 13.5px;
+                            font-size: 14px;
                             font-weight: 600;
                             color: Theme.text-primary;
                             overflow: elide;
@@ -581,7 +581,7 @@ export component HomePage inherits PageFade {
                                 Text {
                                     text: root.play-labels.length > 0 ? root.play-labels[0] : "";
                                     font-family: Theme.font-mono;
-                                    font-size: 10.5px;
+                                    font-size: 11px;
                                     color: Theme.text-muted;
                                 }
 
@@ -590,7 +590,7 @@ export component HomePage inherits PageFade {
                                 Text {
                                     text: root.play-labels.length > 13 ? root.play-labels[13] : "";
                                     font-family: Theme.font-mono;
-                                    font-size: 10.5px;
+                                    font-size: 11px;
                                     color: Theme.text-muted;
                                 }
                             }
@@ -661,7 +661,7 @@ export component HomePage inherits PageFade {
                                     Text {
                                         text: place.duration;
                                         font-family: Theme.font-mono;
-                                        font-size: 11.5px;
+                                        font-size: 12px;
                                         color: Theme.text-secondary;
                                         horizontal-stretch: 0;
                                         vertical-alignment: center;
