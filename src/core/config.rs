@@ -97,9 +97,26 @@ pub struct Config {
     pub death_sound_mode: i32,
     #[serde(default)]
     pub death_sound_path: String,
-    /// Режим курсора мыши: 0 — По умолчанию, 1 — 2006-2013, 2 — 2013-2020, 3 — Прицел/Точка.
+    /// Режим курсора мыши: 0 — По умолчанию, 1 — 2006-2013, 2 — 2013-2020, 3 — Прицел/Точка, 4 — Минимал-точка, 5 — Тонкий крестик, 6 — Свой.
     #[serde(default)]
     pub cursor_mode: i32,
+    #[serde(default)]
+    pub cursor_path: String,
+    /// Режим текстур/PvP: 0 — По умолчанию, 1 — PvP 1x1 (гладкие), 2 — FPS Boost (светлые 1x1), 3 — Своя папка.
+    #[serde(default)]
+    pub textures_mode: i32,
+    #[serde(default)]
+    pub textures_path: String,
+    /// Режим скайбокса (небо): 0 — По умолчанию, 1 — Чёрный PvP, 2 — Ночной космос, 3 — Закат, 4 — Ясный день, 5 — Своя папка.
+    #[serde(default)]
+    pub skybox_mode: i32,
+    #[serde(default)]
+    pub skybox_path: String,
+    /// Режим прицела Shift-Lock: 0 — По умолчанию, 1 — Точка (Dot), 2 — Крестик, 3 — Кольцо, 4 — Свой PNG.
+    #[serde(default)]
+    pub shiftlock_mode: i32,
+    #[serde(default)]
+    pub shiftlock_path: String,
     /// Режим шрифта: 0 — По умолчанию, 1 — JetBrains Mono, 2 — Inter, 3 — Unbounded, 4 — Кастом.
     #[serde(default)]
     pub font_mode: i32,
@@ -165,6 +182,13 @@ impl Default for Config {
             death_sound_mode: 0,
             death_sound_path: String::new(),
             cursor_mode: 0,
+            cursor_path: String::new(),
+            textures_mode: 0,
+            textures_path: String::new(),
+            skybox_mode: 0,
+            skybox_path: String::new(),
+            shiftlock_mode: 0,
+            shiftlock_path: String::new(),
             font_mode: 0,
             font_path: String::new(),
             preferred_region: 0,

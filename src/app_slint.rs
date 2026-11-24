@@ -730,6 +730,80 @@ impl Ctx {
     #[cfg(not(windows))]
     fn pick_font(&mut self) {}
 
+    #[cfg(windows)]
+    fn pick_cursor(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Пользовательский курсор Roblox")
+            .add_filter("Изображение PNG", &["png"])
+            .pick_file()
+        {
+            let p = path.to_string_lossy().to_string();
+            self.config.cursor_path = p.clone();
+            self.config.cursor_mode = 6;
+            self.config.save();
+            let _ = crate::core::customization::apply_cursor(&self.config.base(), 6, &p);
+            logger::info(format!("Пользовательский курсор мыши: {p}"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn pick_cursor(&mut self) {}
+
+    #[cfg(windows)]
+    fn pick_textures(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Папка текстур Roblox")
+            .pick_folder()
+        {
+            let p = path.to_string_lossy().to_string();
+            self.config.textures_path = p.clone();
+            self.config.textures_mode = 3;
+            self.config.save();
+            let _ = crate::core::customization::apply_textures(&self.config.base(), 3, &p);
+            logger::info(format!("Пользовательские текстуры: {p}"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn pick_textures(&mut self) {}
+
+    #[cfg(windows)]
+    fn pick_skybox(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Папка скайбокса (неба) Roblox")
+            .pick_folder()
+        {
+            let p = path.to_string_lossy().to_string();
+            self.config.skybox_path = p.clone();
+            self.config.skybox_mode = 5;
+            self.config.save();
+            let _ = crate::core::customization::apply_skybox(&self.config.base(), 5, &p);
+            logger::info(format!("Пользовательский скайбокс: {p}"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn pick_skybox(&mut self) {}
+
+    #[cfg(windows)]
+    fn pick_shiftlock(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_title("Прицел Shift-Lock Roblox")
+            .add_filter("Изображение PNG", &["png"])
+            .pick_file()
+        {
+            let p = path.to_string_lossy().to_string();
+            self.config.shiftlock_path = p.clone();
+            self.config.shiftlock_mode = 4;
+            self.config.save();
+            let _ = crate::core::customization::apply_shiftlock(&self.config.base(), 4, &p);
+            logger::info(format!("Пользовательский прицел Shift-Lock: {p}"));
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn pick_shiftlock(&mut self) {}
+
     /// Запуск клиента в конкретный сервер места (по JobId).
     fn server_join(&mut self, place: &str, job: &str) {
         let Some(id) = Self::parse_place(place) else {
@@ -3035,12 +3109,43 @@ impl Ctx {
                 .into(),
         );
         ui.set_mods_cursor_mode(self.config.cursor_mode);
+        ui.set_mods_cursor_path(
+            Path::new(self.config.cursor_path.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(self.config.cursor_path.as_str())
+                .into(),
+        );
         ui.set_mods_font_mode(self.config.font_mode);
         ui.set_mods_font_path(
             Path::new(self.config.font_path.trim())
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or(self.config.font_path.as_str())
+                .into(),
+        );
+        ui.set_mods_textures_mode(self.config.textures_mode);
+        ui.set_mods_textures_path(
+            Path::new(self.config.textures_path.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(self.config.textures_path.as_str())
+                .into(),
+        );
+        ui.set_mods_skybox_mode(self.config.skybox_mode);
+        ui.set_mods_skybox_path(
+            Path::new(self.config.skybox_path.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(self.config.skybox_path.as_str())
+                .into(),
+        );
+        ui.set_mods_shiftlock_mode(self.config.shiftlock_mode);
+        ui.set_mods_shiftlock_path(
+            Path::new(self.config.shiftlock_path.trim())
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(self.config.shiftlock_path.as_str())
                 .into(),
         );
 
@@ -3951,6 +4056,13 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_mods_cursor_desc(tr(lang, "Mods_Cursor_Desc").into());
     t.set_mods_font(tr(lang, "Mods_Font").into());
     t.set_mods_font_desc(tr(lang, "Mods_Font_Desc").into());
+    t.set_mods_textures(tr(lang, "Mods_Textures").into());
+    t.set_mods_textures_desc(tr(lang, "Mods_Textures_Desc").into());
+    t.set_mods_skybox(tr(lang, "Mods_Skybox").into());
+    t.set_mods_skybox_desc(tr(lang, "Mods_Skybox_Desc").into());
+    t.set_mods_shiftlock(tr(lang, "Mods_ShiftLock").into());
+    t.set_mods_shiftlock_desc(tr(lang, "Mods_ShiftLock_Desc").into());
+    t.set_mods_packs_download(tr(lang, "Mods_Packs_Download").into());
     t.set_mods_pick_file(tr(lang, "Mods_PickFile").into());
     t.set_games_region_filter(tr(lang, "Games_RegionFilter").into());
     t.set_games_ping_test(tr(lang, "Games_PingTest").into());
@@ -5022,7 +5134,19 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 let mut c = ctx.borrow_mut();
                 c.config.cursor_mode = m.max(0);
                 c.config.save();
-                let _ = crate::core::customization::apply_cursor(&c.config.base(), m.max(0));
+                let _ = crate::core::customization::apply_cursor(&c.config.base(), m.max(0), &c.config.cursor_path);
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_cursor_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_cursor();
             }
             let c = ctx.borrow();
             c.push_mods(&weak.unwrap());
@@ -5054,6 +5178,87 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             c.push_mods(&weak.unwrap());
         });
     }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_textures_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.textures_mode = m.max(0);
+                c.config.save();
+                let _ = crate::core::customization::apply_textures(&c.config.base(), m.max(0), &c.config.textures_path);
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_textures_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_textures();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_skybox_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.skybox_mode = m.max(0);
+                c.config.save();
+                let _ = crate::core::customization::apply_skybox(&c.config.base(), m.max(0), &c.config.skybox_path);
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_skybox_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_skybox();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_shiftlock_set(move |m: i32| {
+            {
+                let mut c = ctx.borrow_mut();
+                c.config.shiftlock_mode = m.max(0);
+                c.config.save();
+                let _ = crate::core::customization::apply_shiftlock(&c.config.base(), m.max(0), &c.config.shiftlock_path);
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    {
+        let ctx = Rc::clone(ctx);
+        let weak = weak.clone();
+        ui.on_mods_shiftlock_pick(move || {
+            {
+                let mut c = ctx.borrow_mut();
+                c.pick_shiftlock();
+            }
+            let c = ctx.borrow();
+            c.push_mods(&weak.unwrap());
+        });
+    }
+    ui.on_mods_open_packs_link(move || {
+        open_url("https://github.com/mesorg-dev/ByteStrap/releases");
+    });
     {
         let ctx = Rc::clone(ctx);
         let weak = weak.clone();
@@ -5971,6 +6176,12 @@ mod shots {
         ui.set_mods_profile_sel_index(0);
         ui.set_mods_profile_sel_valid(true);
         ui.set_mods_profiles_empty(false);
+        ui.set_mods_death_sound_mode(1);
+        ui.set_mods_cursor_mode(3);
+        ui.set_mods_font_mode(1);
+        ui.set_mods_textures_mode(1);
+        ui.set_mods_skybox_mode(2);
+        ui.set_mods_shiftlock_mode(1);
 
         // ---- Logs ----
         let log: Vec<(&str, i32, &str)> = vec![

@@ -27,8 +27,15 @@ export component ModsPage inherits PageFade {
     in-out property <int> death-sound-mode: 0;
     in-out property <string> death-sound-path: "";
     in-out property <int> cursor-mode: 0;
+    in-out property <string> cursor-path: "";
     in-out property <int> font-mode: 0;
     in-out property <string> font-path: "";
+    in-out property <int> textures-mode: 0;
+    in-out property <string> textures-path: "";
+    in-out property <int> skybox-mode: 0;
+    in-out property <string> skybox-path: "";
+    in-out property <int> shiftlock-mode: 0;
+    in-out property <string> shiftlock-path: "";
 
     in-out property <[string]> death-sound-options: [
         "Roblox (по умолчанию)",
@@ -41,7 +48,10 @@ export component ModsPage inherits PageFade {
         "Стандартный Roblox (2020+)",
         "Ретро-указатель (2006–2013)",
         "Классический (2013–2020)",
-        "Киберспорт / Прицел (точка)"
+        "Киберспорт / Прицел (точка)",
+        "Минимал-точка",
+        "Тонкий крестик",
+        "Свой PNG…"
     ];
     in-out property <[string]> font-options: [
         "Roblox (Source Sans Pro)",
@@ -49,6 +59,27 @@ export component ModsPage inherits PageFade {
         "Inter (гротеск)",
         "Unbounded (акцидентный)",
         "Свой файл шрифта…"
+    ];
+    in-out property <[string]> textures-options: [
+        "По умолчанию",
+        "PvP 1×1 (гладкие)",
+        "FPS Boost (светлые 1×1)",
+        "Своя папка текстур…"
+    ];
+    in-out property <[string]> skybox-options: [
+        "По умолчанию",
+        "Чёрный PvP",
+        "Ночной космос (звёзды)",
+        "Закат",
+        "Ясный день",
+        "Своя папка неба…"
+    ];
+    in-out property <[string]> shiftlock-options: [
+        "По умолчанию",
+        "Точка (Dot)",
+        "Крестик (Crosshair)",
+        "Кольцо (Ring)",
+        "Свой PNG…"
     ];
 
     pure function death-sound-label(mode: int, p: string) -> string {
@@ -59,10 +90,13 @@ export component ModsPage inherits PageFade {
         "Roblox (по умолчанию)"
     }
 
-    pure function cursor-label(mode: int) -> string {
+    pure function cursor-label(mode: int, p: string) -> string {
         mode == 1 ? "Ретро-указатель (2006–2013)" :
         mode == 2 ? "Классический (2013–2020)" :
         mode == 3 ? "Киберспорт / Прицел (точка)" :
+        mode == 4 ? "Минимал-точка" :
+        mode == 5 ? "Тонкий крестик" :
+        mode == 6 ? (p != "" ? ("Свой: " + p) : "Свой PNG…") :
         "Стандартный Roblox (2020+)"
     }
 
@@ -74,11 +108,43 @@ export component ModsPage inherits PageFade {
         "Roblox (Source Sans Pro)"
     }
 
+    pure function textures-label(mode: int, p: string) -> string {
+        mode == 1 ? "PvP 1×1 (гладкие)" :
+        mode == 2 ? "FPS Boost (светлые 1×1)" :
+        mode == 3 ? (p != "" ? ("Своя: " + p) : "Своя папка текстур…") :
+        "По умолчанию"
+    }
+
+    pure function skybox-label(mode: int, p: string) -> string {
+        mode == 1 ? "Чёрный PvP" :
+        mode == 2 ? "Ночной космос (звёзды)" :
+        mode == 3 ? "Закат" :
+        mode == 4 ? "Ясный день" :
+        mode == 5 ? (p != "" ? ("Своя: " + p) : "Свой папка неба…") :
+        "По умолчанию"
+    }
+
+    pure function shiftlock-label(mode: int, p: string) -> string {
+        mode == 1 ? "Точка (Dot)" :
+        mode == 2 ? "Крестик (Crosshair)" :
+        mode == 3 ? "Кольцо (Ring)" :
+        mode == 4 ? (p != "" ? ("Свой: " + p) : "Свой PNG…") :
+        "По умолчанию"
+    }
+
     callback death-sound-set(int);
     callback death-sound-pick();
     callback cursor-set(int);
+    callback cursor-pick();
     callback font-set(int);
     callback font-pick();
+    callback textures-set(int);
+    callback textures-pick();
+    callback skybox-set(int);
+    callback skybox-pick();
+    callback shiftlock-set(int);
+    callback shiftlock-pick();
+    callback open-packs-link();
 
     callback open-folder();
     callback refresh();
@@ -146,18 +212,29 @@ export component ModsPage inherits PageFade {
                         padding: 16px;
                         spacing: 14px;
 
-                        VerticalLayout {
-                            spacing: 2px;
-                            Text {
-                                text: T.mods_customization_h1;
-                                font-weight: 700;
-                                font-size: 14px;
-                                color: Theme.fg;
+                        HorizontalLayout {
+                            alignment: center;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text {
+                                    text: T.mods_customization_h1;
+                                    font-weight: 700;
+                                    font-size: 14px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.mods_customization_sub;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
                             }
-                            Text {
-                                text: T.mods_customization_sub;
-                                font-size: 11px;
-                                color: Theme.fg-dim;
+
+                            Btn {
+                                label: T.mods_packs_download;
+                                kind: 1;
+                                height: 28px;
+                                clicked => { root.open-packs-link(); }
                             }
                         }
 
@@ -166,7 +243,7 @@ export component ModsPage inherits PageFade {
                         // 1. Звук смерти
                         HorizontalLayout {
                             spacing: 16px;
-                            height: 34px;
+                            height: 36px;
 
                             VerticalLayout {
                                 horizontal-stretch: 1;
@@ -186,12 +263,11 @@ export component ModsPage inherits PageFade {
                             }
 
                             HorizontalLayout {
-                                width: 260px;
                                 alignment: end;
                                 spacing: 8px;
 
                                 Combo {
-                                    width: root.death-sound-mode == 4 ? 180px : 260px;
+                                    width: 240px;
                                     dd-id: 300;
                                     items: root.death-sound-options;
                                     selected: root.death-sound-mode;
@@ -202,11 +278,11 @@ export component ModsPage inherits PageFade {
                                     }
                                 }
 
-                                if root.death-sound-mode == 4 : Btn {
-                                    label: "Обзор…";
-                                    kind: 1;
-                                    width: 72px;
-                                    height: 32px;
+                                if root.death-sound-mode == 4 : IconBtn {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: 1;
+                                    tip: T.mods_pick_file;
                                     clicked => { root.death-sound-pick(); }
                                 }
                             }
@@ -217,7 +293,7 @@ export component ModsPage inherits PageFade {
                         // 2. Курсор мыши
                         HorizontalLayout {
                             spacing: 16px;
-                            height: 34px;
+                            height: 36px;
 
                             VerticalLayout {
                                 horizontal-stretch: 1;
@@ -237,16 +313,27 @@ export component ModsPage inherits PageFade {
                             }
 
                             HorizontalLayout {
-                                width: 260px;
                                 alignment: end;
+                                spacing: 8px;
 
                                 Combo {
-                                    width: 260px;
+                                    width: 240px;
                                     dd-id: 301;
                                     items: root.cursor-options;
                                     selected: root.cursor-mode;
-                                    current-text: root.cursor-label(root.cursor-mode);
-                                    pick(i) => { root.cursor-set(i); }
+                                    current-text: root.cursor-label(root.cursor-mode, root.cursor-path);
+                                    pick(i) => {
+                                        root.cursor-set(i);
+                                        if i == 6 { root.cursor-pick(); }
+                                    }
+                                }
+
+                                if root.cursor-mode == 6 : IconBtn {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: 1;
+                                    tip: T.mods_pick_file;
+                                    clicked => { root.cursor-pick(); }
                                 }
                             }
                         }
@@ -256,7 +343,7 @@ export component ModsPage inherits PageFade {
                         // 3. Шрифт интерфейса
                         HorizontalLayout {
                             spacing: 16px;
-                            height: 34px;
+                            height: 36px;
 
                             VerticalLayout {
                                 horizontal-stretch: 1;
@@ -276,12 +363,11 @@ export component ModsPage inherits PageFade {
                             }
 
                             HorizontalLayout {
-                                width: 260px;
                                 alignment: end;
                                 spacing: 8px;
 
                                 Combo {
-                                    width: root.font-mode == 4 ? 180px : 260px;
+                                    width: 240px;
                                     dd-id: 302;
                                     items: root.font-options;
                                     selected: root.font-mode;
@@ -292,12 +378,162 @@ export component ModsPage inherits PageFade {
                                     }
                                 }
 
-                                if root.font-mode == 4 : Btn {
-                                    label: "Обзор…";
-                                    kind: 1;
-                                    width: 72px;
-                                    height: 32px;
+                                if root.font-mode == 4 : IconBtn {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: 1;
+                                    tip: T.mods_pick_file;
                                     clicked => { root.font-pick(); }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #ffffff0d; }
+
+                        // 4. Текстуры и PvP
+                        HorizontalLayout {
+                            spacing: 16px;
+                            height: 36px;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: T.mods_textures;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.mods_textures_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 8px;
+
+                                Combo {
+                                    width: 240px;
+                                    dd-id: 304;
+                                    items: root.textures-options;
+                                    selected: root.textures-mode;
+                                    current-text: root.textures-label(root.textures-mode, root.textures-path);
+                                    pick(i) => {
+                                        root.textures-set(i);
+                                        if i == 3 { root.textures-pick(); }
+                                    }
+                                }
+
+                                if root.textures-mode == 3 : IconBtn {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: 1;
+                                    tip: T.mods_pick_file;
+                                    clicked => { root.textures-pick(); }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #ffffff0d; }
+
+                        // 5. Небо (Скайбокс)
+                        HorizontalLayout {
+                            spacing: 16px;
+                            height: 36px;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: T.mods_skybox;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.mods_skybox_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 8px;
+
+                                Combo {
+                                    width: 240px;
+                                    dd-id: 305;
+                                    items: root.skybox-options;
+                                    selected: root.skybox-mode;
+                                    current-text: root.skybox-label(root.skybox-mode, root.skybox-path);
+                                    pick(i) => {
+                                        root.skybox-set(i);
+                                        if i == 5 { root.skybox-pick(); }
+                                    }
+                                }
+
+                                if root.skybox-mode == 5 : IconBtn {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: 1;
+                                    tip: T.mods_pick_file;
+                                    clicked => { root.skybox-pick(); }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #ffffff0d; }
+
+                        // 6. Прицел Shift-Lock
+                        HorizontalLayout {
+                            spacing: 16px;
+                            height: 36px;
+
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: T.mods_shiftlock;
+                                    font-weight: 600;
+                                    font-size: 13px;
+                                    color: Theme.fg;
+                                }
+                                Text {
+                                    text: T.mods_shiftlock_desc;
+                                    font-size: 11px;
+                                    color: Theme.fg-dim;
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 8px;
+
+                                Combo {
+                                    width: 240px;
+                                    dd-id: 306;
+                                    items: root.shiftlock-options;
+                                    selected: root.shiftlock-mode;
+                                    current-text: root.shiftlock-label(root.shiftlock-mode, root.shiftlock-path);
+                                    pick(i) => {
+                                        root.shiftlock-set(i);
+                                        if i == 4 { root.shiftlock-pick(); }
+                                    }
+                                }
+
+                                if root.shiftlock-mode == 4 : IconBtn {
+                                    width: 36px;
+                                    height: 36px;
+                                    icon: 1;
+                                    tip: T.mods_pick_file;
+                                    clicked => { root.shiftlock-pick(); }
                                 }
                             }
                         }

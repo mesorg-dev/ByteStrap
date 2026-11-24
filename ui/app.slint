@@ -121,8 +121,15 @@ export component AppWindow inherits Window {
     in-out property <int> mods-death-sound-mode: 0;
     in-out property <string> mods-death-sound-path: "";
     in-out property <int> mods-cursor-mode: 0;
+    in-out property <string> mods-cursor-path: "";
     in-out property <int> mods-font-mode: 0;
     in-out property <string> mods-font-path: "";
+    in-out property <int> mods-textures-mode: 0;
+    in-out property <string> mods-textures-path: "";
+    in-out property <int> mods-skybox-mode: 0;
+    in-out property <string> mods-skybox-path: "";
+    in-out property <int> mods-shiftlock-mode: 0;
+    in-out property <string> mods-shiftlock-path: "";
 
     // Flags (page 2)
     in-out property <bool> flags-has-client: false;
@@ -311,8 +318,16 @@ export component AppWindow inherits Window {
     callback mods-death-sound-set(int);
     callback mods-death-sound-pick();
     callback mods-cursor-set(int);
+    callback mods-cursor-pick();
     callback mods-font-set(int);
     callback mods-font-pick();
+    callback mods-textures-set(int);
+    callback mods-textures-pick();
+    callback mods-skybox-set(int);
+    callback mods-skybox-pick();
+    callback mods-shiftlock-set(int);
+    callback mods-shiftlock-pick();
+    callback mods-open-packs-link();
     callback mods-toggle-mod(string, bool);
     callback mods-move-mod(string, int);
     callback mods-open-mod-folder(string);
@@ -624,13 +639,28 @@ export component AppWindow inherits Window {
                     death-sound-mode: root.mods-death-sound-mode;
                     death-sound-path: root.mods-death-sound-path;
                     cursor-mode: root.mods-cursor-mode;
+                    cursor-path: root.mods-cursor-path;
                     font-mode: root.mods-font-mode;
                     font-path: root.mods-font-path;
+                    textures-mode: root.mods-textures-mode;
+                    textures-path: root.mods-textures-path;
+                    skybox-mode: root.mods-skybox-mode;
+                    skybox-path: root.mods-skybox-path;
+                    shiftlock-mode: root.mods-shiftlock-mode;
+                    shiftlock-path: root.mods-shiftlock-path;
                     death-sound-set(m) => { root.mods-death-sound-set(m); }
                     death-sound-pick => { root.mods-death-sound-pick(); }
                     cursor-set(m) => { root.mods-cursor-set(m); }
+                    cursor-pick => { root.mods-cursor-pick(); }
                     font-set(m) => { root.mods-font-set(m); }
                     font-pick => { root.mods-font-pick(); }
+                    textures-set(m) => { root.mods-textures-set(m); }
+                    textures-pick => { root.mods-textures-pick(); }
+                    skybox-set(m) => { root.mods-skybox-set(m); }
+                    skybox-pick => { root.mods-skybox-pick(); }
+                    shiftlock-set(m) => { root.mods-shiftlock-set(m); }
+                    shiftlock-pick => { root.mods-shiftlock-pick(); }
+                    open-packs-link => { root.mods-open-packs-link(); }
                     open-folder => { root.mods-open-folder(); }
                     refresh => { root.mods-refresh(); }
                     apply => { root.mods-apply(); }
@@ -1240,11 +1270,11 @@ export component AppWindow inherits Window {
     // Список: у комбо, при нехватке места снизу — раскрывается вверх.
     Rectangle {
         property <length> list-h: min(Dd.items.length * 28px + 10px, 214px);
-        x: Dd.x - 1px;
+        x: max(8px, min(Dd.x, root.width - self.width - 14px));
         y: Dd.y + 4px + list-h > root.height - 8px
             ? max(8px, Dd.y - list-h - 4px - 36px)
             : Dd.y + 4px;
-        width: Dd.w + 2px;
+        width: max(Dd.w, 260px);
         height: list-h;
 
         opacity: Dd.open ? 1.0 : 0.0;
@@ -1293,12 +1323,27 @@ export component AppWindow inherits Window {
                         root.mods-death-sound-set(i);
                         if i == 4 { root.mods-death-sound-pick(); }
                     }
-                    else if Dd.owner == 301 { root.mods-cursor-set(i); }
+                    else if Dd.owner == 301 {
+                        root.mods-cursor-set(i);
+                        if i == 6 { root.mods-cursor-pick(); }
+                    }
                     else if Dd.owner == 302 {
                         root.mods-font-set(i);
                         if i == 4 { root.mods-font-pick(); }
                     }
                     else if Dd.owner == 303 { root.pref-region-set(i); }
+                    else if Dd.owner == 304 {
+                        root.mods-textures-set(i);
+                        if i == 3 { root.mods-textures-pick(); }
+                    }
+                    else if Dd.owner == 305 {
+                        root.mods-skybox-set(i);
+                        if i == 5 { root.mods-skybox-pick(); }
+                    }
+                    else if Dd.owner == 306 {
+                        root.mods-shiftlock-set(i);
+                        if i == 4 { root.mods-shiftlock-pick(); }
+                    }
                 }
             }
         }

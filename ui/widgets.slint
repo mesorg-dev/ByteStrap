@@ -99,17 +99,18 @@ export component Btn inherits Rectangle {
     }
 }
 
-// ===== Иконочная кнопка (круглая / таблетка 28×28) =====
+// ===== Иконочная кнопка (28×28 или 36×36) =====
 // icon: 0 — обновить, 1 — папка, 2 — копировать.
 export component IconBtn inherits Rectangle {
     in-out property <int> icon: 0;
     in-out property <string> tip;
     in-out property <bool> enabled: true;
+    in-out property <length> radius: Theme.r-md;
     callback clicked;
 
     width: 28px;
     height: 28px;
-    border-radius: self.height / 2;
+    border-radius: root.radius;
     border-width: 1px;
     border-color: touch.has-hover && root.enabled ? Theme.border-hover : Theme.border;
     background: touch.pressed && root.enabled ? #2A2F42
@@ -439,7 +440,7 @@ export component Combo inherits Rectangle {
 
     property <bool> opened: Dd.open && Dd.owner == root.dd-id;
 
-    height: 34px;
+    height: 36px;
     border-radius: Theme.r-md;
     background: #12141C;
     border-width: 1px;
