@@ -277,18 +277,18 @@ export component Toggle inherits Rectangle {
     background: root.on ? Theme.accent : #232736;
     border-width: 1px;
     border-color: root.on ? Theme.accent : Theme.border;
-    animate background, border-color { duration: Theme.t-fast; easing: ease-out; }
+    animate background, border-color { duration: 200ms; easing: ease-out; }
     opacity: root.enabled ? 1.0 : 0.45;
 
     knob := Rectangle {
         x: root.on ? parent.width - self.width - 3px : 3px;
-        animate x { duration: Theme.t-fast; easing: ease-out; }
+        animate x { duration: 220ms; easing: cubic-bezier(0.34, 1.35, 0.64, 1); }
         y: (parent.height - self.height) / 2;
         width: 16px;
         height: 16px;
         border-radius: 8px;
         background: root.on ? Theme.on-accent : Theme.text-secondary;
-        animate background { duration: Theme.t-fast; easing: ease-out; }
+        animate background { duration: 200ms; easing: ease-out; }
     }
 
     touch := TouchArea {

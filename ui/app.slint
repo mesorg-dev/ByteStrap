@@ -425,11 +425,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 0;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 HomePage {
                     width: 100%;
@@ -469,11 +469,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 1;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 GamesPage {
                     width: 100%;
@@ -521,11 +521,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 5;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 LogsPage {
                     width: 100%;
@@ -550,11 +550,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 2;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 FlagsPage {
                     width: 100%;
@@ -599,11 +599,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 4;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 ModsPage {
                     width: 100%;
@@ -650,11 +650,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 6;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 SettingsPage {
                     width: 100%;
@@ -758,11 +758,11 @@ export component AppWindow inherits Window {
                 property <bool> shown: root.page == 7;
                 width: parent.width;
                 height: parent.height;
-                y: shown ? 0px : 18px;
+                y: shown ? 0px : 24px;
                 opacity: shown ? 1.0 : 0.0;
-                visible: shown || self.opacity > 0.001;
-                animate opacity { duration: 220ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
-                animate y { duration: 280ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+                visible: shown;
+                animate opacity { duration: 240ms; easing: ease-out; }
+                animate y { duration: 300ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
 
                 AboutPage {
                     width: 100%;

@@ -223,6 +223,7 @@ struct Ctx {
     confirm: Option<Confirm>,
     cleanup_busy: bool,
     cleanup_msg: Option<(String, bool)>,
+    settings_dirty: bool,
     discord: discord::Handle,
     discord_rx: discord::StatusRx,
     discord_status: discord::Status,
@@ -265,8 +266,6 @@ struct Ctx {
     hidden_for_game: bool,
     /// Запущенный поток Anti-AFK (пока идёт сессия).
     anti_afk: Option<crate::core::antiafk::Handle>,
-    /// Счётчик тиков для периодического авто-обнаружения клиента Roblox.
-    session_poll_ticks: u32,
 
     tx: Sender<AsyncEvent>,
     rx: Receiver<AsyncEvent>,
@@ -1206,10 +1205,7 @@ impl Ctx {
     }
 
     fn poll_external_session(&mut self) {
-        self.session_poll_ticks = self.session_poll_ticks.wrapping_add(1);
-        if self.session_poll_ticks % 10 == 0 {
-            self.check_external_session();
-        }
+        self.check_external_session();
     }
 
     /// Пересборка меню трея: оверлей, профили флагов/модов, топ-3 игр.
@@ -1316,6 +1312,7 @@ impl Ctx {
     fn drain(&mut self) {
         while let Ok(st) = self.discord_rx.try_recv() {
             self.discord_status = st;
+            self.settings_dirty = true;
         }
         while let Ok(ev) = self.rx.try_recv() {
             match ev {
@@ -1359,6 +1356,7 @@ impl Ctx {
                 AsyncEvent::ChannelPreview(res) => {
                     self.channel_checking = false;
                     self.channel_preview = Some(res);
+                    self.settings_dirty = true;
                 }
                 AsyncEvent::ModsDone(res) => match res {
                     Ok(stats) => {
@@ -1406,6 +1404,7 @@ impl Ctx {
                     };
                     logger::info(format!("Очистка: {text}"));
                     self.cleanup_msg = Some((text, false));
+                    self.settings_dirty = true;
                 }
                 #[cfg(windows)]
                 AsyncEvent::Tray(action) => match action {
@@ -5572,6 +5571,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         confirm: None,
         cleanup_busy: false,
         cleanup_msg: None,
+        settings_dirty: false,
         discord,
         discord_rx,
         discord_status: discord::Status::Idle,
@@ -5604,7 +5604,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
         session_display: None,
         hidden_for_game: false,
         anti_afk: None,
-        session_poll_ticks: 0,
         tx,
         rx,
         cancel: None,
@@ -5685,17 +5684,53 @@ pub fn run() -> Result<(), slint::PlatformError> {
     let tick = Timer::default();
     {
         let ctx = Rc::clone(&ctx);
+        let mut external_poll_ticks: u32 = 0;
+        let mut last_install_progress = (
+            false,
+            deploy::Phase::Check,
+            0u64,
+            0u64,
+            false,
+            false,
+            0u64,
+        );
         tick.start(TimerMode::Repeated, Duration::from_millis(100), move || {
             let mut c = ctx.borrow_mut();
             c.drain();
-            c.poll_external_session();
+
+            // Опрос сессии Roblox 1 раз в секунду (10 тиков по 100 мс)
+            external_poll_ticks = external_poll_ticks.wrapping_add(1);
+            if external_poll_ticks % 10 == 0 {
+                c.poll_external_session();
+            }
+
             if c.quit {
                 let _ = slint::quit_event_loop();
                 return;
             }
             let ui = c.weak.clone().unwrap();
-            c.push_home(&ui);
             let page = ui.get_page();
+
+            // Публикация Home: только если активна домашняя страница (page == 0)
+            // ИЛИ если изменился статус/прогресс (чтобы не гонять биндинги почём зря).
+            let current_progress = (
+                c.install.active,
+                c.install.phase,
+                c.install.done,
+                c.install.total,
+                c.install.error.is_some(),
+                c.session_active,
+                c.session_secs,
+            );
+            let progress_changed = current_progress != last_install_progress;
+            if progress_changed {
+                last_install_progress = current_progress;
+            }
+
+            if page == 0 || progress_changed {
+                c.push_home(&ui);
+            }
+
             if page != c.last_page {
                 if page == 1 {
                     c.push_games(&ui);
@@ -5729,7 +5764,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
                 c.push_mods(&ui);
                 c.push_dlg(&ui);
             }
-            if page == 6 {
+            if page == 6 && c.settings_dirty {
+                c.settings_dirty = false;
                 c.push_settings(&ui);
             }
             if page == 7 {

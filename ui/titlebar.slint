@@ -85,48 +85,43 @@ component NavTab inherits Rectangle {
     visible: root.shown;
     height: 32px;
     clip: true;
-    width: !root.shown ? 0px : (root.active ? (34px + txt.preferred-width + 14px) : 34px);
-    animate width { duration: 260ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+    width: !root.shown ? 0px : (root.active ? (34px + txt.preferred-width + 12px) : 34px);
+    animate width { duration: 280ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
 
-    HorizontalLayout {
-        padding-left: 9px;
-        padding-right: 9px;
-        spacing: 6px;
-        alignment: center;
+    // Фиксированная иконка (не дёргается при расширении таба)
+    Rectangle {
+        x: 9px;
+        y: (parent.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
 
-        Rectangle {
-            width: 16px;
-            height: 16px;
-            y: (parent.height - 16px) / 2;
+        property <color> icon-c: root.active 
+            ? Theme.accent 
+            : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
+        animate icon-c { duration: 180ms; }
 
-            property <color> icon-c: root.active 
-                ? Theme.accent 
-                : (touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-            animate icon-c { duration: 180ms; }
+        if root.kind == 0 : IconHome { width: 16px; height: 16px; c: parent.icon-c; }
+        if root.kind == 1 : IconGamepad { width: 16px; height: 16px; c: parent.icon-c; }
+        if root.kind == 2 : IconSliders { width: 16px; height: 16px; c: parent.icon-c; }
+        if root.kind == 4 : IconWrench { width: 16px; height: 16px; c: parent.icon-c; }
+        if root.kind == 5 : IconTerminal { width: 16px; height: 16px; c: parent.icon-c; }
+        if root.kind == 6 : IconGear { width: 16px; height: 16px; c: parent.icon-c; }
+        if root.kind == 7 : IconInfo { width: 16px; height: 16px; c: parent.icon-c; }
+    }
 
-            if root.kind == 0 : IconHome { width: 16px; height: 16px; c: parent.icon-c; }
-            if root.kind == 1 : IconGamepad { width: 16px; height: 16px; c: parent.icon-c; }
-            if root.kind == 2 : IconSliders { width: 16px; height: 16px; c: parent.icon-c; }
-            if root.kind == 4 : IconWrench { width: 16px; height: 16px; c: parent.icon-c; }
-            if root.kind == 5 : IconTerminal { width: 16px; height: 16px; c: parent.icon-c; }
-            if root.kind == 6 : IconGear { width: 16px; height: 16px; c: parent.icon-c; }
-            if root.kind == 7 : IconInfo { width: 16px; height: 16px; c: parent.icon-c; }
-        }
+    // Текст вкладки выезжает из-под маски clip: true
+    txt := Text {
+        x: 31px;
+        y: (parent.height - self.height) / 2;
+        opacity: root.active ? 1.0 : 0.0;
+        animate opacity { duration: 200ms; easing: ease-out; }
 
-        Rectangle {
-            clip: true;
-            opacity: root.active ? 1.0 : 0.0;
-            animate opacity { duration: 180ms; easing: ease-out; }
-
-            txt := Text {
-                text: root.label;
-                font-family: Theme.font;
-                font-size: 12px;
-                font-weight: 600;
-                color: Theme.text-primary;
-                vertical-alignment: center;
-            }
-        }
+        text: root.label;
+        font-family: Theme.font;
+        font-size: 12px;
+        font-weight: 600;
+        color: Theme.text-primary;
+        vertical-alignment: center;
     }
 
     touch := TouchArea {
@@ -249,17 +244,19 @@ export component TitleBar inherits Rectangle {
         property <bool> island-hovered: island-bg-ta.has-hover
             || t0.hovered || t1.hovered || t2.hovered || t4.hovered
             || t5.hovered || t6.hovered || t7.hovered;
+        property <length> pad: island.island-hovered ? 7px : 4px;
+        animate pad { duration: 240ms; easing: cubic-bezier(0.34, 1.4, 0.64, 1); }
 
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        height: island.island-hovered ? 42px : 38px;
-        width: nav-row.preferred-width + 8px;
+        height: island.island-hovered ? 44px : 36px;
+        width: t7.x + t7.width + island.pad;
         border-radius: self.height / 2;
         clip: true;
         background: Theme.surface;
         border-width: 1px;
         border-color: island.island-hovered ? #ffffff22 : Theme.border;
-        animate height, border-color { duration: 240ms; easing: cubic-bezier(0.34, 1.35, 0.64, 1); }
+        animate height, border-color { duration: 240ms; easing: cubic-bezier(0.34, 1.4, 0.64, 1); }
 
         island-bg-ta := TouchArea {
             width: 100%;
@@ -275,13 +272,13 @@ export component TitleBar inherits Rectangle {
             border-width: 1px;
             border-color: #ffffff22;
 
-            x: nav-row.x + (root.page == 0 ? t0.x
+            x: root.page == 0 ? t0.x
                 : root.page == 1 ? t1.x
                 : root.page == 2 ? t2.x
                 : root.page == 4 ? t4.x
                 : root.page == 5 ? t5.x
                 : root.page == 6 ? t6.x
-                : t7.x);
+                : t7.x;
 
             width: root.page == 0 ? t0.width
                 : root.page == 1 ? t1.width
@@ -291,59 +288,65 @@ export component TitleBar inherits Rectangle {
                 : root.page == 6 ? t6.width
                 : t7.width;
 
-            animate x, width { duration: 280ms; easing: cubic-bezier(0.34, 1.25, 0.64, 1); }
+            animate x, width { duration: 300ms; easing: cubic-bezier(0.34, 1.28, 0.64, 1); }
         }
 
-        nav-row := HorizontalLayout {
-            x: 4px;
-            y: (parent.height - self.preferred-height) / 2;
-            height: 32px;
-            padding: 0px;
-            spacing: 0px;
-
-            t0 := NavTab {
-                kind: 0;
-                label: T.nav_home;
-                active: root.page == 0;
-                clicked => { root.navigate(0); }
-            }
-            t1 := NavTab {
-                kind: 1;
-                label: T.nav_games;
-                active: root.page == 1;
-                clicked => { root.navigate(1); }
-            }
-            t2 := NavTab {
-                kind: 2;
-                label: T.nav_flags;
-                active: root.page == 2;
-                clicked => { root.navigate(2); }
-            }
-            t4 := NavTab {
-                kind: 4;
-                label: T.nav_mods;
-                active: root.page == 4;
-                clicked => { root.navigate(4); }
-            }
-            t5 := NavTab {
-                kind: 5;
-                label: T.nav_logs;
-                shown: root.show-logs;
-                active: root.page == 5;
-                clicked => { root.navigate(5); }
-            }
-            t6 := NavTab {
-                kind: 6;
-                label: T.nav_settings;
-                active: root.page == 6;
-                clicked => { root.navigate(6); }
-            }
-            t7 := NavTab {
-                kind: 7;
-                label: T.nav_about;
-                active: root.page == 7;
-                clicked => { root.navigate(7); }
-            }
+        t0 := NavTab {
+            x: island.pad;
+            y: (island.height - self.height) / 2;
+            kind: 0;
+            label: T.nav_home;
+            active: root.page == 0;
+            clicked => { root.navigate(0); }
+        }
+        t1 := NavTab {
+            x: t0.x + t0.width;
+            y: (island.height - self.height) / 2;
+            kind: 1;
+            label: T.nav_games;
+            active: root.page == 1;
+            clicked => { root.navigate(1); }
+        }
+        t2 := NavTab {
+            x: t1.x + t1.width;
+            y: (island.height - self.height) / 2;
+            kind: 2;
+            label: T.nav_flags;
+            active: root.page == 2;
+            clicked => { root.navigate(2); }
+        }
+        t4 := NavTab {
+            x: t2.x + t2.width;
+            y: (island.height - self.height) / 2;
+            kind: 4;
+            label: T.nav_mods;
+            active: root.page == 4;
+            clicked => { root.navigate(4); }
+        }
+        t5 := NavTab {
+            x: t4.x + t4.width;
+            y: (island.height - self.height) / 2;
+            kind: 5;
+            label: T.nav_logs;
+            shown: root.show-logs;
+            active: root.page == 5;
+            clicked => { root.navigate(5); }
+        }
+        t6 := NavTab {
+            x: t5.x + t5.width;
+            y: (island.height - self.height) / 2;
+            kind: 6;
+            label: T.nav_settings;
+            active: root.page == 6;
+            clicked => { root.navigate(6); }
+        }
+        t7 := NavTab {
+            x: t6.x + t6.width;
+            y: (island.height - self.height) / 2;
+            kind: 7;
+            label: T.nav_about;
+            active: root.page == 7;
+            clicked => { root.navigate(7); }
         }
     }
 }
