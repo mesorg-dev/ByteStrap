@@ -113,17 +113,22 @@ export component GamesPage inherits PageFade {
                         animate background { duration: Theme.t-fast; }
 
                         HorizontalLayout {
+                            height: 100%;
                             padding-left: 14px;
                             padding-right: 14px;
-                            spacing: 6px;
+                            spacing: 8px;
                             alignment: center;
 
-                            IconGamepad {
-                                width: 14px;
-                                height: 14px;
-                                property <color> icon-c: root.active-tab == 0 ? Theme.accent : (tab0-touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-                                animate icon-c { duration: 180ms; }
-                                c: self.icon-c;
+                            VerticalLayout {
+                                alignment: center;
+
+                                IconGamepad {
+                                    width: 16px;
+                                    height: 16px;
+                                    property <color> icon-c: root.active-tab == 0 ? Theme.accent : (tab0-touch.has-hover ? Theme.text-primary : Theme.text-secondary);
+                                    animate icon-c { duration: 180ms; }
+                                    c: self.icon-c;
+                                }
                             }
 
                             Text {
@@ -152,17 +157,22 @@ export component GamesPage inherits PageFade {
                         animate background { duration: Theme.t-fast; }
 
                         HorizontalLayout {
+                            height: 100%;
                             padding-left: 14px;
                             padding-right: 14px;
-                            spacing: 6px;
+                            spacing: 8px;
                             alignment: center;
 
-                            IconCamera {
-                                width: 14px;
-                                height: 14px;
-                                property <color> icon-c: root.active-tab == 1 ? Theme.accent : (tab1-touch.has-hover ? Theme.text-primary : Theme.text-secondary);
-                                animate icon-c { duration: 180ms; }
-                                c: self.icon-c;
+                            VerticalLayout {
+                                alignment: center;
+
+                                IconCamera {
+                                    width: 16px;
+                                    height: 16px;
+                                    property <color> icon-c: root.active-tab == 1 ? Theme.accent : (tab1-touch.has-hover ? Theme.text-primary : Theme.text-secondary);
+                                    animate icon-c { duration: 180ms; }
+                                    c: self.icon-c;
+                                }
                             }
 
                             Text {
@@ -330,7 +340,9 @@ export component GamesPage inherits PageFade {
                                 label: "Зайти";
                                 kind: 1;
                                 height: 30px;
-                                width: 62px;
+                                min-width: 78px;
+                                horizontal-stretch: 0;
+                                pad-x: 12px;
                                 clicked => {
                                     Snd.play(0);
                                     root.launch(place.id);
@@ -339,7 +351,7 @@ export component GamesPage inherits PageFade {
                         }
 
                         top-card-touch := TouchArea {
-                            width: parent.width - 72px;
+                            width: parent.width - 96px;
                             height: 100%;
                             mouse-cursor: MouseCursor.pointer;
                             clicked => {

@@ -117,6 +117,73 @@ pub fn lookup(name: &str) -> Option<&'static FlagInfo> {
     REGISTRY.iter().find(|f| f.name == name)
 }
 
+/// Локализованное название категории FastFlag.
+pub fn category_tr(category: &'static str, lang: crate::i18n::Lang) -> &'static str {
+    if lang != crate::i18n::Lang::Ru {
+        return category;
+    }
+    match category {
+        "Rendering" => "Рендеринг",
+        "Performance" => "Производительность",
+        "Network" => "Сеть",
+        "Debug" => "Отладка",
+        "Camera" => "Камера",
+        "Memory" => "Память",
+        "Physics" => "Физика",
+        "UI" => "Интерфейс",
+        "Developer" => "Разработчик",
+        _ => category,
+    }
+}
+
+/// Локализованное описание встроенного FastFlag.
+pub fn desc_tr(info: &FlagInfo, lang: crate::i18n::Lang) -> &'static str {
+    if lang != crate::i18n::Lang::Ru {
+        return info.desc;
+    }
+    match info.name {
+        "FFlagDebugForceFutureIsBrightPhase3" => "Принудительное освещение Future Is Bright (Phase 3)",
+        "FFlagDebugForceFutureIsBrightPhase2" => "Принудительное освещение Future Is Bright (Phase 2 / ShadowMap)",
+        "DFFlagDebugRenderForceTechnologyVoxel" => "Принудительная технология освещения Voxel",
+        "FFlagRenderNoLowFrmBloom" => "Отключить bloom при низком уровне качества графики (FRM)",
+        "FFlagDisablePostFx" => "Отключить все эффекты постобработки",
+        "FIntDebugForceMSAASamples" => "Принудительное сглаживание MSAA (0=выкл, 2, 4, 8)",
+        "FFlagDebugGraphicsPreferVulkan" => "Предпочитать Vulkan вместо D3D11",
+        "DFIntTaskSchedulerTargetFps" => "Ограничение целевого FPS планировщика (5–1000)",
+        "DFIntCSGLevelOfDetailSwitchingDistance" => "Дистанция переключения детализации (LOD) для CSG",
+        "FIntFRMMaxGrassDistance" => "Максимальная дальность отрисовки травы (0=отключена)",
+        "FIntCameraMaxZoomDistance" => "Максимальная дистанция отдаления камеры",
+        "DFFlagDisableDPIScale" => "Отключить масштабирование DPI (нативное разрешение)",
+        "DFFlagDebugPrintDataPingBreakDown" => "Выводить подробную разбивку пинга в лог",
+        "FFlagDebugPrintNetworkStats" => "Выводить сетевую статистику в лог",
+        "FFlagDebugCheckAudio" => "Включить отладочные проверки аудио",
+        "FFlagDebugGraphicsDisableVulkan" => "Принудительно отключить Vulkan",
+        "FFlagDebugGraphicsPreferD3D11" => "Предпочитать D3D11 вместо Vulkan",
+        "FIntCameraMinZoomDistance" => "Минимальная дистанция приближения камеры",
+        "FFlagUserCameraToggle" => "Включить режим переключения камеры",
+        "DFIntTextureMemoryLimitMB" => "Лимит памяти под текстуры (МБ)",
+        "DFIntMeshPartMemoryLimitMB" => "Лимит памяти под MeshPart (МБ)",
+        "DFIntPhysicsSolverIterations" => "Количество итераций физического решателя",
+        "DFIntPhysicsMaxContacts" => "Максимум физических контактов за кадр",
+        "FFlagEnableNewChat" => "Включить новую систему чата",
+        "FFlagLuaDebuggerEnabled" => "Включить отладчик Lua",
+        "FFlagDebugShowPingInMenu" => "Показывать пинг в меню паузы (Esc)",
+        "DFIntCSGLevelOfDetailSwitchingDistanceL12" => "Дистанция переключения CSG LOD, уровень 1–2",
+        "DFIntCSGLevelOfDetailSwitchingDistanceL23" => "Дистанция переключения CSG LOD, уровень 2–3",
+        "DFIntCSGLevelOfDetailSwitchingDistanceL34" => "Дистанция переключения CSG LOD, уровень 3–4",
+        "FFlagHandleAltEnterFullscreenManually" => "Обрабатывать полноэкранный режим Alt+Enter вручную",
+        "DFFlagTextureQualityOverrideEnabled" => "Включить переопределение качества текстур",
+        "DFIntTextureQualityOverride" => "Уровень качества текстур (0=низкое .. 3=высокое)",
+        "FFlagDebugSkyGray" => "Заменить небо на однотонный серый цвет (быстрая загрузка)",
+        "DFFlagDebugPauseVoxelizer" => "Остановить вокселизатор (заморозить обновление освещения)",
+        "DFIntDebugFRMQualityLevelOverride" => "Принудительный уровень качества FRM (1..21)",
+        "FIntFRMMinGrassDistance" => "Минимальная дальность отрисовки травы",
+        "FFlagDebugGraphicsPreferOpenGL" => "Предпочитать OpenGL вместо D3D11",
+        "FIntGrassMovementReducedMotionFactor" => "Снизить колыхание травы (0=выкл .. 100=полностью)",
+        _ => info.desc,
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FlagError {
     NotBoolean,

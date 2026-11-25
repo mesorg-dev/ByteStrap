@@ -48,23 +48,23 @@ export component FlagsPage inherits PageFade {
     callback profile-export();
     callback profile-import();
 
-    // ===== Высоты карточек (абсолютное позиционирование во Flickable) =====
+    // ===== Высоты карточек (чётные координаты/высоты для чёткого рендера текста) =====
     property <length> tool-h: 100px;
     property <length> msg-h: root.msg == "" ? 0px : 24px;
     property <length> presets-head-y: root.tool-h + root.msg-h + 10px;
-    property <length> presets-y: root.presets-head-y + 21px;
-    // Высота карточки пресетов — по числу строк (14px + n*40px + 14px).
+    property <length> presets-y: root.presets-head-y + 24px;
+    // Высота карточки пресетов — по числу строк (12px + n*44px + 12px).
     property <length> presets-h: root.presets.length == 0
         ? 56px
-        : 22px + root.presets.length * 40px;
+        : 24px + root.presets.length * 44px;
     property <length> table-y: root.presets-y + root.presets-h + 12px;
     property <length> table-h: root.rows.length == 0
         ? 56px
-        : 32px + root.rows.length * 26px;
+        : 36px + root.rows.length * 36px;
     property <length> detail-y: root.table-y + root.table-h + 6px;
-    property <length> detail-h: root.sel-detail == "" ? 0px : 15px;
+    property <length> detail-h: root.sel-detail == "" ? 0px : 18px;
     property <length> prof-y: root.detail-y + root.detail-h + 12px;
-    property <length> prof-h: root.profiles-empty ? 146px : 123px;
+    property <length> prof-h: root.profiles-empty ? 150px : 126px;
 
     VerticalLayout {
         spacing: 0px;
@@ -77,7 +77,7 @@ export component FlagsPage inherits PageFade {
             letter-spacing: 0.5px;
             color: Theme.fg;
         }
-        Rectangle { height: 5px; }
+        Rectangle { height: 6px; }
         Text {
             text: T.flags_sub;
             font-size: 12px;
@@ -228,12 +228,13 @@ export component FlagsPage inherits PageFade {
                 x: 0;
                 y: root.presets-head-y;
                 width: 100%;
-                height: 15px;
+                height: 18px;
                 text: T.flags_presets;
                 font-family: Theme.font;
                 font-weight: 600;
-                font-size: 11px;
+                font-size: 12px;
                 color: Theme.fg-dimmer;
+                vertical-alignment: center;
             }
 
             c-presets := Rectangle {
@@ -253,15 +254,15 @@ export component FlagsPage inherits PageFade {
                 // Ряды: подпись/описание слева, контроль справа.
                 for p[i] in root.presets : Rectangle {
                     x: 0;
-                    y: 14px + i * 40px;
+                    y: 12px + i * 44px;
                     width: 100%;
-                    height: 34px;
+                    height: 36px;
 
                     Text {
                         x: 16px;
                         y: 0;
                         width: parent.width - 190px;
-                        height: 17px;
+                        height: 20px;
                         text: p.label;
                         font-size: 13px;
                         font-weight: 600;
@@ -271,11 +272,11 @@ export component FlagsPage inherits PageFade {
                     }
                     Text {
                         x: 16px;
-                        y: 17px;
+                        y: 20px;
                         width: parent.width - 190px;
-                        height: 14px;
+                        height: 16px;
                         text: p.desc;
-                        font-size: 11px;
+                        font-size: 12px;
                         color: Theme.fg-dimmer;
                         vertical-alignment: center;
                         overflow: elide;
@@ -284,7 +285,7 @@ export component FlagsPage inherits PageFade {
                     // Тумблер (kind 1).
                     if p.kind == 1 : Toggle {
                         x: parent.width - 54px;
-                        y: 7px;
+                        y: 8px;
                         on: p.on;
                         toggled(v) => { root.preset-toggle(i, v); }
                     }
@@ -294,13 +295,13 @@ export component FlagsPage inherits PageFade {
                 // рисовался поверх последующих строк.
                 for p[i] in root.presets : Rectangle {
                     x: 0;
-                    y: 14px + i * 40px;
+                    y: 12px + i * 44px;
                     width: 100%;
-                    height: 34px;
+                    height: 36px;
 
                     if p.kind == 0 : Combo {
                         x: parent.width - 146px;
-                        y: 2px;
+                        y: 0px;
                         width: 130px;
                         dd-id: i;
                         items: p.options;
@@ -339,37 +340,37 @@ export component FlagsPage inherits PageFade {
 
                 if root.rows.length > 0 : Text {
                     x: 8px;
-                    y: 10px;
+                    y: 6px;
                     width: 290px;
-                    height: 22px;
+                    height: 24px;
                     text: T.flags_col_name;
                     font-family: Theme.font;
                     font-weight: 600;
-                    font-size: 11px;
+                    font-size: 12px;
                     color: Theme.fg-dimmer;
                     vertical-alignment: center;
                 }
                 if root.rows.length > 0 : Text {
                     x: 308px;
-                    y: 10px;
+                    y: 6px;
                     width: 170px;
-                    height: 22px;
+                    height: 24px;
                     text: T.flags_col_value;
                     font-family: Theme.font;
                     font-weight: 600;
-                    font-size: 11px;
+                    font-size: 12px;
                     color: Theme.fg-dimmer;
                     vertical-alignment: center;
                 }
                 if root.rows.length > 0 : Text {
                     x: 488px;
-                    y: 10px;
+                    y: 6px;
                     width: parent.width - 498px;
-                    height: 22px;
+                    height: 24px;
                     text: T.flags_col_desc;
                     font-family: Theme.font;
                     font-weight: 600;
-                    font-size: 11px;
+                    font-size: 12px;
                     color: Theme.fg-dimmer;
                     vertical-alignment: center;
                     overflow: elide;
@@ -377,9 +378,9 @@ export component FlagsPage inherits PageFade {
 
                 for r[i] in root.rows : Rectangle {
                     x: 0;
-                    y: 32px + i * 26px;
+                    y: 36px + i * 36px;
                     width: 100%;
-                    height: 26px;
+                    height: 36px;
                     background: r.selected
                         ? Theme.glass-press
                         : row-touch.has-hover
@@ -389,9 +390,9 @@ export component FlagsPage inherits PageFade {
 
                     if r.selected : Rectangle {
                         x: 0;
-                        y: 2px;
+                        y: 4px;
                         width: 2px;
-                        height: parent.height - 4px;
+                        height: parent.height - 8px;
                         border-radius: 1px;
                         background: Theme.accent;
                     }
@@ -406,7 +407,7 @@ export component FlagsPage inherits PageFade {
                         x: 8px;
                         y: 0;
                         width: 284px;
-                        height: 26px;
+                        height: 36px;
                         vertical-alignment: center;
                         single-line: true;
                         font-size: 12px;
@@ -418,7 +419,7 @@ export component FlagsPage inherits PageFade {
                         x: 308px;
                         y: 0;
                         width: 164px;
-                        height: 26px;
+                        height: 36px;
                         vertical-alignment: center;
                         single-line: true;
                         font-size: 12px;
@@ -430,10 +431,10 @@ export component FlagsPage inherits PageFade {
                         x: 488px;
                         y: 0;
                         width: parent.width - 496px;
-                        height: 26px;
+                        height: 36px;
                         text: r.desc;
                         font-family: Theme.font;
-                        font-size: 11px;
+                        font-size: 12px;
                         color: r.works ? Theme.fg-dimmer : Theme.warn;
                         vertical-alignment: center;
                         overflow: elide;
@@ -446,11 +447,12 @@ export component FlagsPage inherits PageFade {
                 x: 0;
                 y: root.detail-y;
                 width: 100%;
-                height: 15px;
+                height: 18px;
                 text: root.sel-detail;
                 font-family: Theme.font-mono;
-                font-size: 11px;
+                font-size: 12px;
                 color: Theme.fg-dim;
+                vertical-alignment: center;
                 overflow: elide;
             }
 

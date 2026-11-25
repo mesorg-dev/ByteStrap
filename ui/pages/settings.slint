@@ -1060,10 +1060,9 @@ export component SettingsPage inherits PageFade {
                                     width: 100%;
                                     height: 28px;
                                     spacing: 12px;
-                                    alignment: space-between;
 
                                     Text {
-                                        width: 90px;
+                                        horizontal-stretch: 1;
                                         text: T.settings_sound_volume;
                                         font-size: 13px;
                                         font-weight: 500;
@@ -1073,7 +1072,8 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     vol-slider := Slider {
-                                        horizontal-stretch: 1;
+                                        width: 240px;
+                                        horizontal-stretch: 0;
                                         height: 26px;
                                         enabled: root.sound;
                                         value: root.sound-vol / 100;
@@ -1085,7 +1085,8 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     Text {
-                                        width: 44px;
+                                        width: 48px;
+                                        horizontal-stretch: 0;
                                         text: root.sound-vol + "%";
                                         font-family: Theme.font-mono;
                                         font-size: 12px;
@@ -1133,10 +1134,9 @@ export component SettingsPage inherits PageFade {
                                     width: 100%;
                                     height: 28px;
                                     spacing: 12px;
-                                    alignment: space-between;
 
                                     Text {
-                                        width: 120px;
+                                        horizontal-stretch: 1;
                                         text: T.settings_pic_bright;
                                         font-size: 13px;
                                         font-weight: 500;
@@ -1145,8 +1145,9 @@ export component SettingsPage inherits PageFade {
                                         overflow: elide;
                                     }
 
-                                    Slider {
-                                        horizontal-stretch: 1;
+                                    bright-slider := Slider {
+                                        width: 240px;
+                                        horizontal-stretch: 0;
                                         height: 26px;
                                         enabled: root.overlay-on;
                                         value: (root.overlay-bright + 50) / 100;
@@ -1158,7 +1159,8 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     Text {
-                                        width: 44px;
+                                        width: 48px;
+                                        horizontal-stretch: 0;
                                         text: (root.overlay-bright > 0 ? "+" : "") + root.overlay-bright;
                                         font-family: Theme.font-mono;
                                         font-size: 12px;
@@ -1172,10 +1174,9 @@ export component SettingsPage inherits PageFade {
                                     width: 100%;
                                     height: 28px;
                                     spacing: 12px;
-                                    alignment: space-between;
 
                                     Text {
-                                        width: 120px;
+                                        horizontal-stretch: 1;
                                         text: T.settings_pic_sat;
                                         font-size: 13px;
                                         font-weight: 500;
@@ -1184,8 +1185,9 @@ export component SettingsPage inherits PageFade {
                                         overflow: elide;
                                     }
 
-                                    Slider {
-                                        horizontal-stretch: 1;
+                                    sat-slider := Slider {
+                                        width: 240px;
+                                        horizontal-stretch: 0;
                                         height: 26px;
                                         enabled: root.overlay-on;
                                         value: root.overlay-sat / 200;
@@ -1197,7 +1199,8 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     Text {
-                                        width: 44px;
+                                        width: 48px;
+                                        horizontal-stretch: 0;
                                         text: root.overlay-sat + "%";
                                         font-family: Theme.font-mono;
                                         font-size: 12px;
@@ -1211,10 +1214,9 @@ export component SettingsPage inherits PageFade {
                                     width: 100%;
                                     height: 28px;
                                     spacing: 12px;
-                                    alignment: space-between;
 
                                     Text {
-                                        width: 120px;
+                                        horizontal-stretch: 1;
                                         text: T.settings_pic_contrast;
                                         font-size: 13px;
                                         font-weight: 500;
@@ -1223,8 +1225,9 @@ export component SettingsPage inherits PageFade {
                                         overflow: elide;
                                     }
 
-                                    Slider {
-                                        horizontal-stretch: 1;
+                                    contrast-slider := Slider {
+                                        width: 240px;
+                                        horizontal-stretch: 0;
                                         height: 26px;
                                         enabled: root.overlay-on;
                                         value: (root.overlay-contrast - 50) / 100;
@@ -1236,7 +1239,8 @@ export component SettingsPage inherits PageFade {
                                     }
 
                                     Text {
-                                        width: 44px;
+                                        width: 48px;
+                                        horizontal-stretch: 0;
                                         text: root.overlay-contrast + "%";
                                         font-family: Theme.font-mono;
                                         font-size: 12px;

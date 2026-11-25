@@ -771,7 +771,7 @@ impl Ctx {
         let missing: Vec<String> = top
             .iter()
             .filter(|(id, _)| places::get_cached_place_icon_path(id).is_none())
-            .map(|(id, _)| (*id).clone())
+            .map(|(id, _)| id.clone())
             .collect();
         if missing.is_empty() {
             return;
@@ -3053,8 +3053,8 @@ impl Ctx {
 
         let mut rows_meta = Vec::with_capacity(top.len());
         let mut key = Vec::with_capacity(top.len());
-        for (id, e) in top {
-            let name = if e.name.is_empty() { (*id).clone() } else { e.name.clone() };
+        for (id, e) in &top {
+            let name = if e.name.is_empty() { id.clone() } else { e.name.clone() };
             let duration = if e.secs < 60 {
                 "< 1 мин".to_string()
             } else if e.secs < 3600 {
@@ -3068,20 +3068,20 @@ impl Ctx {
                 }
             };
 
-            let cached = if let Some(entry) = cache.get(id) {
+            let cached = if let Some(entry) = cache.get(id.as_str()) {
                 entry.clone()
             } else {
                 let loaded = places::get_cached_place_icon_path(id)
                     .and_then(|path| slint::Image::load_from_path(&path).ok());
-                cache.insert((*id).clone(), loaded.clone());
+                cache.insert(id.clone(), loaded.clone());
                 loaded
             };
             let has_icon = cached.is_some();
             let icon = cached.unwrap_or_default();
 
-            key.push(((*id).clone(), name.clone(), duration.clone(), has_icon));
+            key.push((id.clone(), name.clone(), duration.clone(), has_icon));
             rows_meta.push(PlaceRow {
-                id: (*id).clone().into(),
+                id: id.clone().into(),
                 name: name.into(),
                 duration: duration.into(),
                 icon,
@@ -3538,7 +3538,12 @@ impl Ctx {
             .and_then(|(n, _)| {
                 let name = n.trim();
                 flags::lookup(name).map(|info| {
-                    let mut text = format!("{} · {} · {}", info.category, flags::hint(info), info.desc);
+                    let mut text = format!(
+                        "{} · {} · {}",
+                        flags::category_tr(info.category, lang),
+                        flags::hint(info),
+                        flags::desc_tr(info, lang)
+                    );
                     if !flags::is_allowlisted(name) {
                         text.push_str(&format!(
                             " · {}",
@@ -3585,7 +3590,13 @@ impl Ctx {
                 name: n.as_str().into(),
                 value: v.as_str().into(),
                 desc: flags::lookup(n.trim())
-                    .map(|f| format!("{} · {}", f.category, f.desc))
+                    .map(|f| {
+                        format!(
+                            "{} · {}",
+                            flags::category_tr(f.category, self.lang),
+                            flags::desc_tr(f, self.lang)
+                        )
+                    })
                     .unwrap_or_default()
                     .into(),
                 selected: self.flags_selected == Some(i),
@@ -4809,7 +4820,16 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             };
             let ui = weak.unwrap();
             apply_i18n(&ui, lang);
-            ctx.borrow().push_settings(&ui);
+            {
+                let mut c = ctx.borrow_mut();
+                c.home_dirty = true;
+                c.games_dirty = true;
+                c.about_dirty = true;
+                c.push_settings(&ui);
+                c.push_flags(&ui);
+                c.push_home(&ui);
+                c.push_games(&ui);
+            }
         });
     }
     {

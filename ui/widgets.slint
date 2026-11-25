@@ -33,6 +33,7 @@ export component Btn inherits Rectangle {
     in-out property <bool> enabled: true;
     /// Подсветка активного состояния (например, для табов или фильтров).
     in-out property <bool> active: false;
+    in-out property <length> pad-x: 16px;
     callback clicked;
 
     height: 34px;
@@ -64,8 +65,8 @@ export component Btn inherits Rectangle {
     opacity: root.enabled ? 1.0 : 0.45;
 
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
+        padding-left: root.pad-x;
+        padding-right: root.pad-x;
         spacing: 6px;
         alignment: center;
 
@@ -535,8 +536,7 @@ export component Slider inherits Rectangle {
     property <length> knob-size: 14px;
     property <length> track-w: max(1px, self.width - root.knob-size);
     property <length> knob-x: root.v * root.track-w;
-    property <bool> dragging: false;
-    property <float> drag-start-val: 0.0;
+    out property <bool> dragging: false;
 
     // Фоновая дорожка трека
     Rectangle {
@@ -577,7 +577,7 @@ export component Slider inherits Rectangle {
         x: 0;
         y: (parent.height - self.height) / 2;
         width: parent.width;
-        height: parent.height + 16px;
+        height: max(24px, parent.height);
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
 
@@ -588,15 +588,9 @@ export component Slider inherits Rectangle {
             if (event.kind == PointerEventKind.down) {
                 root.dragging = true;
                 Snd.play(1);
-                let rel-x = touch.mouse-x;
-                if (rel-x < root.knob-x || rel-x > root.knob-x + root.knob-size) {
-                    let new-v = min(max((rel-x - root.knob-size / 2) / root.track-w, 0.0), 1.0);
-                    root.value = new-v;
-                    root.drag-start-val = new-v;
-                    root.changed();
-                } else {
-                    root.drag-start-val = root.v;
-                }
+                let new-v = min(max((touch.mouse-x - root.knob-size / 2) / root.track-w, 0.0), 1.0);
+                root.value = new-v;
+                root.changed();
             } else if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
                 if (root.dragging) {
                     root.dragging = false;
@@ -607,8 +601,7 @@ export component Slider inherits Rectangle {
 
         moved => {
             if (root.dragging) {
-                let delta = (touch.mouse-x - touch.pressed-x) / root.track-w;
-                let new-v = min(max(root.drag-start-val + delta, 0.0), 1.0);
+                let new-v = min(max((touch.mouse-x - root.knob-size / 2) / root.track-w, 0.0), 1.0);
                 if (new-v != root.value) {
                     root.value = new-v;
                     root.changed();

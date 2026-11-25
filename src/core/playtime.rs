@@ -67,10 +67,53 @@ impl Playtime {
         }
     }
 
-    /// Топ-N мест по времени.
-    pub fn top(&self, n: usize) -> Vec<(&String, &PlaceEntry)> {
-        let mut v: Vec<_> = self.places.iter().collect();
-        v.sort_by(|a, b| b.1.secs.cmp(&a.1.secs));
+    /// Топ-N мест по времени (с объединением subplace'ов с одинаковым названием).
+    pub fn top(&self, n: usize) -> Vec<(String, PlaceEntry)> {
+        use std::collections::HashMap;
+        // (best_id, best_has_icon, best_individual_secs, merged_entry)
+        let mut groups: HashMap<String, (String, bool, u64, PlaceEntry)> = HashMap::new();
+
+        for (id, e) in &self.places {
+            let trimmed = e.name.trim();
+            let key = if trimmed.is_empty() {
+                format!("__id:{id}")
+            } else {
+                trimmed.to_lowercase()
+            };
+            let has_icon = crate::core::places::get_cached_place_icon_path(id).is_some();
+
+            match groups.get_mut(&key) {
+                Some((best_id, best_icon, best_secs, merged)) => {
+                    merged.secs += e.secs;
+                    if e.unix > merged.unix {
+                        merged.unix = e.unix;
+                    }
+                    let better = (has_icon && !*best_icon)
+                        || (has_icon == *best_icon && e.secs > *best_secs);
+                    if better {
+                        *best_id = id.clone();
+                        *best_icon = has_icon;
+                        *best_secs = e.secs;
+                        if !trimmed.is_empty() {
+                            merged.name = trimmed.to_string();
+                        }
+                    }
+                }
+                None => {
+                    let mut merged = e.clone();
+                    if !trimmed.is_empty() {
+                        merged.name = trimmed.to_string();
+                    }
+                    groups.insert(key, (id.clone(), has_icon, e.secs, merged));
+                }
+            }
+        }
+
+        let mut v: Vec<(String, PlaceEntry)> = groups
+            .into_values()
+            .map(|(best_id, _, _, merged)| (best_id, merged))
+            .collect();
+        v.sort_by(|a, b| b.1.secs.cmp(&a.1.secs).then_with(|| a.0.cmp(&b.0)));
         v.truncate(n);
         v
     }
@@ -423,6 +466,19 @@ mod tests {
         assert_eq!(pt.places["222"].secs, 20);
         let top = pt.top(1);
         assert_eq!(top[0].0, "111");
+    }
+
+    #[test]
+    fn top_deduplicates_subplaces_by_name() {
+        let mut pt = Playtime::default();
+        pt.merge(100, &[("1001".into(), "Bloxburg".into(), 60)]);
+        pt.merge(80, &[("1002".into(), " bloxburg ".into(), 80)]);
+        pt.merge(50, &[("2001".into(), "Other".into(), 50)]);
+        let top = pt.top(4);
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0].0, "1002");
+        assert_eq!(top[0].1.secs, 140);
+        assert_eq!(top[1].0, "2001");
     }
 
     #[test]
