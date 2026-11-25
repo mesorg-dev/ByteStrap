@@ -230,6 +230,30 @@ fn push_overlay(c: &Ctx) -> overlay::Params {
     }
 }
 
+#[derive(PartialEq)]
+struct HomeSnapshot {
+    lang: Lang,
+    busy: bool,
+    phase: deploy::Phase,
+    done: u64,
+    total: u64,
+    error: Option<String>,
+    installed: Option<String>,
+    latest_ver: Option<String>,
+    update_avail: bool,
+    link_msg: Option<(String, bool)>,
+    mods_count: usize,
+    flags_count: usize,
+    total_secs: u64,
+    session_active: bool,
+    session_secs: u64,
+    session_place: Option<String>,
+    active_region: Option<String>,
+    active_ping: Option<u32>,
+    today_key: String,
+    days: Vec<i32>,
+}
+
 struct Ctx {
     weak: Weak<AppWindow>,
     lang: Lang,
@@ -297,6 +321,13 @@ struct Ctx {
     place_icon_cache: RefCell<HashMap<String, Option<slint::Image>>>,
     /// Сигнатура последнего списка top_places (чтобы не пересоздавать VecModel зря).
     last_top_places_key: RefCell<Vec<(String, String, String, bool)>>,
+    /// Флаги и кэши публикаций для устранения холостых перерисовок в простое.
+    home_dirty: bool,
+    games_dirty: bool,
+    about_dirty: bool,
+    last_home_snapshot: RefCell<Option<HomeSnapshot>>,
+    last_about_key: RefCell<Option<(Lang, i32, String, String, u32)>>,
+    last_confirm_body: RefCell<Option<String>>,
     /// Запущенный поток Anti-AFK (пока идёт сессия).
     anti_afk: Option<crate::core::antiafk::Handle>,
 
@@ -394,6 +425,7 @@ impl Ctx {
             Some(guid) => flags::load(&base.join("Versions").join(guid)).len(),
             None => 0,
         };
+        self.home_dirty = true;
     }
 
     // ---- Установка (порт src/app.rs) ----
@@ -1510,11 +1542,15 @@ impl Ctx {
                 }
                 AsyncEvent::Latest(Ok(v)) => {
                     self.latest = Some(v);
+                    self.home_dirty = true;
                 }
                 AsyncEvent::Latest(Err(e)) => logger::warn(format!(
                     "Не удалось получить актуальную версию клиента: {e}"
                 )),
-                AsyncEvent::Install(ev) => self.on_install(ev),
+                AsyncEvent::Install(ev) => {
+                    self.on_install(ev);
+                    self.home_dirty = true;
+                }
                 AsyncEvent::UpdateCheck(res) => {
                     self.update = match res {
                         Ok(Some(rel)) => {
@@ -1532,19 +1568,24 @@ impl Ctx {
                             UpdateUi::Idle
                         }
                     };
+                    self.about_dirty = true;
                 }
                 AsyncEvent::UpdateProgress { done, total } => {
                     if matches!(self.update, UpdateUi::Downloading { .. }) {
                         self.update = UpdateUi::Downloading { done, total };
+                        self.about_dirty = true;
                     }
                 }
-                AsyncEvent::UpdateDone(res) => match res {
-                    Ok(()) => {
-                        self.update = UpdateUi::Idle;
-                        self.quit = true;
+                AsyncEvent::UpdateDone(res) => {
+                    match res {
+                        Ok(()) => {
+                            self.update = UpdateUi::Idle;
+                            self.quit = true;
+                        }
+                        Err(e) => self.update = UpdateUi::Error(e),
                     }
-                    Err(e) => self.update = UpdateUi::Error(e),
-                },
+                    self.about_dirty = true;
+                }
                 AsyncEvent::ChannelPreview(res) => {
                     self.channel_checking = false;
                     self.channel_preview = Some(res);
@@ -1561,6 +1602,7 @@ impl Ctx {
                         self.refresh_mods();
                         self.refresh_counters();
                         self.mods_dirty = true;
+                        self.home_dirty = true;
                     }
                     Err(e) => self.mods_msg = Some((e, true)),
                 },
@@ -1569,6 +1611,7 @@ impl Ctx {
                     self.refresh_mods();
                     self.refresh_counters();
                     self.mods_dirty = true;
+                    self.home_dirty = true;
                     match res {
                         Ok((name, _stats)) => {
                             if self.config.active_mod_profile != name {
@@ -1673,6 +1716,7 @@ impl Ctx {
                     if let Some(name) = name {
                         if !name.is_empty() {
                             self.places.set_name(id, &name, &self.config.base());
+                            self.games_dirty = true;
                         }
                     }
                 }
@@ -1681,6 +1725,7 @@ impl Ctx {
                         continue;
                     }
                     self.servers_busy = false;
+                    self.games_dirty = true;
                     match res {
                         Ok(list) => {
                             self.servers_msg = Some((
@@ -1719,6 +1764,8 @@ impl Ctx {
                             self.push_games(&ui);
                             self.push_home(&ui);
                         }
+                        self.home_dirty = true;
+                        self.games_dirty = true;
                         if self.config.discord_rp {
                             self.push_discord(self.session_secs);
                         }
@@ -1753,6 +1800,8 @@ impl Ctx {
                     if let Some(srv) = &mut self.active_server {
                         srv.ping_ms = Some(p);
                     }
+                    self.home_dirty = true;
+                    self.games_dirty = true;
                     if let Some(ui) = self.weak.upgrade() {
                         self.push_games(&ui);
                         self.push_home(&ui);
@@ -1762,6 +1811,7 @@ impl Ctx {
                 AsyncEvent::RegionPings(pings) => {
                     self.region_pings = pings;
                     self.ping_busy = false;
+                    self.games_dirty = true;
                     if let Some(ui) = self.weak.upgrade() {
                         self.push_games(&ui);
                     }
@@ -1770,6 +1820,8 @@ impl Ctx {
                     self.icons_loading = false;
                     self.place_icon_cache.borrow_mut().clear();
                     self.last_top_places_key.borrow_mut().clear();
+                    self.home_dirty = true;
+                    self.games_dirty = true;
                     if let Some(ui) = self.weak.upgrade() {
                         self.push_top_places(&ui);
                     }
@@ -1839,6 +1891,8 @@ impl Ctx {
                         }
                         self.playtime.merge(total, &places);
                         self.playtime.save(&self.config.base());
+                        self.home_dirty = true;
+                        self.games_dirty = true;
                         // Возврат к статусу лаунчера / снятие активности.
                         self.sync_discord();
                         // Топ игр по времени мог измениться.
@@ -1945,6 +1999,7 @@ impl Ctx {
         self.config.update_check_last = now;
         self.config.save();
         self.update = UpdateUi::Checking;
+        self.about_dirty = true;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -1965,6 +2020,7 @@ impl Ctx {
             done: 0,
             total: 0,
         };
+        self.about_dirty = true;
         let tx = self.tx.clone();
         let dest = std::env::temp_dir().join("bytestrap-update.exe");
         std::thread::spawn(move || {
@@ -2829,6 +2885,55 @@ impl Ctx {
     fn push_home(&self, ui: &AppWindow) {
         let lang = self.lang;
         let busy = self.install.active;
+        let update_avail = self.update_available();
+
+        let now = playtime::now_unix();
+        let today_key = playtime::day_key(now);
+        let mut days: Vec<i32> = Vec::with_capacity(14);
+        let mut labels: Vec<SharedString> = Vec::with_capacity(14);
+        let mut max_val = 60i32;
+        for i in (0..14).rev() {
+            let key = playtime::day_key(now - (i as u64) * 86_400);
+            let mins = (*self.playtime.days.get(&key).unwrap_or(&0) / 60) as i32;
+            if mins > max_val {
+                max_val = mins;
+            }
+            days.push(mins);
+            if i == 0 || i == 13 {
+                labels.push(format!("{}.{}", &key[8..10], &key[5..7]).into());
+            } else {
+                labels.push("".into());
+            }
+        }
+
+        let snap = HomeSnapshot {
+            lang,
+            busy,
+            phase: self.install.phase,
+            done: self.install.done,
+            total: self.install.total,
+            error: self.install.error.clone(),
+            installed: self.installed.clone(),
+            latest_ver: self.latest.as_ref().map(|v| v.version.clone()),
+            update_avail,
+            link_msg: self.link_msg.clone(),
+            mods_count: self.mods_count,
+            flags_count: self.flags_count,
+            total_secs: self.playtime.total_secs,
+            session_active: self.session_active,
+            session_secs: self.session_secs,
+            session_place: self.session_place.clone(),
+            active_region: self.active_server.as_ref().map(|s| s.region.clone()),
+            active_ping: self.active_server.as_ref().and_then(|s| s.ping_ms),
+            today_key,
+            days: days.clone(),
+        };
+
+        if self.last_home_snapshot.borrow().as_ref() == Some(&snap) {
+            self.push_top_places(ui);
+            return;
+        }
+        *self.last_home_snapshot.borrow_mut() = Some(snap);
 
         let status_text = if busy {
             self.phase_status()
@@ -2836,7 +2941,7 @@ impl Ctx {
             fmt(lang, "Home_Status_Error", &[err])
         } else if self.installed.is_none() {
             tr(lang, "Home_Status_NoClient").to_string()
-        } else if self.update_available() {
+        } else if update_avail {
             match &self.latest {
                 Some(v) => fmt(lang, "Home_Status_Update", &[&v.version]),
                 None => tr(lang, "Home_Status_Ready").to_string(),
@@ -2856,7 +2961,7 @@ impl Ctx {
             0
         });
         ui.set_busy(busy);
-        ui.set_show_update(self.installed.is_some() && self.update_available());
+        ui.set_show_update(self.installed.is_some() && update_avail);
 
         let primary = if self.installed.is_some() {
             tr(lang, "Home_Play")
@@ -2932,24 +3037,6 @@ impl Ctx {
         };
         ui.set_session_text(session_text.as_str().into());
 
-        // 14 дней активности: минуты (старые → новые) + подписи DD.MM.
-        let mut days: Vec<i32> = Vec::with_capacity(14);
-        let mut labels: Vec<SharedString> = Vec::with_capacity(14);
-        let now = playtime::now_unix();
-        let mut max_val = 60i32;
-        for i in (0..14).rev() {
-            let key = playtime::day_key(now - (i as u64) * 86_400);
-            let mins = (*self.playtime.days.get(&key).unwrap_or(&0) / 60) as i32;
-            if mins > max_val {
-                max_val = mins;
-            }
-            days.push(mins);
-            if i == 0 || i == 13 {
-                labels.push(format!("{}.{}", &key[8..10], &key[5..7]).into());
-            } else {
-                labels.push("".into());
-            }
-        }
         ui.set_play_days(ModelRc::new(VecModel::from(days)));
         ui.set_play_labels(ModelRc::new(VecModel::from(labels)));
         ui.set_play_days_max(max_val);
@@ -3072,7 +3159,6 @@ impl Ctx {
 
     fn push_about(&self, ui: &AppWindow) {
         let lang = self.lang;
-        ui.set_about_version(updater::current_version().into());
         let (kind, text, notes, pct) = match &self.update {
             UpdateUi::Idle => (0, String::new(), String::new(), 0.0),
             UpdateUi::Checking => {
@@ -3102,6 +3188,12 @@ impl Ctx {
             }
             UpdateUi::Error(e) => (5, fmt(lang, "About_UpdateErr", &[e]), String::new(), 0.0),
         };
+        let key = (lang, kind, text.clone(), notes.clone(), (pct * 1000.0) as u32);
+        if self.last_about_key.borrow().as_ref() == Some(&key) {
+            return;
+        }
+        *self.last_about_key.borrow_mut() = Some(key);
+        ui.set_about_version(updater::current_version().into());
         ui.set_update_kind(kind);
         ui.set_update_text(text.as_str().into());
         ui.set_update_notes(notes.as_str().into());
@@ -3259,7 +3351,12 @@ impl Ctx {
             }
             None => None,
         };
-        ui.set_confirm_body(body.unwrap_or_default().as_str().into());
+        let body_str = body.unwrap_or_default();
+        if self.last_confirm_body.borrow().as_deref() == Some(body_str.as_str()) {
+            return;
+        }
+        *self.last_confirm_body.borrow_mut() = Some(body_str.clone());
+        ui.set_confirm_body(body_str.as_str().into());
     }
 
     fn push_path(&self, ui: &AppWindow) {
@@ -5959,6 +6056,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         startup_launch_url,
         place_icon_cache: RefCell::new(HashMap::new()),
         last_top_places_key: RefCell::new(Vec::new()),
+        home_dirty: false,
+        games_dirty: false,
+        about_dirty: false,
+        last_home_snapshot: RefCell::new(None),
+        last_about_key: RefCell::new(None),
+        last_confirm_body: RefCell::new(None),
         anti_afk: None,
         tx: tx.clone(),
         rx,
@@ -6075,12 +6178,14 @@ pub fn run() -> Result<(), slint::PlatformError> {
                 last_install_progress = current_progress;
             }
 
-            if page == 0 || progress_changed {
+            if (page == 0 && c.home_dirty) || progress_changed || (page == 0 && page != c.last_page) {
+                c.home_dirty = false;
                 c.push_home(&ui);
             }
 
             if page != c.last_page {
                 if page == 1 {
+                    c.games_dirty = false;
                     c.push_games(&ui);
                 }
                 if page == 2 {
@@ -6092,6 +6197,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
                     if !c.mods_scanned {
                         c.refresh_mods();
                     }
+                    c.mods_dirty = false;
                     c.push_mods(&ui);
                     c.push_dlg(&ui);
                 }
@@ -6102,22 +6208,28 @@ pub fn run() -> Result<(), slint::PlatformError> {
                     c.push_settings(&ui);
                     c.push_path(&ui);
                 }
-            }
-            if page == 1 {
-                // Места могли смениться фоновым фетчем имени.
-                c.push_games(&ui);
-            }
-            if page == 4 && c.mods_dirty {
-                c.mods_dirty = false;
-                c.push_mods(&ui);
-                c.push_dlg(&ui);
-            }
-            if page == 6 && c.settings_dirty {
-                c.settings_dirty = false;
-                c.push_settings(&ui);
-            }
-            if page == 7 {
-                c.push_about(&ui);
+                if page == 7 {
+                    c.about_dirty = false;
+                    c.push_about(&ui);
+                }
+            } else {
+                if page == 1 && c.games_dirty {
+                    c.games_dirty = false;
+                    c.push_games(&ui);
+                }
+                if page == 4 && c.mods_dirty {
+                    c.mods_dirty = false;
+                    c.push_mods(&ui);
+                    c.push_dlg(&ui);
+                }
+                if page == 6 && c.settings_dirty {
+                    c.settings_dirty = false;
+                    c.push_settings(&ui);
+                }
+                if page == 7 && c.about_dirty {
+                    c.about_dirty = false;
+                    c.push_about(&ui);
+                }
             }
             c.push_confirm(&ui);
             c.last_page = page;

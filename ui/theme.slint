@@ -108,16 +108,4 @@ export global Theme {
     pure public function hash(i: float) -> float {
         Theme.frac(Math.sin((i * 127.1 + 311.7) * 1deg) * 43758.5453);
     }
-
-    pure public function twinkle(i: float, t: float) -> float {
-        0.5 + 0.5 * Math.sin(
-            (t * (0.045 + Theme.hash(i * 3.1) * 0.07)
-                + i * 97.0
-                + Theme.hash(i * 7.7) * 360.0) * 1deg
-        );
-    }
-
-    pure public function drift(t: float, phase: float) -> float {
-        Math.sin((t * 0.003 + phase) * 1deg) * 40.0;
-    }
 }

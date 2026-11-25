@@ -134,7 +134,7 @@ export component FlagsPage inherits PageFade {
                     clicked => { root.add(); }
                 }
 
-                // Несохранённые правки — пульсирующая звёздочка у «Сохранить».
+                // Несохранённые правки — индикатор у «Сохранить» (без бесконечного тика).
                 Rectangle {
                     visible: root.dirty;
                     x: parent.width - 146px;
@@ -145,7 +145,7 @@ export component FlagsPage inherits PageFade {
                     background: Theme.bad;
                     drop-shadow-blur: 7px;
                     drop-shadow-color: #e2959f66;
-                    opacity: 0.55 + 0.45 * Theme.twinkle(21.7, animation-tick() / 1ms);
+                    opacity: 1.0;
                 }
                 Btn {
                     x: parent.width - 126px;

@@ -329,6 +329,7 @@ export component ProgressBar inherits Rectangle {
 // kind: 0 — неактивно (muted), 1 — готово (success), 2 — занято (warning), 3 — ошибка (danger).
 export component StatusDot inherits Rectangle {
     in-out property <int> kind: 0;
+    property <bool> pulse-high: true;
 
     width: 8px;
     height: 8px;
@@ -339,8 +340,17 @@ export component StatusDot inherits Rectangle {
         : Theme.text-muted;
     animate background { duration: Theme.t-fast; }
 
-    // Занято — деликатная пульсация
-    opacity: root.kind == 2 ? (0.55 + 0.45 * Theme.twinkle(3.7, animation-tick() / 1ms)) : 1.0;
+    // Занято — пульсация только во время активной задачи (kind == 2).
+    opacity: root.kind == 2 ? (root.pulse-high ? 1.0 : 0.45) : 1.0;
+    animate opacity { duration: 450ms; easing: ease-in-out; }
+
+    Timer {
+        interval: 500ms;
+        running: root.kind == 2;
+        triggered => {
+            root.pulse-high = !root.pulse-high;
+        }
+    }
 
     drop-shadow-blur: root.kind == 1 ? 4px : 0px;
     drop-shadow-color: #4ADE8033;
