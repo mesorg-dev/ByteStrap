@@ -446,6 +446,26 @@ static RU: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Games_PingTesting" => "Измерение задержки…",
     "Settings_PrefRegion" => "Предпочитаемый регион серверов",
     "Settings_PrefRegionDesc" => "Приоритетный регион при быстром входе и поиске лучших серверов",
+    // Чат на сервере
+    "Settings_Chat" => "Чат на сервере",
+    "Settings_ChatDesc" => "Общение с другими игроками ByteStrap, оказавшимися на том же сервере Roblox",
+    "Settings_ChatEnabled" => "Чат с игроками ByteStrap",
+    "Settings_ChatEnabledDesc" => "Показывать меня другим пользователям лаунчера на одном сервере",
+    "Settings_ChatNotify" => "Уведомлять о встрече на сервере",
+    "Settings_ChatNotifyDesc" => "Показывать уведомление, когда на сервере есть игрок с ByteStrap",
+    "Chat_Title" => "Чат сервера",
+    "Chat_EmptyIdle" => "Зайди на любой сервер Roblox — если там есть игрок с ByteStrap, чат подключится автоматически",
+    "Chat_EmptyAlone" => "Пока на этом сервере никого с ByteStrap нет. Как только кто-то зайдёт — придёт уведомление",
+    "Chat_EmptyDisabled" => "Чат отключён в настройках",
+    "Chat_InputHint" => "Сообщение…",
+    "Chat_Mute" => "Замутить",
+    "Chat_Tip" => "Чат на сервере",
+    "Chat_Status_NoServer" => "Нет активного сервера",
+    "Chat_Status_Connecting" => "Подключение...",
+    "Chat_Status_Disabled" => "Чат выключен",
+    "Chat_Status_ConnectedFmt" => "На сервере с ByteStrap: {0} чел.",
+    "Chat_Notify_TitleFmt" => "На сервере игрок с ByteStrap: @{0}",
+    "Chat_Notify_Body" => "Откройте чат в ByteStrap, чтобы написать",
 });
 
 static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict! {
@@ -830,6 +850,26 @@ static EN: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| dict
     "Games_PingTesting" => "Testing latency…",
     "Settings_PrefRegion" => "Preferred Server Region",
     "Settings_PrefRegionDesc" => "Priority region for quick connect and server matching",
+    // Server chat
+    "Settings_Chat" => "Server chat",
+    "Settings_ChatDesc" => "Chat with other ByteStrap players on the same Roblox server",
+    "Settings_ChatEnabled" => "Chat with ByteStrap players",
+    "Settings_ChatEnabledDesc" => "Show me to other launcher users on the same server",
+    "Settings_ChatNotify" => "Notify on server meet",
+    "Settings_ChatNotifyDesc" => "Show a notification when another ByteStrap player is on the server",
+    "Chat_Title" => "Server Chat",
+    "Chat_EmptyIdle" => "Join any Roblox server — if another ByteStrap player is there, chat connects automatically",
+    "Chat_EmptyAlone" => "No other ByteStrap players on this server yet. You will be notified when someone joins",
+    "Chat_EmptyDisabled" => "Chat is disabled in settings",
+    "Chat_InputHint" => "Message…",
+    "Chat_Mute" => "Mute",
+    "Chat_Tip" => "Server chat",
+    "Chat_Status_NoServer" => "No active server",
+    "Chat_Status_Connecting" => "Connecting...",
+    "Chat_Status_Disabled" => "Chat disabled",
+    "Chat_Status_ConnectedFmt" => "On server with ByteStrap: {0}",
+    "Chat_Notify_TitleFmt" => "ByteStrap player on server: @{0}",
+    "Chat_Notify_Body" => "Open chat in ByteStrap to send a message",
 });
 
 pub fn tr(lang: Lang, key: &'static str) -> &'static str {

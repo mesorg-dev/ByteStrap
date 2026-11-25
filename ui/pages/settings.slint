@@ -54,6 +54,9 @@ export component SettingsPage inherits PageFade {
     in-out property <bool> show-logs: true;
     /// Всплывающее уведомление о сервере и пинге при подключении.
     in-out property <bool> notify-server: true;
+    /// Чат на сервере
+    in-out property <bool> chat-enabled: true;
+    in-out property <bool> chat-notify: true;
     in-out property <int> pref-region: 0;
     in-out property <bool> discord-rp: true;
     in-out property <bool> rp-place: true;
@@ -131,6 +134,8 @@ export component SettingsPage inherits PageFade {
     callback close-tray-set(bool);
     callback show-logs-set(bool);
     callback notify-server-set(bool);
+    callback chat-enabled-set(bool);
+    callback chat-notify-set(bool);
     callback pref-region-set(int);
     callback auto-clean-set(bool);
     callback cfg-export();
@@ -624,6 +629,48 @@ export component SettingsPage inherits PageFade {
                                     pick(i) => { root.pref-region-set(i); }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // ===== Чат на сервере =====
+                c-chat := Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: #ffffff17;
+                    border-radius: Theme.r-card;
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000055;
+                    drop-shadow-offset-y: 4px;
+
+                    VerticalLayout {
+                        padding: 18px;
+                        spacing: 12px;
+
+                        Text {
+                            text: T.settings_chat;
+                            font-weight: 600;
+                            font-size: 14px;
+                            color: Theme.text-primary;
+                        }
+                        Text {
+                            text: T.settings_chat_desc;
+                            font-size: 12px;
+                            color: Theme.text-secondary;
+                        }
+
+                        OptionRow {
+                            title: T.settings_chat_enabled;
+                            desc: T.settings_chat_enabled_desc;
+                            checked: root.chat-enabled;
+                            toggled(v) => { root.chat-enabled-set(v); }
+                        }
+                        OptionRow {
+                            title: T.settings_chat_notify;
+                            desc: T.settings_chat_notify_desc;
+                            checked: root.chat-notify;
+                            enabled: root.chat-enabled;
+                            toggled(v) => { root.chat-notify-set(v); }
                         }
                     }
                 }

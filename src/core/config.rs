@@ -125,11 +125,24 @@ pub struct Config {
     /// Предпочитаемый регион: 0 — Авто, 1 — DE Германия, 2 — GB Лондон, 3 — US Восток, 4 — US Запад, 5 — SG Азия.
     #[serde(default)]
     pub preferred_region: i32,
+    /// Встроенный чат с игроками ByteStrap на одном сервере Roblox.
+    #[serde(default = "default_true")]
+    pub chat_enabled: bool,
+    /// Уведомлять о встрече другого игрока с ByteStrap на сервере.
+    #[serde(default = "default_true")]
+    pub chat_notify: bool,
+    /// Адрес WebSocket-сервера чата.
+    #[serde(default = "default_chat_server_url")]
+    pub chat_server_url: String,
+    /// Локально замученные user_id в чате.
+    #[serde(default)]
+    pub muted_users: Vec<u64>,
 }
 
 fn default_res_w() -> u32 { 1920 }
 fn default_res_h() -> u32 { 1080 }
 fn default_true() -> bool { true }
+fn default_chat_server_url() -> String { "ws://127.0.0.1:8787/ws".into() }
 
 impl Default for Config {
     fn default() -> Self {
@@ -192,6 +205,10 @@ impl Default for Config {
             font_mode: 0,
             font_path: String::new(),
             preferred_region: 0,
+            chat_enabled: true,
+            chat_notify: true,
+            chat_server_url: default_chat_server_url(),
+            muted_users: Vec::new(),
         }
     }
 }

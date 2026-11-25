@@ -1,0 +1,451 @@
+// Выезжающая панель серверного чата ByteStrap (Material Design 3 dark).
+// Ширина 340px, прижата к правому краю рабочей области.
+
+import { Theme } from "theme.slint";
+import { T } from "i18n.slint";
+import { Snd } from "snd.slint";
+import { IconCross, IconChat, IconSend } from "icons.slint";
+import { ChatPeerRow, ChatMsgRow } from "models.slint";
+
+export component ChatDrawer inherits Rectangle {
+    in-out property <bool> open: false;
+    in-out property <bool> chat-enabled: true;
+    in-out property <bool> connected: false;
+    in-out property <string> status-text: "";
+    in-out property <[ChatPeerRow]> peers: [];
+    in-out property <int> peers-count: 0;
+    in-out property <[ChatMsgRow]> messages: [];
+    in-out property <int> draft-len: 0;
+    in-out property <int> scroll-token: 0;
+
+    callback close-request();
+    callback send-message(string);
+    callback draft-edited(string);
+    callback mute-user(string);
+
+    property <bool> is-open: root.open;
+    property <bool> can-send: root.connected && root.chat-enabled;
+
+    opacity: is-open ? 1.0 : 0.0;
+    visible: is-open || self.opacity > 0.001;
+    animate opacity { duration: 200ms; easing: ease-out; }
+    clip: true;
+
+    changed scroll-token => {
+        if (msg-col.preferred-height > msg-flick.height) {
+            msg-flick.content-y = msg-flick.height - msg-col.preferred-height;
+        } else {
+            msg-flick.content-y = 0px;
+        }
+    }
+
+    // Затемнённый фон: клик закрывает панель
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #06070b99;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.close-request(); }
+        }
+    }
+
+    // Правая выезжающая карточка шириной 340px
+    drawer := Rectangle {
+        width: 340px;
+        height: parent.height - 14px;
+        y: 0px;
+        x: root.is-open ? (parent.width - self.width - 14px) : (parent.width + 8px);
+        animate x { duration: 240ms; easing: cubic-bezier(0.22, 1, 0.36, 1); }
+
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border-hover;
+        border-radius: 18px;
+        clip: true;
+        drop-shadow-blur: 28px;
+        drop-shadow-color: #00000088;
+        drop-shadow-offset-x: -4px;
+
+        // Перехват кликов по самой панели, чтобы не закрывалась от фонового TouchArea
+        TouchArea {
+            width: 100%;
+            height: 100%;
+        }
+
+        VerticalLayout {
+            width: 100%;
+            height: 100%;
+            padding: 16px;
+            spacing: 12px;
+
+            // ===== Шапка =====
+            VerticalLayout {
+                spacing: 8px;
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        horizontal-stretch: 1;
+
+                        Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 9px;
+                            background: Theme.surface-2;
+                            border-width: 1px;
+                            border-color: root.connected ? Theme.border-accent : Theme.border;
+
+                            IconChat {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                width: 14px;
+                                height: 14px;
+                                c: root.connected ? Theme.accent : Theme.text-secondary;
+                            }
+                        }
+
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 2px;
+
+                            Text {
+                                text: T.chat_title;
+                                font-family: Theme.font-display;
+                                font-weight: 700;
+                                font-size: 14px;
+                                color: Theme.text-primary;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: root.status-text;
+                                font-size: 11px;
+                                color: root.connected ? Theme.accent : Theme.text-secondary;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 8px;
+                        background: close-ta.has-hover ? #ffffff14 : transparent;
+                        animate background { duration: Theme.t-fast; }
+
+                        IconCross {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            width: 10px;
+                            height: 10px;
+                            c: close-ta.has-hover ? Theme.text-primary : Theme.text-secondary;
+                        }
+
+                        close-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                Snd.play(2);
+                                root.close-request();
+                            }
+                        }
+                    }
+                }
+
+                // Компактные чипы присутствующих игроков
+                if root.peers.length > 0 : Flickable {
+                    width: 100%;
+                    height: 26px;
+                    content-width: chips-row.preferred-width;
+                    content-height: 26px;
+
+                    chips-row := HorizontalLayout {
+                        height: 26px;
+                        spacing: 6px;
+
+                        for peer in root.peers : Rectangle {
+                            height: 24px;
+                            border-radius: 12px;
+                            background: peer.is-self ? #96A6FF1F : Theme.surface-2;
+                            border-width: 1px;
+                            border-color: peer.is-self ? Theme.border-accent : Theme.border;
+
+                            HorizontalLayout {
+                                padding-left: 9px;
+                                padding-right: 9px;
+                                spacing: 4px;
+                                alignment: center;
+
+                                Text {
+                                    text: "@" + peer.username;
+                                    font-size: 11px;
+                                    font-weight: peer.is-self ? 600 : 500;
+                                    color: peer.is-muted ? Theme.text-muted
+                                        : (peer.is-self ? Theme.accent : Theme.text-primary);
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.border; }
+
+            // ===== Лента сообщений =====
+            Rectangle {
+                vertical-stretch: 1;
+                background: #12141C;
+                border-radius: 14px;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+
+                // Пустое состояние
+                if root.messages.length == 0 : VerticalLayout {
+                    width: 100%;
+                    height: 100%;
+                    padding: 24px;
+                    alignment: center;
+                    spacing: 10px;
+
+                    IconChat {
+                        x: (parent.width - self.width) / 2;
+                        width: 28px;
+                        height: 28px;
+                        c: Theme.text-muted;
+                    }
+
+                    Text {
+                        width: 100%;
+                        text: !root.chat-enabled ? T.chat_empty_disabled
+                            : (root.connected && root.peers-count == 0 ? T.chat_empty_alone : T.chat_empty_idle);
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                msg-flick := Flickable {
+                    visible: root.messages.length > 0;
+                    width: 100%;
+                    height: 100%;
+                    content-width: msg-flick.width;
+                    content-height: msg-col.preferred-height;
+
+                    msg-col := VerticalLayout {
+                        width: msg-flick.width;
+                        padding: 12px;
+                        spacing: 10px;
+
+                        for m in root.messages : Rectangle {
+                            width: 100%;
+                            height: msg-inner.preferred-height + 16px;
+                            border-radius: 12px;
+                            background: m.is-self ? #96A6FF12 : Theme.surface;
+                            border-width: 1px;
+                            border-color: m.is-self ? Theme.border-accent : Theme.border;
+
+                            msg-inner := VerticalLayout {
+                                x: 10px;
+                                y: 8px;
+                                width: parent.width - 20px;
+                                spacing: 4px;
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        horizontal-stretch: 1;
+
+                                        Text {
+                                            text: "@" + m.username;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            color: m.is-self ? Theme.text-secondary : Theme.accent;
+                                            overflow: elide;
+                                            vertical-alignment: center;
+                                        }
+
+                                        Text {
+                                            text: m.time;
+                                            font-family: Theme.font-mono;
+                                            font-size: 10px;
+                                            color: Theme.text-muted;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    if !m.is-self : Rectangle {
+                                        height: 18px;
+                                        border-radius: 6px;
+                                        background: mute-ta.has-hover ? #F8717122 : transparent;
+                                        animate background { duration: Theme.t-fast; }
+
+                                        HorizontalLayout {
+                                            padding-left: 6px;
+                                            padding-right: 6px;
+                                            alignment: center;
+
+                                            Text {
+                                                text: T.chat_mute;
+                                                font-size: 10px;
+                                                color: mute-ta.has-hover ? #FCA5A5 : Theme.text-muted;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+
+                                        mute-ta := TouchArea {
+                                            width: 100%;
+                                            height: 100%;
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                Snd.play(0);
+                                                root.mute-user(m.user-id);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    width: 100%;
+                                    text: m.text;
+                                    font-size: 13px;
+                                    color: Theme.text-primary;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ===== Нижняя панель ввода =====
+            VerticalLayout {
+                spacing: 4px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    input-box := Rectangle {
+                        horizontal-stretch: 1;
+                        height: 38px;
+                        border-radius: 12px;
+                        background: #12141C;
+                        border-width: 1px;
+                        border-color: chat-input.has-focus && root.can-send
+                            ? Theme.accent
+                            : Theme.border;
+                        opacity: root.can-send ? 1.0 : 0.45;
+                        animate border-color { duration: Theme.t-fast; }
+
+                        chat-input := TextInput {
+                            x: 12px;
+                            y: 0;
+                            width: parent.width - 24px;
+                            height: parent.height;
+                            enabled: root.can-send;
+                            single-line: true;
+                            vertical-alignment: center;
+                            font-family: Theme.font;
+                            font-size: 13px;
+                            color: Theme.text-primary;
+
+                            edited => {
+                                root.draft-edited(self.text);
+                            }
+
+                            accepted => {
+                                if (root.can-send && self.text != "" && root.draft-len <= 250) {
+                                    root.send-message(self.text);
+                                    self.text = "";
+                                    root.draft-edited("");
+                                }
+                            }
+                        }
+
+                        Text {
+                            x: 12px;
+                            y: 0;
+                            width: parent.width - 24px;
+                            height: parent.height;
+                            visible: chat-input.text == "";
+                            text: T.chat_input_hint;
+                            font-family: Theme.font;
+                            font-size: 13px;
+                            color: Theme.text-muted;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            enabled: root.can-send;
+                            mouse-cursor: root.can-send ? MouseCursor.text : default;
+                            clicked => { chat-input.focus(); }
+                        }
+                    }
+
+                    // Кнопка отправки справа
+                    send-btn := Rectangle {
+                        property <bool> send-ok: root.can-send && chat-input.text != "" && root.draft-len <= 250;
+                        width: 38px;
+                        height: 38px;
+                        border-radius: 12px;
+                        background: send-ok
+                            ? (send-ta.pressed ? Theme.accent-pressed : (send-ta.has-hover ? Theme.accent-hover : Theme.accent))
+                            : Theme.surface-2;
+                        border-width: send-ok ? 0px : 1px;
+                        border-color: Theme.border;
+                        opacity: send-ok ? 1.0 : 0.45;
+                        animate background { duration: Theme.t-fast; }
+
+                        IconSend {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            width: 16px;
+                            height: 16px;
+                            c: send-btn.send-ok ? Theme.on-accent : Theme.text-muted;
+                        }
+
+                        send-ta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            enabled: send-btn.send-ok;
+                            mouse-cursor: send-btn.send-ok ? pointer : default;
+                            clicked => {
+                                Snd.play(0);
+                                root.send-message(chat-input.text);
+                                chat-input.text = "";
+                                root.draft-edited("");
+                            }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    Text {
+                        text: root.draft-len + "/250";
+                        font-family: Theme.font-mono;
+                        font-size: 10px;
+                        color: root.draft-len > 250 ? Theme.danger : Theme.text-muted;
+                    }
+                }
+            }
+        }
+    }
+}

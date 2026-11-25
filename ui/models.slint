@@ -104,3 +104,20 @@ export struct PresetRow {
     /// Все флаги пресета в allowlist Roblox.
     works: bool,
 }
+
+export struct ChatPeerRow {
+    user-id: string,
+    username: string,
+    display-name: string,
+    is-self: bool,
+    is-muted: bool,
+}
+
+export struct ChatMsgRow {
+    user-id: string,
+    username: string,
+    display-name: string,
+    text: string,
+    time: string,
+    is-self: bool,
+}

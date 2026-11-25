@@ -120,6 +120,10 @@ pub enum SessionEvent {
         place_name: Option<String>,
         /// IP и порт игрового сервера (если найден в логе).
         server: Option<(String, u16)>,
+        /// JobId (UUID) текущего сервера Roblox (если найден в логе).
+        job_id: Option<String>,
+        /// UserId текущего аккаунта Roblox (если найден в логе).
+        user_id: Option<u64>,
     },
     /// Процесс завершён: итог и разбивка по местам (id, name, secs).
     End {
@@ -133,6 +137,8 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
     let start = Instant::now();
     let mut place: Option<String> = None;
     let mut server: Option<(String, u16)> = None;
+    let mut job_id: Option<String> = None;
+    let mut user_id: Option<u64> = None;
     let mut per_place: BTreeMap<String, u64> = BTreeMap::new();
     let mut names: BTreeMap<String, String> = BTreeMap::new();
     let mut log_offset: u64 = 0;
@@ -175,8 +181,8 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
         }
 
         if let Some(p) = &log_path {
-            let (found_place, found_server) = scan_log_events(p, &mut log_offset);
-            if let Some(id) = found_place {
+            let ev = scan_log_events(p, &mut log_offset);
+            if let Some(id) = ev.place_id {
                 if place.as_deref() != Some(id.as_str()) && !names.contains_key(&id) {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
@@ -189,8 +195,14 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
                 }
                 place = Some(id);
             }
-            if let Some(s) = found_server {
+            if let Some(s) = ev.server {
                 server = Some(s);
+            }
+            if let Some(j) = ev.job_id {
+                job_id = Some(j);
+            }
+            if let Some(u) = ev.user_id {
+                user_id = Some(u);
             }
         }
         let total = start.elapsed().as_secs();
@@ -202,6 +214,8 @@ pub fn watch_session(tx: Sender<SessionEvent>) {
             place: place.clone(),
             place_name: place.as_ref().and_then(|id| names.get(id)).cloned(),
             server: server.clone(),
+            job_id: job_id.clone(),
+            user_id,
         });
     }
 
@@ -280,46 +294,160 @@ pub(crate) fn newest_log() -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-/// Читает новые байты лога и возвращает (placeId, serverIp:port).
-fn scan_log_events(path: &Path, offset: &mut u64) -> (Option<String>, Option<(String, u16)>) {
+#[derive(Default)]
+struct LogScanEvents {
+    place_id: Option<String>,
+    server: Option<(String, u16)>,
+    job_id: Option<String>,
+    user_id: Option<u64>,
+}
+
+/// Читает новые байты лога и возвращает найденные события (placeId, server, jobId, userId).
+fn scan_log_events(path: &Path, offset: &mut u64) -> LogScanEvents {
     use std::io::{Read, Seek, SeekFrom};
 
+    let mut out = LogScanEvents::default();
     let mut f = match std::fs::File::open(path) {
         Ok(f) => f,
-        Err(_) => return (None, None),
+        Err(_) => return out,
     };
     let len = match f.metadata() {
         Ok(m) => m.len(),
-        Err(_) => return (None, None),
+        Err(_) => return out,
     };
     if len < *offset {
         // лог перекатился
         *offset = 0;
     }
     if len == *offset {
-        return (None, None);
+        return out;
     }
     if f.seek(SeekFrom::Start(*offset)).is_err() {
-        return (None, None);
+        return out;
     }
     let mut buf = Vec::new();
     if f.take(len - *offset).read_to_end(&mut buf).is_err() {
-        return (None, None);
+        return out;
     }
     *offset = len;
 
     let text = String::from_utf8_lossy(&buf);
-    let mut found_place = None;
-    let mut found_server = None;
     for line in text.lines() {
         if let Some(id) = find_place_id(line) {
-            found_place = Some(id);
+            out.place_id = Some(id);
         }
         if let Some(s) = crate::core::servers::find_server_ip(line) {
-            found_server = Some(s);
+            out.server = Some(s);
+        }
+        if let Some(j) = find_job_id(line) {
+            out.job_id = Some(j);
+        }
+        if let Some(u) = find_user_id(line) {
+            out.user_id = Some(u);
         }
     }
-    (found_place, found_server)
+    out
+}
+
+/// Проверка UUID формата 8-4-4-4-12 (ненулевой).
+fn is_nonzero_uuid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    for (i, &ch) in b.iter().enumerate() {
+        if i == 8 || i == 13 || i == 18 || i == 23 {
+            if ch != b'-' {
+                return false;
+            }
+        } else if !ch.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+    b.iter().any(|&ch| ch != b'0' && ch != b'-')
+}
+
+/// Извлекает JobId (UUID) сервера Roblox из строки лога:
+/// `! Joining game '<uuid>' ...`, `jobId: <uuid>`, `jobId=<uuid>`, `"jobId":"<uuid>"`, `gameInstanceId=<uuid>`.
+pub fn find_job_id(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for marker in ["joining game", "jobid", "gameinstanceid", "serverid"] {
+        let mut idx = 0usize;
+        while let Some(pos) = lower[idx..].find(marker) {
+            let start = idx + pos + marker.len();
+            let rest = &lower[start..lower.len().min(start + 80)];
+            // Ищем первый блок из 36 символов, похожий на UUID
+            if rest.len() >= 36 {
+                for off in 0..=(rest.len() - 36) {
+                    if !rest.is_char_boundary(off) || !rest.is_char_boundary(off + 36) {
+                        continue;
+                    }
+                    let cand = &rest[off..off + 36];
+                    if is_nonzero_uuid(cand) {
+                        // Убеждаемся, что UUID не склеен с другими hex-символами
+                        let prev_ok = off == 0 || !rest.as_bytes()[off - 1].is_ascii_alphanumeric();
+                        let next_ok = off + 36 == rest.len()
+                            || !rest.as_bytes()[off + 36].is_ascii_alphanumeric();
+                        if prev_ok && next_ok {
+                            return Some(cand.to_string());
+                        }
+                    }
+                }
+            }
+            idx = (start + 1).min(lower.len());
+            if idx >= lower.len() {
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// Извлекает UserId текущего аккаунта из строки лога Roblox:
+/// `userid:`, `"userId":`, `UserId=`, `localUserId:`.
+pub fn find_user_id(line: &str) -> Option<u64> {
+    let lower = line.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut idx = 0usize;
+    while let Some(pos) = lower[idx..].find("userid") {
+        let abs = idx + pos;
+        let after = abs + 6;
+        // Проверяем границу слева, чтобы не зацепить creatorUserId / followUserId / targetUserId
+        let prefix_ok = abs == 0
+            || !bytes[abs - 1].is_ascii_alphabetic()
+            || lower[..abs].ends_with("local");
+        // Справа должен быть разделитель (`:`, `=`, `"`, `'`, пробел)
+        let suffix_ok = after < bytes.len()
+            && matches!(bytes[after], b':' | b'=' | b'"' | b'\'' | b' ' | b'\t');
+
+        if prefix_ok && suffix_ok {
+            let end = lower.len().min(after + 32);
+            let mut cur = after;
+            while cur < end
+                && matches!(bytes[cur], b':' | b'=' | b'"' | b'\'' | b' ' | b'\t')
+            {
+                cur += 1;
+            }
+            if cur < end && bytes[cur] != b'-' {
+                let mut d_end = cur;
+                while d_end < end && bytes[d_end].is_ascii_digit() {
+                    d_end += 1;
+                }
+                if d_end > cur {
+                    if let Ok(uid) = lower[cur..d_end].parse::<u64>() {
+                        if uid > 0 {
+                            return Some(uid);
+                        }
+                    }
+                }
+            }
+        }
+        idx = (after + 1).min(lower.len());
+        if idx >= lower.len() {
+            break;
+        }
+    }
+    None
 }
 
 /// `placeId=123…` / `"placeId":123` / `PlaceId: 123` → Some(id).
@@ -398,6 +526,52 @@ mod tests {
         );
         assert_eq!(find_place_id("no ids here"), None);
         assert_eq!(find_place_id("placeId=x"), None);
+    }
+
+    #[test]
+    fn job_id_parsing() {
+        assert_eq!(
+            find_job_id("[FLog::Output] ! Joining game 'a1b2c3d4-1111-2222-3333-444455556666' place 12345 at 128.116.5.33").as_deref(),
+            Some("a1b2c3d4-1111-2222-3333-444455556666")
+        );
+        assert_eq!(
+            find_job_id(r#"{"jobId":"A1B2C3D4-1111-2222-3333-444455556666","placeId":123}"#).as_deref(),
+            Some("a1b2c3d4-1111-2222-3333-444455556666")
+        );
+        assert_eq!(
+            find_job_id("roblox://placeId=12345&gameInstanceId=f0e1d2c3-aaaa-bbbb-cccc-ddddeeeeffff").as_deref(),
+            Some("f0e1d2c3-aaaa-bbbb-cccc-ddddeeeeffff")
+        );
+        assert_eq!(
+            find_job_id("! Joining game '00000000-0000-0000-0000-000000000000'"),
+            None
+        );
+        assert_eq!(find_job_id("nothing here"), None);
+    }
+
+    #[test]
+    fn user_id_parsing() {
+        assert_eq!(
+            find_user_id("2025-01-01T00:00:00Z,0.5,6,Info [FLog::Output] UserId: 123456789"),
+            Some(123456789)
+        );
+        assert_eq!(
+            find_user_id(r#"{"userId":987654321,"name":"Player"}"#),
+            Some(987654321)
+        );
+        assert_eq!(
+            find_user_id(r#"{"userId": "44556677"}"#),
+            Some(44556677)
+        );
+        assert_eq!(
+            find_user_id("https://assetgame.roblox.com/Game/PlaceLauncher.ashx?request=RequestGame&userId=555444333&placeId=12345"),
+            Some(555444333)
+        );
+        assert_eq!(find_user_id("localUserId: 112233"), Some(112233));
+        assert_eq!(find_user_id("UserId=-1"), None);
+        assert_eq!(find_user_id("UserId: 0"), None);
+        assert_eq!(find_user_id(r#"{"creatorUserId":999999}"#), None);
+        assert_eq!(find_user_id(r#"{"followUserId":888888}"#), None);
     }
 
     #[test]

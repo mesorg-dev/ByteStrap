@@ -1,4 +1,5 @@
 pub mod antiafk;
+pub mod chat;
 pub mod cleanup;
 pub mod config;
 pub mod customization;
