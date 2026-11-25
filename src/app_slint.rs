@@ -7,7 +7,7 @@
 slint::include_modules!();
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,13 +25,24 @@ use crate::core::playtime::{self, Playtime, SessionEvent};
 use crate::core::places::{self, Places};
 use crate::core::flags::FlagError;
 use crate::core::overlay;
-use crate::core::{chat::{self, ChatEvent, ChatHandle, ChatMessage, ChatPeer, ConnectConfig, UserProfile}, deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, screenshots, servers, updater, versions};
+use crate::core::{deep_link, deploy, discord, flags, launcher, logger, mods, presets, roblox_link, screenshots, servers, updater, versions};
 use crate::i18n::{fmt, tr, Lang};
 use crate::tray;
 
 // ===== Общие типы (перенесены из src/app.rs в Фазе 2) =====
 
+pub struct StartupData {
+    pub installed: Option<String>,
+    pub mods_count: usize,
+    pub flags_count: usize,
+    pub playtime: Playtime,
+    pub places: Places,
+    pub deeplink_ok: Option<bool>,
+    pub screenshots: Vec<screenshots::ScreenshotItem>,
+}
+
 pub enum AsyncEvent {
+    StartupReady(Box<StartupData>),
     Latest(Result<deploy::ClientVersion, String>),
     Install(deploy::Event),
     UpdateCheck(Result<Option<updater::AppRelease>, String>),
@@ -63,7 +74,6 @@ pub enum AsyncEvent {
     RegionPings(Vec<crate::core::servers::RegionPing>),
     Session(SessionEvent),
     PlaceIconsLoaded,
-    Chat(ChatEvent),
 }
 
 /// Состояние карточки «обновление лаунчера» на странице About.
@@ -198,6 +208,18 @@ fn clipboard_json() -> Option<String> {
     }
 }
 
+/// Отдать Windows неиспользуемые страницы ОЗУ при уходе в трей / запуске игры.
+#[cfg(windows)]
+fn trim_working_set() {
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, SetProcessWorkingSetSize};
+    unsafe {
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
+#[cfg(not(windows))]
+fn trim_working_set() {}
+
 /// Параметры оверлея из конфига.
 fn push_overlay(c: &Ctx) -> overlay::Params {
     overlay::Params {
@@ -267,6 +289,14 @@ struct Ctx {
     session_display: Option<String>,
     /// Окно спрятано в трей на время игры (вернуть после выхода из Roblox).
     hidden_for_game: bool,
+    /// Окно сейчас скрыто в трей (не гоняем UI-биндинги на каждом тике).
+    window_hidden: bool,
+    /// Отложенный запуск roblox:// из CLI до завершения фоновой инициализации.
+    startup_launch_url: Option<String>,
+    /// Кэш декодированных иконок топ-плейсов (без повторного декода PNG на тиках).
+    place_icon_cache: RefCell<HashMap<String, Option<slint::Image>>>,
+    /// Сигнатура последнего списка top_places (чтобы не пересоздавать VecModel зря).
+    last_top_places_key: RefCell<Vec<(String, String, String, bool)>>,
     /// Запущенный поток Anti-AFK (пока идёт сессия).
     anti_afk: Option<crate::core::antiafk::Handle>,
 
@@ -312,24 +342,6 @@ struct Ctx {
     flags_search: String,
     flag_msg: Option<(String, bool)>,
     import: Option<ImportQueue>,
-
-    // — Серверный чат —
-    chat: ChatHandle,
-    chat_open: bool,
-    chat_connected: bool,
-    chat_connecting: bool,
-    chat_room: Option<String>,
-    chat_job_id: Option<String>,
-    chat_user_id: Option<u64>,
-    chat_profile_fetching: Option<u64>,
-    chat_profile: Option<UserProfile>,
-    chat_fallback_profile: Option<UserProfile>,
-    chat_peers: Vec<ChatPeer>,
-    chat_messages: Vec<ChatMessage>,
-    chat_unread: usize,
-    chat_scroll_token: i32,
-    chat_notified_peers: HashSet<u64>,
-    chat_dirty: bool,
 }
 
 impl Ctx {
@@ -421,6 +433,7 @@ impl Ctx {
                 })
             };
             let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
@@ -479,6 +492,8 @@ impl Ctx {
                             if let Some(ui) = self.weak.upgrade() {
                                 let _ = ui.hide();
                                 self.hidden_for_game = true;
+                                self.window_hidden = true;
+                                trim_working_set();
                                 logger::info("Лаунчер свёрнут в трей на время игры");
                             }
                             #[cfg(not(windows))]
@@ -1442,6 +1457,57 @@ impl Ctx {
         }
         while let Ok(ev) = self.rx.try_recv() {
             match ev {
+                AsyncEvent::StartupReady(data) => {
+                    self.installed = data.installed;
+                    self.mods_count = data.mods_count;
+                    self.flags_count = data.flags_count;
+                    if self.playtime.total_secs == 0 && self.playtime.days.is_empty() {
+                        self.playtime = data.playtime;
+                    }
+                    if self.places.items.is_empty() {
+                        self.places = data.places;
+                    }
+                    self.deeplink_ok = data.deeplink_ok;
+                    self.screenshots = data.screenshots;
+                    self.last_top_places_key.borrow_mut().clear();
+
+                    if self.config.discord_rp && !self.session_active {
+                        let custom = (!self.config.discord_custom_status.trim().is_empty())
+                            .then(|| self.config.discord_custom_status.trim().to_string());
+                        let _ = self.discord.send(discord::Update::Launcher { details: custom });
+                    }
+
+                    // Авто-очистка: раз в сутки при старте (если включена).
+                    if self.config.auto_clean
+                        && playtime::now_unix() - self.config.auto_clean_last > 20 * 3600
+                    {
+                        self.config.auto_clean_last = playtime::now_unix();
+                        self.config.save();
+                        let base_clean = self.config.base();
+                        let tx = self.tx.clone();
+                        std::thread::Builder::new()
+                            .name("auto-clean".into())
+                            .spawn(move || {
+                                let rep = crate::core::cleanup::clean(&base_clean);
+                                let _ = tx.send(AsyncEvent::CleanupDone(rep.freed, rep.files));
+                            })
+                            .ok();
+                    }
+
+                    self.refresh_tray();
+                    if self.config.auto_update {
+                        self.check_updates(false);
+                    }
+                    self.check_fetch_place_icons();
+                    if let Some(ui) = self.weak.upgrade() {
+                        self.push_home(&ui);
+                        self.push_games(&ui);
+                        self.push_settings(&ui);
+                    }
+                    if let Some(url) = self.startup_launch_url.take() {
+                        self.play(Some(&url));
+                    }
+                }
                 AsyncEvent::Latest(Ok(v)) => {
                     self.latest = Some(v);
                 }
@@ -1537,6 +1603,8 @@ impl Ctx {
                     tray::Action::Show => {
                         let ui = self.weak.clone().unwrap();
                         let _ = ui.show();
+                        self.window_hidden = false;
+                        self.last_page = -1;
                         winit_restore(&ui);
                     }
                     tray::Action::Play => {
@@ -1545,6 +1613,8 @@ impl Ctx {
                         if !self.hidden_for_game {
                             let ui = self.weak.clone().unwrap();
                             let _ = ui.show();
+                            self.window_hidden = false;
+                            self.last_page = -1;
                             winit_restore(&ui);
                         }
                     }
@@ -1579,6 +1649,8 @@ impl Ctx {
                     tray::Action::OverlaySettings => {
                         let ui = self.weak.clone().unwrap();
                         let _ = ui.show();
+                        self.window_hidden = false;
+                        self.last_page = -1;
                         winit_restore(&ui);
                         ui.set_page(6); // Открыть страницу настроек с ползунками ЦК
                     }
@@ -1696,19 +1768,18 @@ impl Ctx {
                 }
                 AsyncEvent::PlaceIconsLoaded => {
                     self.icons_loading = false;
+                    self.place_icon_cache.borrow_mut().clear();
+                    self.last_top_places_key.borrow_mut().clear();
                     if let Some(ui) = self.weak.upgrade() {
                         self.push_top_places(&ui);
                     }
                 }
-                AsyncEvent::Chat(ev) => self.on_chat_event(ev),
                 AsyncEvent::Session(ev) => match ev {
                     SessionEvent::Tick {
                         secs,
                         place,
                         place_name,
                         server,
-                        job_id,
-                        user_id,
                     } => {
                         self.session_secs = secs;
                         self.tray_tooltip();
@@ -1718,13 +1789,6 @@ impl Ctx {
                             self.push_discord(secs);
                         }
                         self.session_place = place;
-                        if let Some(uid) = user_id {
-                            self.chat_user_id = Some(uid);
-                        }
-                        if job_id.is_some() {
-                            self.chat_job_id = job_id;
-                        }
-                        self.sync_chat_connection();
                         if let Some((ip, port)) = server {
                             if self.active_server_ip.as_deref() != Some(&ip) {
                                 self.active_server_ip = Some(ip.clone());
@@ -1769,13 +1833,6 @@ impl Ctx {
                         self.session_display = None;
                         self.active_server = None;
                         self.active_server_ip = None;
-                        self.chat_job_id = None;
-                        self.chat_user_id = None;
-                        self.chat_profile_fetching = None;
-                        self.chat_profile = None;
-                        self.chat_fallback_profile = None;
-                        self.chat.disconnect();
-                        self.reset_chat_room();
                         // Anti-AFK больше не нужен.
                         if self.anti_afk.take().is_some() {
                             logger::info("Anti-AFK остановлен");
@@ -1791,6 +1848,8 @@ impl Ctx {
                         // спрятали при запуске игры.
                         if self.hidden_for_game {
                             self.hidden_for_game = false;
+                            self.window_hidden = false;
+                            self.last_page = -1;
                             if let Some(ui) = self.weak.upgrade() {
                                 let _ = ui.show();
                                 #[cfg(windows)]
@@ -1798,174 +1857,6 @@ impl Ctx {
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-
-    // ---- Серверный чат ----
-
-    fn active_chat_profile(&mut self) -> UserProfile {
-        if let Some(p) = &self.chat_profile {
-            return p.clone();
-        }
-        self.chat_fallback_profile
-            .get_or_insert_with(|| chat::fallback_profile(self.chat_user_id))
-            .clone()
-    }
-
-    fn reset_chat_room(&mut self) {
-        self.chat_connected = false;
-        self.chat_connecting = false;
-        self.chat_room = None;
-        self.chat_peers.clear();
-        self.chat_messages.clear();
-        self.chat_unread = 0;
-        self.chat_notified_peers.clear();
-        self.chat_dirty = true;
-    }
-
-    fn sync_chat_connection(&mut self) {
-        if !self.config.chat_enabled || !self.session_active {
-            if self.chat_room.is_some() || self.chat_connected || self.chat_connecting {
-                self.chat.disconnect();
-                self.reset_chat_room();
-            }
-            return;
-        }
-        let Some(job_id) = self.chat_job_id.clone() else {
-            if self.chat_room.is_some() || self.chat_connected || self.chat_connecting {
-                self.chat.disconnect();
-                self.reset_chat_room();
-            }
-            return;
-        };
-
-        let room = chat::hash_job_id(&job_id);
-        if self.chat_room.as_deref() != Some(room.as_str()) {
-            self.reset_chat_room();
-            self.chat_room = Some(room.clone());
-            self.chat_dirty = true;
-        }
-
-        if let Some(uid) = self.chat_user_id {
-            if self.chat_profile.as_ref().map(|p| p.user_id) != Some(uid) {
-                if self.chat_profile_fetching != Some(uid) {
-                    self.chat_profile_fetching = Some(uid);
-                    chat::spawn_profile_fetch(uid, self.tx.clone());
-                }
-                return;
-            }
-        } else if self.session_secs < 2 {
-            return;
-        }
-
-        let profile = self.active_chat_profile();
-        let place = self
-            .session_display
-            .clone()
-            .or_else(|| self.session_place.clone())
-            .unwrap_or_default();
-        self.chat.connect(ConnectConfig {
-            server_url: self.config.chat_server_url.clone(),
-            room,
-            user_id: profile.user_id,
-            username: profile.username,
-            display_name: profile.display_name,
-            place,
-        });
-    }
-
-    fn notify_chat_peer(&self, username: &str) {
-        if !self.config.chat_enabled || !self.config.chat_notify {
-            return;
-        }
-        crate::audio::global().play(crate::audio::SUCCESS);
-        let title = fmt(self.lang, "Chat_Notify_TitleFmt", &[username]);
-        let body = tr(self.lang, "Chat_Notify_Body");
-        crate::core::toast::show_server_toast(&title, body);
-    }
-
-    fn on_chat_event(&mut self, ev: ChatEvent) {
-        match ev {
-            ChatEvent::ProfileResolved(profile) => {
-                self.chat_profile = Some(profile);
-                self.sync_chat_connection();
-                self.chat_dirty = true;
-            }
-            ChatEvent::Connecting { room } => {
-                if self.chat_room.as_deref() == Some(room.as_str()) {
-                    self.chat_connecting = true;
-                    self.chat_dirty = true;
-                }
-            }
-            ChatEvent::Connected { room, peers } => {
-                if self.chat_room.as_deref() == Some(room.as_str()) {
-                    self.chat_connecting = false;
-                    self.chat_connected = true;
-                    let my_id = self.active_chat_profile().user_id;
-                    for p in &peers {
-                        if p.user_id != my_id && !self.config.muted_users.contains(&p.user_id) {
-                            if self.chat_notified_peers.insert(p.user_id) {
-                                self.notify_chat_peer(&p.username);
-                            }
-                        }
-                    }
-                    self.chat_peers = peers;
-                    self.chat_dirty = true;
-                }
-            }
-            ChatEvent::PeerJoined { room, peer } => {
-                if self.chat_room.as_deref() == Some(room.as_str()) {
-                    let my_id = self.active_chat_profile().user_id;
-                    if !self.chat_peers.iter().any(|p| p.user_id == peer.user_id) {
-                        self.chat_peers.push(peer.clone());
-                    }
-                    if peer.user_id != my_id && !self.config.muted_users.contains(&peer.user_id) {
-                        if self.chat_notified_peers.insert(peer.user_id) {
-                            self.notify_chat_peer(&peer.username);
-                        }
-                    }
-                    self.chat_dirty = true;
-                }
-            }
-            ChatEvent::PeerLeft { room, user_id } => {
-                if self.chat_room.as_deref() == Some(room.as_str()) {
-                    self.chat_peers.retain(|p| p.user_id != user_id);
-                    self.chat_dirty = true;
-                }
-            }
-            ChatEvent::Message { room, msg } => {
-                if self.chat_room.as_deref() == Some(room.as_str())
-                    && !self.config.muted_users.contains(&msg.user_id)
-                {
-                    let my_id = self.active_chat_profile().user_id;
-                    if msg.user_id != my_id && !self.chat_open {
-                        self.chat_unread += 1;
-                    }
-                    self.chat_messages.push(msg);
-                    if self.chat_messages.len() > 200 {
-                        let excess = self.chat_messages.len() - 200;
-                        self.chat_messages.drain(..excess);
-                    }
-                    self.chat_scroll_token = self.chat_scroll_token.wrapping_add(1);
-                    self.chat_dirty = true;
-                }
-            }
-            ChatEvent::ServerError { room, reason } => {
-                if self.chat_room.as_deref() == Some(room.as_str()) {
-                    logger::warn(format!("Чат-сервер: {reason}"));
-                }
-            }
-            ChatEvent::Disconnected { room, reason } => {
-                if self.chat_room.as_deref() == Some(room.as_str()) {
-                    self.chat_connected = false;
-                    self.chat_connecting = false;
-                    self.chat_peers.clear();
-                    if let Some(r) = reason {
-                        logger::warn(format!("Чат отключён: {r}"));
-                    }
-                    self.chat_dirty = true;
                 }
             }
         }
@@ -2056,7 +1947,7 @@ impl Ctx {
         self.update = UpdateUi::Checking;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
@@ -2077,7 +1968,7 @@ impl Ctx {
         let tx = self.tx.clone();
         let dest = std::env::temp_dir().join("bytestrap-update.exe");
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
@@ -2826,7 +2717,7 @@ impl Ctx {
         let ch = ch.to_string();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("tokio runtime");
@@ -2852,7 +2743,7 @@ impl Ctx {
                 let tx = self.tx.clone();
                 let channel = self.config.channel.clone();
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Builder::new_multi_thread()
+                    let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()
                         .expect("tokio runtime");
@@ -3067,44 +2958,57 @@ impl Ctx {
     }
 
     fn push_top_places(&self, ui: &AppWindow) {
-        let rows: Vec<PlaceRow> = self
-            .playtime
-            .top(4)
-            .into_iter()
-            .map(|(id, e)| {
-                let name = if e.name.is_empty() { (*id).clone() } else { e.name.clone() };
-                let duration = if e.secs < 60 {
-                    "< 1 мин".to_string()
-                } else if e.secs < 3600 {
-                    format!("{} мин", e.secs / 60)
-                } else {
-                    let h = e.secs as f64 / 3600.0;
-                    if h < 10.0 {
-                        format!("{h:.1} ч")
-                    } else {
-                        format!("{} ч", h.round() as u64)
-                    }
-                };
-                let (icon, has_icon) = if let Some(path) = places::get_cached_place_icon_path(id) {
-                    if let Ok(img) = slint::Image::load_from_path(&path) {
-                        (img, true)
-                    } else {
-                        (slint::Image::default(), false)
-                    }
-                } else {
-                    (slint::Image::default(), false)
-                };
+        let top = self.playtime.top(4);
+        let mut cache = self.place_icon_cache.borrow_mut();
+        if cache.len() > 16 {
+            cache.clear();
+        }
 
-                PlaceRow {
-                    id: (*id).clone().into(),
-                    name: name.into(),
-                    duration: duration.into(),
-                    icon,
-                    has_icon,
+        let mut rows_meta = Vec::with_capacity(top.len());
+        let mut key = Vec::with_capacity(top.len());
+        for (id, e) in top {
+            let name = if e.name.is_empty() { (*id).clone() } else { e.name.clone() };
+            let duration = if e.secs < 60 {
+                "< 1 мин".to_string()
+            } else if e.secs < 3600 {
+                format!("{} мин", e.secs / 60)
+            } else {
+                let h = e.secs as f64 / 3600.0;
+                if h < 10.0 {
+                    format!("{h:.1} ч")
+                } else {
+                    format!("{} ч", h.round() as u64)
                 }
-            })
-            .collect();
-        ui.set_top_places(ModelRc::new(VecModel::from(rows)));
+            };
+
+            let cached = if let Some(entry) = cache.get(id) {
+                entry.clone()
+            } else {
+                let loaded = places::get_cached_place_icon_path(id)
+                    .and_then(|path| slint::Image::load_from_path(&path).ok());
+                cache.insert((*id).clone(), loaded.clone());
+                loaded
+            };
+            let has_icon = cached.is_some();
+            let icon = cached.unwrap_or_default();
+
+            key.push(((*id).clone(), name.clone(), duration.clone(), has_icon));
+            rows_meta.push(PlaceRow {
+                id: (*id).clone().into(),
+                name: name.into(),
+                duration: duration.into(),
+                icon,
+                has_icon,
+            });
+        }
+        drop(cache);
+
+        let mut last_key = self.last_top_places_key.borrow_mut();
+        if *last_key == key {
+            return;
+        }
+        *last_key = key;
+        ui.set_top_places(ModelRc::new(VecModel::from(rows_meta)));
     }
 
     fn game_res_modal_save(&mut self, place_id: &str, mode: i32, w: i32, h: i32) {
@@ -3248,8 +3152,6 @@ impl Ctx {
         ui.set_set_auto_clean(self.config.auto_clean);
         ui.set_set_show_logs(self.config.show_logs);
         ui.set_set_notify_server(self.config.notify_server);
-        ui.set_set_chat_enabled(self.config.chat_enabled);
-        ui.set_set_chat_notify(self.config.chat_notify);
         ui.set_set_discord_rp(self.config.discord_rp);
         ui.set_set_rp_place(self.config.discord_rp_place);
         ui.set_set_rp_time(self.config.discord_rp_time);
@@ -3358,68 +3260,6 @@ impl Ctx {
             None => None,
         };
         ui.set_confirm_body(body.unwrap_or_default().as_str().into());
-    }
-
-    fn push_chat(&self, ui: &AppWindow) {
-        let lang = self.lang;
-        let my_id = self
-            .chat_profile
-            .as_ref()
-            .map(|p| p.user_id)
-            .or_else(|| self.chat_fallback_profile.as_ref().map(|p| p.user_id))
-            .unwrap_or(0);
-        let other_count = self
-            .chat_peers
-            .iter()
-            .filter(|p| p.user_id != my_id)
-            .count();
-
-        let status = if !self.config.chat_enabled {
-            tr(lang, "Chat_Status_Disabled").to_string()
-        } else if self.chat_connected {
-            let total = self.chat_peers.len().max(1);
-            fmt(lang, "Chat_Status_ConnectedFmt", &[&total.to_string()])
-        } else if self.chat_connecting || (self.session_active && self.chat_job_id.is_some()) {
-            tr(lang, "Chat_Status_Connecting").to_string()
-        } else {
-            tr(lang, "Chat_Status_NoServer").to_string()
-        };
-
-        let peers: Vec<ChatPeerRow> = self
-            .chat_peers
-            .iter()
-            .map(|p| ChatPeerRow {
-                user_id: p.user_id.to_string().into(),
-                username: p.username.as_str().into(),
-                display_name: p.display_name.as_str().into(),
-                is_self: p.user_id == my_id,
-                is_muted: self.config.muted_users.contains(&p.user_id),
-            })
-            .collect();
-
-        let msgs: Vec<ChatMsgRow> = self
-            .chat_messages
-            .iter()
-            .filter(|m| !self.config.muted_users.contains(&m.user_id))
-            .map(|m| ChatMsgRow {
-                user_id: m.user_id.to_string().into(),
-                username: m.username.as_str().into(),
-                display_name: m.display_name.as_str().into(),
-                text: m.text.as_str().into(),
-                time: chat::format_hhmm(m.ts).into(),
-                is_self: m.user_id == my_id,
-            })
-            .collect();
-
-        ui.set_chat_open(self.chat_open);
-        ui.set_chat_enabled(self.config.chat_enabled);
-        ui.set_chat_connected(self.chat_connected);
-        ui.set_chat_status(status.into());
-        ui.set_chat_peers(ModelRc::new(VecModel::from(peers)));
-        ui.set_chat_peers_count(other_count as i32);
-        ui.set_chat_has_unread(self.chat_unread > 0);
-        ui.set_chat_messages(ModelRc::new(VecModel::from(msgs)));
-        ui.set_chat_scroll_token(self.chat_scroll_token);
     }
 
     fn push_path(&self, ui: &AppWindow) {
@@ -4016,6 +3856,7 @@ fn center_window_on_screen(_ui: &AppWindow) {}
 #[cfg(windows)]
 fn winit_min(ui: &AppWindow) {
     let _ = ui.window().with_winit_window(|x| x.set_minimized(true));
+    trim_working_set();
 }
 
 #[cfg(not(windows))]
@@ -4407,19 +4248,6 @@ fn apply_i18n(ui: &AppWindow, lang: Lang) {
     t.set_games_ping_testing(tr(lang, "Games_PingTesting").into());
     t.set_settings_pref_region(tr(lang, "Settings_PrefRegion").into());
     t.set_settings_pref_region_desc(tr(lang, "Settings_PrefRegionDesc").into());
-    t.set_settings_chat(tr(lang, "Settings_Chat").into());
-    t.set_settings_chat_desc(tr(lang, "Settings_ChatDesc").into());
-    t.set_settings_chat_enabled(tr(lang, "Settings_ChatEnabled").into());
-    t.set_settings_chat_enabled_desc(tr(lang, "Settings_ChatEnabledDesc").into());
-    t.set_settings_chat_notify(tr(lang, "Settings_ChatNotify").into());
-    t.set_settings_chat_notify_desc(tr(lang, "Settings_ChatNotifyDesc").into());
-    t.set_chat_title(tr(lang, "Chat_Title").into());
-    t.set_chat_empty_idle(tr(lang, "Chat_EmptyIdle").into());
-    t.set_chat_empty_alone(tr(lang, "Chat_EmptyAlone").into());
-    t.set_chat_empty_disabled(tr(lang, "Chat_EmptyDisabled").into());
-    t.set_chat_input_hint(tr(lang, "Chat_InputHint").into());
-    t.set_chat_mute(tr(lang, "Chat_Mute").into());
-    t.set_chat_tip(tr(lang, "Chat_Tip").into());
     t.set_prof_select(tr(lang, "Prof_Select").into());
     t.set_prof_load(tr(lang, "Prof_Load").into());
     t.set_prof_save_as(tr(lang, "Prof_SaveAs").into());
@@ -4494,6 +4322,8 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
                 // Окно скрывается, лаунчер остаётся в трее.
                 let ui = c.weak.clone().unwrap();
                 let _ = ui.hide();
+                c.window_hidden = true;
+                trim_working_set();
                 logger::info("Окно скрыто — работа в трее");
             } else {
                 c.quit = true;
@@ -4882,9 +4712,7 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             };
             let ui = weak.unwrap();
             apply_i18n(&ui, lang);
-            let c = ctx.borrow();
-            c.push_settings(&ui);
-            c.push_chat(&ui);
+            ctx.borrow().push_settings(&ui);
         });
     }
     {
@@ -5185,88 +5013,6 @@ fn wire(ui: &AppWindow, ctx: &Rc<RefCell<Ctx>>) {
             }
             let c = ctx.borrow();
             c.push_settings(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_chat_enabled_set(move |v: bool| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.chat_enabled = v;
-                c.config.save();
-                if !v {
-                    c.chat_open = false;
-                    c.chat.disconnect();
-                    c.reset_chat_room();
-                } else {
-                    c.sync_chat_connection();
-                }
-            }
-            let c = ctx.borrow();
-            let ui = weak.unwrap();
-            c.push_settings(&ui);
-            c.push_chat(&ui);
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_chat_notify_set(move |v: bool| {
-            {
-                let mut c = ctx.borrow_mut();
-                c.config.chat_notify = v;
-                c.config.save();
-            }
-            let c = ctx.borrow();
-            c.push_settings(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_chat_toggle(move || {
-            {
-                let mut c = ctx.borrow_mut();
-                c.chat_open = !c.chat_open;
-                if c.chat_open {
-                    c.chat_unread = 0;
-                }
-            }
-            ctx.borrow().push_chat(&weak.unwrap());
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        ui.on_chat_send(move |text: SharedString| {
-            let c = ctx.borrow();
-            if c.config.chat_enabled && c.chat_connected {
-                c.chat.send_message(text.to_string());
-            }
-        });
-    }
-    {
-        let weak = weak.clone();
-        ui.on_chat_draft_edited(move |text: SharedString| {
-            if let Some(ui) = weak.upgrade() {
-                ui.set_chat_draft_len(text.chars().count() as i32);
-            }
-        });
-    }
-    {
-        let ctx = Rc::clone(ctx);
-        let weak = weak.clone();
-        ui.on_chat_mute_user(move |uid_str: SharedString| {
-            if let Ok(uid) = uid_str.trim().parse::<u64>() {
-                {
-                    let mut c = ctx.borrow_mut();
-                    if !c.config.muted_users.contains(&uid) {
-                        c.config.muted_users.push(uid);
-                        c.config.save();
-                    }
-                }
-                ctx.borrow().push_chat(&weak.unwrap());
-            }
         });
     }
     {
@@ -6112,6 +5858,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(ui) = splash_weak.upgrade() {
                     ui.set_splash_open(false);
+                    let clear_weak = ui.as_weak();
+                    slint::Timer::single_shot(Duration::from_millis(400), move || {
+                        if let Some(ui) = clear_weak.upgrade() {
+                            ui.set_splash_img(slint::Image::default());
+                            ui.set_splash_img_on(false);
+                        }
+                    });
                 }
             });
         });
@@ -6129,61 +5882,16 @@ pub fn run() -> Result<(), slint::PlatformError> {
         snd.on_play(move |kind| audio.play(kind));
     }
 
-    let installed = effective_installed(&config);
-    let mods_count = mods::scan_mods(&config.base()).len();
-    let flags_count = match &installed {
-        Some(guid) => flags::load(&config.base().join("Versions").join(guid)).len(),
-        None => 0,
+    // Оптимистичная быстрая проверка установленного клиента до первого показа окна;
+    // тяжёлое сканирование диска, реестра и сети уходит в фон после ui.show().
+    let installed = if !config.installed_version.is_empty() {
+        Some(config.installed_version.clone())
+    } else {
+        None
     };
-    let playtime = Playtime::load(&config.base());
-
-    // roblox:// в реестре: самовосстановление + статус для Settings.
-    if config.deeplink {
-        deep_link::ensure();
-    }
-    let deeplink_ok = deep_link::status();
     let channel_draft = config.channel.clone();
     let (discord, discord_rx) = discord::spawn();
-    // RP: сразу показываем статус лаунчера (если включено).
-    if config.discord_rp {
-        let custom = (!config.discord_custom_status.trim().is_empty())
-            .then(|| config.discord_custom_status.trim().to_string());
-        let _ = discord.send(discord::Update::Launcher { details: custom });
-    }
-
     let (tx, rx) = mpsc::channel();
-    let chat = chat::spawn(tx.clone());
-    let places = Places::load(&config.base());
-    // Авто-очистка: раз в сутки при старте (если включена).
-    if config.auto_clean && playtime::now_unix() - config.auto_clean_last > 20 * 3600 {
-        let mut cfg = config.clone();
-        cfg.auto_clean_last = playtime::now_unix();
-        cfg.save();
-        let base_clean = config.base().clone();
-        let tx = tx.clone();
-        std::thread::Builder::new()
-            .name("auto-clean".into())
-            .spawn(move || {
-                let rep = crate::core::cleanup::clean(&base_clean);
-                let _ = tx.send(AsyncEvent::CleanupDone(rep.freed, rep.files));
-            })
-            .ok();
-    }
-
-    {
-        let tx = tx.clone();
-        let channel = config.channel.clone();
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .expect("tokio runtime");
-            let res = rt
-                .block_on(deploy::latest_version(&channel))
-                .map_err(|e| e.to_string());
-            let _ = tx.send(AsyncEvent::Latest(res));
-        });
-    }
 
     // Трей строится на главном потоке (win32-цикл качает winit).
     #[cfg(windows)]
@@ -6196,6 +5904,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         satur: config.overlay_sat,
         contrast: config.overlay_contrast,
     });
+    let startup_cfg = config.clone();
+    let startup_channel = config.channel.clone();
+    let startup_launch_url = std::env::args().skip(1).find(|a| a.starts_with("roblox://"));
     let ctx = Rc::new(RefCell::new(Ctx {
         weak: weak.clone(),
         lang,
@@ -6215,12 +5926,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         discord,
         discord_rx,
         discord_status: discord::Status::Idle,
-        deeplink_ok,
+        deeplink_ok: None,
         pending_launch: None,
-        mods_count,
-        flags_count,
-        playtime,
-        places,
+        mods_count: 0,
+        flags_count: 0,
+        playtime: Playtime::default(),
+        places: Places::default(),
         icons_loading: false,
         link_msg: None,
         games_msg: None,
@@ -6233,7 +5944,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
         ping_busy: false,
         active_server: None,
         active_server_ip: None,
-        screenshots: screenshots::scan(),
+        screenshots: Vec::new(),
         shot_selected: 0,
         shot_status: None,
         cfg_msg: None,
@@ -6244,8 +5955,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         session_place: None,
         session_display: None,
         hidden_for_game: false,
+        window_hidden: false,
+        startup_launch_url,
+        place_icon_cache: RefCell::new(HashMap::new()),
+        last_top_places_key: RefCell::new(Vec::new()),
         anti_afk: None,
-        tx,
+        tx: tx.clone(),
         rx,
         cancel: None,
         files: Vec::new(),
@@ -6274,41 +5989,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         flags_search: String::new(),
         flag_msg: None,
         import: None,
-        chat,
-        chat_open: false,
-        chat_connected: false,
-        chat_connecting: false,
-        chat_room: None,
-        chat_job_id: None,
-        chat_user_id: None,
-        chat_profile_fetching: None,
-        chat_profile: None,
-        chat_fallback_profile: None,
-        chat_peers: Vec::new(),
-        chat_messages: Vec::new(),
-        chat_unread: 0,
-        chat_scroll_token: 0,
-        chat_notified_peers: HashSet::new(),
-        chat_dirty: false,
     }));
 
     wire(&ui, &ctx);
-    // Меню трея: начальные данные (оверлей, профили, топ игр).
-    ctx.borrow().refresh_tray();
     ui.set_about_version(updater::current_version().into());
     ui.set_win_share(cfg!(windows));
-    if ctx.borrow().config.auto_update {
-        ctx.borrow_mut().check_updates(false);
-    }
     ctx.borrow().push_home(&ui);
-    ctx.borrow().push_chat(&ui);
-    ctx.borrow_mut().check_fetch_place_icons();
-
-    // Клик по roblox:// в командной строке (друзья, приватки, плейсы):
-    // сразу запускаем игру с этой ссылкой (счётчик сессии и RP работают).
-    if let Some(url) = std::env::args().skip(1).find(|a| a.starts_with("roblox://")) {
-        ctx.borrow_mut().play(Some(&url));
-    }
 
     // Перетащенные в окно файлы → папка модов (как в egui, только Windows).
     #[cfg(windows)]
@@ -6365,6 +6051,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
             if c.quit {
                 let _ = slint::quit_event_loop();
+                return;
+            }
+            if c.window_hidden {
                 return;
             }
             let ui = c.weak.clone().unwrap();
@@ -6430,10 +6119,6 @@ pub fn run() -> Result<(), slint::PlatformError> {
             if page == 7 {
                 c.push_about(&ui);
             }
-            if c.chat_dirty {
-                c.chat_dirty = false;
-                c.push_chat(&ui);
-            }
             c.push_confirm(&ui);
             c.last_page = page;
         });
@@ -6445,6 +6130,9 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let ctx = Rc::clone(&ctx);
         logs_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
             let mut c = ctx.borrow_mut();
+            if c.window_hidden {
+                return;
+            }
             let ui = c.weak.clone().unwrap();
             if ui.get_page() == 5 {
                 c.logs_tick(&ui);
@@ -6453,6 +6141,58 @@ pub fn run() -> Result<(), slint::PlatformError> {
     }
 
     ui.show()?;
+
+    // Тяжёлые проверки (диск, реестр, сеть) вынесены в фон ПОСЛЕ показа окна,
+    // чтобы холодный запуск UI был мгновенным.
+    {
+        let tx_bg = tx.clone();
+        std::thread::Builder::new()
+            .name("startup-init".into())
+            .spawn(move || {
+                let base = startup_cfg.base();
+                let installed = effective_installed(&startup_cfg);
+                let mods_count = mods::scan_mods(&base).len();
+                let flags_count = match &installed {
+                    Some(guid) => flags::load(&base.join("Versions").join(guid)).len(),
+                    None => 0,
+                };
+                let playtime = Playtime::load(&base);
+                let places = Places::load(&base);
+                if startup_cfg.deeplink {
+                    deep_link::ensure();
+                }
+                let deeplink_ok = deep_link::status();
+                let screenshots = screenshots::scan();
+                let _ = tx_bg.send(AsyncEvent::StartupReady(Box::new(StartupData {
+                    installed,
+                    mods_count,
+                    flags_count,
+                    playtime,
+                    places,
+                    deeplink_ok,
+                    screenshots,
+                })));
+            })
+            .ok();
+    }
+    {
+        let tx_lat = tx;
+        std::thread::Builder::new()
+            .name("latest-ver".into())
+            .spawn(move || {
+                if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    let res = rt
+                        .block_on(deploy::latest_version(&startup_channel))
+                        .map_err(|e| e.to_string());
+                    let _ = tx_lat.send(AsyncEvent::Latest(res));
+                }
+            })
+            .ok();
+    }
+
     let _tick = tick;
     let _logs_timer = logs_timer;
     let res = slint::run_event_loop_until_quit();

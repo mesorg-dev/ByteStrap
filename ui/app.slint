@@ -14,7 +14,6 @@ import { Snd } from "snd.slint";
 import { T } from "i18n.slint";
 export { T, Theme, Snd, ScreenshotRow }
 import { TitleBar } from "titlebar.slint";
-import { ChatDrawer } from "chat_drawer.slint";
 import { Btn, TextField, Dd } from "widgets.slint";
 import { Starfield } from "stars.slint";
 import { HomePage } from "pages/home.slint";
@@ -25,7 +24,7 @@ import { FlagsPage } from "pages/flags.slint";
 import { GamesPage } from "pages/games.slint";
 import { AboutPage } from "pages/about.slint";
 import { IconCross } from "icons.slint";
-import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, ModRow, ModFileRow, FlagRow, PresetRow, RegionPingRow, ChatPeerRow, ChatMsgRow } from "models.slint";
+import { PlaceRow, GameRow, ServerRow, ScreenshotRow, LogLine, ModRow, ModFileRow, FlagRow, PresetRow, RegionPingRow } from "models.slint";
 
 export component AppWindow inherits Window {
     title: "ByteStrap";
@@ -178,19 +177,6 @@ export component AppWindow inherits Window {
     in-out property <bool> set-show-logs: true;
     /// Всплывающее уведомление о сервере и пинге при подключении.
     in-out property <bool> set-notify-server: true;
-    in-out property <bool> set-chat-enabled: true;
-    in-out property <bool> set-chat-notify: true;
-    // Chat drawer
-    in-out property <bool> chat-open: false;
-    in-out property <bool> chat-enabled: true;
-    in-out property <bool> chat-connected: false;
-    in-out property <string> chat-status: "";
-    in-out property <[ChatPeerRow]> chat-peers: [];
-    in-out property <int> chat-peers-count: 0;
-    in-out property <bool> chat-has-unread: false;
-    in-out property <[ChatMsgRow]> chat-messages: [];
-    in-out property <int> chat-draft-len: 0;
-    in-out property <int> chat-scroll-token: 0;
     in-out property <bool> set-discord-rp: true;
     in-out property <bool> set-rp-place: true;
     in-out property <bool> set-rp-time: true;
@@ -297,12 +283,6 @@ export component AppWindow inherits Window {
     callback auto-clean-set(bool);
     callback show-logs-set(bool);
     callback notify-server-set(bool);
-    callback chat-toggle();
-    callback chat-send(string);
-    callback chat-draft-edited(string);
-    callback chat-mute-user(string);
-    callback chat-enabled-set(bool);
-    callback chat-notify-set(bool);
     callback pref-region-set(int);
     callback cfg-export();
     callback cfg-import();
@@ -430,12 +410,7 @@ export component AppWindow inherits Window {
         status-dot: root.status-dot;
         status: root.status-text;
         is-maximized: root.is-maximized;
-        chat-open: root.chat-open;
-        chat-peers-count: root.chat-peers-count;
-        chat-has-unread: root.chat-has-unread;
-        chat-enabled: root.chat-enabled;
         navigate(p) => { root.page = p; Dd.open = false; }
-        chat-toggle => { root.chat-toggle(); }
         win-min => { root.win-min(); }
         win-max => { root.win-max(); }
         drag => { root.titlebar-drag(); }
@@ -735,8 +710,6 @@ export component AppWindow inherits Window {
                     auto-clean: root.set-auto-clean;
                     show-logs: root.set-show-logs;
                     notify-server: root.set-notify-server;
-                    chat-enabled: root.set-chat-enabled;
-                    chat-notify: root.set-chat-notify;
                     pref-region: root.set-pref-region;
                     discord-rp: root.set-discord-rp;
                     rp-place: root.set-rp-place;
@@ -784,8 +757,6 @@ export component AppWindow inherits Window {
                     auto-clean-set(v) => { root.auto-clean-set(v); }
                     show-logs-set(v) => { root.show-logs-set(v); }
                     notify-server-set(v) => { root.notify-server-set(v); }
-                    chat-enabled-set(v) => { root.chat-enabled-set(v); }
-                    chat-notify-set(v) => { root.chat-notify-set(v); }
                     pref-region-set(r) => { root.pref-region-set(r); }
                     cfg-export => { root.cfg-export(); }
                     cfg-import => { root.cfg-import(); }
@@ -840,27 +811,6 @@ export component AppWindow inherits Window {
             }
             }
         }
-
-    // ===== Выезжающая панель серверного чата =====
-    ChatDrawer {
-        x: 0;
-        y: Theme.titlebar-h;
-        width: parent.width;
-        height: parent.height - Theme.titlebar-h;
-        open: root.chat-open;
-        chat-enabled: root.chat-enabled;
-        connected: root.chat-connected;
-        status-text: root.chat-status;
-        peers: root.chat-peers;
-        peers-count: root.chat-peers-count;
-        messages: root.chat-messages;
-        draft-len: root.chat-draft-len;
-        scroll-token: root.chat-scroll-token;
-        close-request => { root.chat-toggle(); }
-        send-message(t) => { root.chat-send(t); }
-        draft-edited(t) => { root.chat-draft-edited(t); }
-        mute-user(uid) => { root.chat-mute-user(uid); }
-    }
 
     // ===== Модальное подтверждение =====
     Rectangle {
