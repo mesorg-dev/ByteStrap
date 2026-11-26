@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ru" data-theme="editingnews">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <title>ByteStrap — Тёмный кастомный лаунчер для Roblox</title>
+  <meta name="description" content="ByteStrap — быстрый нативный лаунчер для Roblox на Rust и Slint: FastFlags, сервер-браузер с TCP-пингом, менеджер модов, внутрисерверный чат и цветовой оверлей." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230A0A0A' stroke='%23FFFFFF' stroke-opacity='0.22'/%3E%3Cpath d='M16 5.2 C16.9 9.8 17.9 11.4 19.7 12.6 C21.5 13.8 23.7 14.7 25.9 15.2 C23.7 15.7 21.5 16.6 19.7 17.8 C17.9 19.0 16.9 20.6 16 25.2 C15.1 20.6 14.1 19.0 12.3 17.8 C10.5 16.6 8.3 15.7 6.1 15.2 C8.3 14.7 10.5 13.8 12.3 12.6 C14.1 11.4 15.1 9.8 16 5.2 Z' fill='%23FFFFFF'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Procedural deep-space starfield, orbital rings & subtle radial glows -->
+  <canvas id="starfield" aria-hidden="true"></canvas>
+  <div class="orbit-ring orbit-1" aria-hidden="true"></div>
+  <div class="orbit-ring orbit-2" aria-hidden="true"></div>
+  <div class="nebula nebula-1" aria-hidden="true"></div>
+  <div class="nebula nebula-2" aria-hidden="true"></div>
+
+  <!-- Floating Pill Header (editingnews.com glass bar) -->
+  <header class="site-header">
+    <div class="container">
+      <div class="header-pill">
+        <a href="#top" class="brand" aria-label="ByteStrap Home">
+          <span class="brand-badge">
+            <svg class="star-icon" viewBox="0 0 18 18" aria-hidden="true">
+              <path d="M9 0.8 C9.8 4.6 10.6 5.9 12.1 6.9 C13.6 7.9 15.4 8.6 17.2 9 C15.4 9.4 13.6 10.1 12.1 11.1 C10.6 12.1 9.8 13.4 9 17.2 C8.2 13.4 7.4 12.1 5.9 11.1 C4.4 10.1 2.6 9.4 0.8 9 C2.6 8.6 4.4 7.9 5.9 6.9 C7.4 5.9 8.2 4.6 9 0.8 Z" />
+            </svg>
+          </span>
+          <span class="brand-text">
+            <span class="brand-name">ByteStrap</span>
+            <span class="brand-sub">R O B L O X</span>
+          </span>
+          <span class="version-pill mono" id="nav-version">v1.0.0</span>
+        </a>
+
+        <nav class="pill-nav" aria-label="Primary">
+          <a href="#preview" class="pill-link active" data-i18n="nav_preview">Интерфейс</a>
+          <a href="#features" class="pill-link" data-i18n="nav_features">Функции</a>
+          <a href="#servers" class="pill-link" data-i18n="nav_servers">Сервера</a>
+          <a href="#download" class="pill-link" data-i18n="nav_download">Скачать</a>
+          <a href="#faq" class="pill-link" data-i18n="nav_faq">FAQ</a>
+        </nav>
+
+        <div class="header-actions">
+          <button type="button" class="theme-toggle mono" id="theme-toggle" title="Переключить тему (Mono / Lavender)">
+            <span class="theme-opt active" data-theme-opt="editingnews">Mono</span>
+            <span class="theme-opt" data-theme-opt="lavender">Lav</span>
+          </button>
+          <button type="button" class="lang-toggle mono" id="lang-toggle" aria-label="Switch language">
+            <span class="lang-opt active" data-lang="ru">RU</span>
+            <span class="lang-opt" data-lang="en">EN</span>
+          </button>
+          <a href="#download" class="btn btn-primary btn-sm" data-i18n="btn_download_short">Скачать</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <!-- Centered Orbital Star Emblem (editingnews.com signature centerpiece) -->
+        <div class="hero-emblem" aria-hidden="true">
+          <div class="emblem-halo"></div>
+          <svg class="emblem-orbit" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+            <ellipse cx="60" cy="60" rx="54" ry="20" transform="rotate(-24 60 60)" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.1" />
+            <circle cx="103" cy="39" r="2.2" fill="#65F6D1" />
+            <circle cx="18" cy="82" r="1.8" fill="#FF6B4A" />
+          </svg>
+          <div class="emblem-core">
+            <svg class="emblem-star" viewBox="0 0 18 18">
+              <path d="M9 0.8 C9.8 4.6 10.6 5.9 12.1 6.9 C13.6 7.9 15.4 8.6 17.2 9 C15.4 9.4 13.6 10.1 12.1 11.1 C10.6 12.1 9.8 13.4 9 17.2 C8.2 13.4 7.4 12.1 5.9 11.1 C4.4 10.1 2.6 9.4 0.8 9 C2.6 8.6 4.4 7.9 5.9 6.9 C7.4 5.9 8.2 4.6 9 0.8 Z" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="hero-hairline" aria-hidden="true"></div>
+
+        <div class="status-chip">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="mono" data-i18n="hero_badge">Клиент готов · Rust + Slint · GPL-3.0</span>
+        </div>
+
+        <h1 class="hero-title" data-i18n="hero_title">
+          ByteStrap<br /><span class="hero-subline">Тёмный лаунчер для Roblox</span>
+        </h1>
+
+        <p class="hero-desc" data-i18n="hero_desc">
+          Нативный клиент на Rust с GPU-интерфейсом, редактором FastFlags, честным TCP-пингом серверов, менеджером модов, внутрисерверным чатом и цветовым оверлеем.
+        </p>
+
+        <div class="hero-cta">
+          <a href="https://github.com/mesorg-dev/ByteStrap/releases/latest" target="_blank" rel="noopener" class="btn btn-primary btn-lg" id="hero-download-btn">
+            <svg class="btn-icon" viewBox="0 0 18 18" aria-hidden="true">
+              <path d="M9 2.5V11.5M9 11.5L5.2 7.7M9 11.5L12.8 7.7M3 14.5H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+            <span data-i18n="hero_cta_download">Скачать для Windows</span>
+          </a>
+          <a href="https://github.com/mesorg-dev/ByteStrap" target="_blank" rel="noopener" class="btn btn-ghost btn-lg">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+            </svg>
+            <span data-i18n="hero_cta_github">GitHub</span>
+          </a>
+          <a href="https://t.me/mesorgdev" target="_blank" rel="noopener" class="btn-text-link mono">
+            @mesorgdev
+          </a>
+        </div>
+
+        <div class="hero-metrics">
+          <div class="metric-item">
+            <span class="metric-val mono">Rust + Slint</span>
+            <span class="metric-lbl" data-i18n="metric_stack">Нативный стек без Electron</span>
+          </div>
+          <div class="metric-sep" aria-hidden="true"></div>
+          <div class="metric-item">
+            <span class="metric-val mono">1–8</span>
+            <span class="metric-lbl" data-i18n="metric_threads">Потоков загрузки клиента</span>
+          </div>
+          <div class="metric-sep" aria-hidden="true"></div>
+          <div class="metric-item">
+            <span class="metric-val mono">LIVE / BETA / ZNext</span>
+            <span class="metric-lbl" data-i18n="metric_channels">Поддержка каналов Roblox</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Launcher Showcase Window -->
+      <div class="container showcase-wrap" id="preview">
+        <div class="showcase-glow" aria-hidden="true"></div>
+        <div class="launcher-frame">
+          <div class="frame-topbar">
+            <div class="frame-brand">
+              <span class="frame-star">
+                <svg viewBox="0 0 18 18" aria-hidden="true">
+                  <path d="M9 0.8 C9.8 4.6 10.6 5.9 12.1 6.9 C13.6 7.9 15.4 8.6 17.2 9 C15.4 9.4 13.6 10.1 12.1 11.1 C10.6 12.1 9.8 13.4 9 17.2 C8.2 13.4 7.4 12.1 5.9 11.1 C4.4 10.1 2.6 9.4 0.8 9 C2.6 8.6 4.4 7.9 5.9 6.9 C7.4 5.9 8.2 4.6 9 0.8 Z" />
+                </svg>
+              </span>
+              <span class="status-dot-sm" aria-hidden="true"></span>
+            </div>
+
+            <div class="frame-tabs" role="tablist" aria-label="Launcher screens">
+              <button type="button" class="frame-tab active" role="tab" aria-selected="true" data-shot="home" data-i18n="tab_home">Главная</button>
+              <button type="button" class="frame-tab" role="tab" aria-selected="false" data-shot="games" data-i18n="tab_games">Игры</button>
+              <button type="button" class="frame-tab" role="tab" aria-selected="false" data-shot="flags" data-i18n="tab_flags">FastFlags</button>
+              <button type="button" class="frame-tab" role="tab" aria-selected="false" data-shot="mods" data-i18n="tab_mods">Моды</button>
+              <button type="button" class="frame-tab" role="tab" aria-selected="false" data-shot="settings" data-i18n="tab_settings">Настройки</button>
+            </div>
+
+            <div class="frame-controls" aria-hidden="true">
+              <span class="ctrl-dash"></span>
+              <span class="ctrl-box"></span>
+              <span class="ctrl-x">×</span>
+            </div>
+          </div>
+
+          <div class="frame-viewport">
+            <img id="shot-img" src="assets/shots/home.png" alt="Интерфейс ByteStrap — Главная" loading="eager" />
+          </div>
+
+          <div class="frame-caption">
+            <span class="caption-badge mono" id="shot-tag">01 · HOME</span>
+            <p id="shot-desc" data-i18n="shot_desc_home">Быстрый старт клиента и Roblox Studio, запуск по ссылке или JobId, 14-дневный график активности и учёт времени по плейсам.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bento Grid Features -->
+    <section class="section section-alt-1" id="features">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-eyebrow mono" data-i18n="feat_eyebrow">ВОЗМОЖНОСТИ</span>
+          <h2 class="section-title" data-i18n="feat_title">Всё нужное для Roblox — в одном окне</h2>
+          <p class="section-sub" data-i18n="feat_sub">Без телеметрии, рекламы и фоновых служб. Каждый инструмент работает локально и прозрачно.</p>
+        </div>
+
+        <div class="bento-grid">
+          <article class="bento-card bento-wide">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+            </div>
+            <h3 data-i18n="f1_title">FastFlags и умные пресеты</h3>
+            <p data-i18n="f1_desc">Удобные выпадающие списки для лимита FPS, MSAA, API рендера (Vulkan / D3D11), дальности травы, зума камеры и отключения пост-эффектов. Встроенный редактор предупреждает о флагах вне официального allowlist Roblox, поддерживает импорт из буфера и профили.</p>
+            <div class="card-tags mono">
+              <span>Allowlist Check</span>
+              <span>Vulkan / D3D11</span>
+              <span>JSON Import/Export</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            </div>
+            <h3 data-i18n="f2_title">Менеджер модов и кастомизация</h3>
+            <p data-i18n="f2_desc">Включайте папки модов и меняйте порядок приоритета в пару кликов с безопасным откатом. Заменяйте звук смерти (ouch.ogg), курсоры (2006 / 2013 / Crosshair), шрифты и Shift-Lock.</p>
+            <div class="card-tags mono">
+              <span>ouch.ogg</span>
+              <span>Cursors</span>
+              <span>PvP Packs</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <h3 data-i18n="f3_title">Внутрисерверный чат</h3>
+            <p data-i18n="f3_desc">Общайтесь с другими пользователями ByteStrap, находясь на одном сервере Roblox, через лёгкий WebSocket relay без нагрузки на игру.</p>
+            <div class="card-tags mono">
+              <span>WebSocket Relay</span>
+              <span>Per-Server Room</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+            </div>
+            <h3 data-i18n="f4_title">Оверлей и окно 4:3</h3>
+            <p data-i18n="f4_desc">Цветокоррекция поверх окна Roblox (яркость, насыщенность, контраст через Magnification API), фиксированное разрешение (включая 4:3 stretched) и Anti-AFK.</p>
+            <div class="card-tags mono">
+              <span>Magnification API</span>
+              <span>4:3 Stretched</span>
+              <span>Anti-AFK</span>
+            </div>
+          </article>
+
+          <article class="bento-card">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </div>
+            <h3 data-i18n="f5_title">Галерея скриншотов и Discord RP</h3>
+            <p data-i18n="f5_desc">Просмотр снимков Roblox с копированием картинки в буфер (Ctrl+V в Discord), Rich Presence с регионом сервера, режимом инкогнито и статистикой сессии.</p>
+            <div class="card-tags mono">
+              <span>Discord RPC</span>
+              <span>Incognito</span>
+              <span>Screenshots</span>
+            </div>
+          </article>
+
+          <article class="bento-card bento-wide">
+            <div class="card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            <h3 data-i18n="f6_title">Производительность нативного Rust</h3>
+            <p data-i18n="f6_desc">Отрисовка на Slint (FemtoVG) с нулевой перерисовкой в простое, минимальным потреблением памяти и 1–8 потоками при загрузке обновлений клиента. Встроенная проверка целостности хешей версий, просмотр логов и авто-очистка кэша.</p>
+            <div class="card-tags mono">
+              <span>0 FPS Idle</span>
+              <span>Hash Verify</span>
+              <span>roblox:// Handler</span>
+              <span>Auto-Update</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Server Browser & FastFlag Preview Section -->
+    <section class="section section-alt-2" id="servers">
+      <div class="container split-grid">
+        <div class="widget-card">
+          <div class="widget-head">
+            <div>
+              <span class="mono widget-label" data-i18n="srv_label">СЕРВЕР-БРАУЗЕР</span>
+              <h3 class="widget-title" data-i18n="srv_title">Честный TCP-пинг до дата-центров</h3>
+            </div>
+            <button type="button" class="btn btn-ghost btn-xs mono" id="ping-refresh-btn" data-i18n="srv_ping_btn">Проверить пинг</button>
+          </div>
+          <p class="widget-desc" data-i18n="srv_desc">Фильтруйте публичные серверы по региону (EU / US / ASIA), копируйте JobId или заходите на лучший сервер одним нажатием.</p>
+
+          <div class="region-filters" role="group" aria-label="Region filter">
+            <button type="button" class="filter-pill active" data-region="ALL" data-i18n="reg_all">Все</button>
+            <button type="button" class="filter-pill" data-region="EU">EU</button>
+            <button type="button" class="filter-pill" data-region="US">US</button>
+            <button type="button" class="filter-pill" data-region="ASIA">ASIA</button>
+          </div>
+
+          <div class="server-list" id="server-list"></div>
+        </div>
+
+        <div class="widget-card">
+          <div class="widget-head">
+            <div>
+              <span class="mono widget-label" data-i18n="ff_label">FASTFLAGS · ПРЕСЕТЫ</span>
+              <h3 class="widget-title" data-i18n="ff_title">Соберите конфиг за 3 клика</h3>
+            </div>
+            <span class="mono allow-badge" data-i18n="ff_allow">Allowlist OK</span>
+          </div>
+          <p class="widget-desc" data-i18n="ff_desc">Переключайте готовые пресеты лаунчера и сразу смотрите итоговый JSON для ClientAppSettings.</p>
+
+          <div class="preset-toggles">
+            <label class="preset-row">
+              <span>
+                <strong data-i18n="ff_p1_name">Разблокировка FPS (240)</strong>
+                <small class="mono">DFIntTaskSchedulerTargetFps</small>
+              </span>
+              <input type="checkbox" class="bs-switch" data-flag="DFIntTaskSchedulerTargetFps" data-val="240" checked />
+            </label>
+            <label class="preset-row">
+              <span>
+                <strong data-i18n="ff_p2_name">Рендер Vulkan</strong>
+                <small class="mono">FFlagDebugGraphicsPreferVulkan</small>
+              </span>
+              <input type="checkbox" class="bs-switch" data-flag="FFlagDebugGraphicsPreferVulkan" data-val="true" checked />
+            </label>
+            <label class="preset-row">
+              <span>
+                <strong data-i18n="ff_p3_name">Без пост-эффектов (Bloom)</strong>
+                <small class="mono">FFlagDisablePostFx</small>
+              </span>
+              <input type="checkbox" class="bs-switch" data-flag="FFlagDisablePostFx" data-val="true" />
+            </label>
+            <label class="preset-row">
+              <span>
+                <strong data-i18n="ff_p4_name">Без DPI-скейла Windows</strong>
+                <small class="mono">DFFlagDisableDPIScale</small>
+              </span>
+              <input type="checkbox" class="bs-switch" data-flag="DFFlagDisableDPIScale" data-val="true" />
+            </label>
+          </div>
+
+          <pre class="code-box mono" id="ff-json-preview" aria-label="Generated FastFlags JSON"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="section section-alt-3" id="download">
+      <div class="container">
+        <div class="download-card">
+          <div class="download-left">
+            <div class="status-chip">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span class="mono" id="release-tag">ByteStrap v1.0.0 · Latest</span>
+            </div>
+            <h2 class="download-title" data-i18n="dl_title">Готовы попробовать ByteStrap?</h2>
+            <p class="download-desc" data-i18n="dl_desc">
+              Один компактный бинарник для Windows 10/11 (x64). Открытый исходный код под лицензией GPL-3.0 — вы всегда можете проверить сборку на GitHub.
+            </p>
+            <div class="download-meta mono" id="release-meta">
+              <span>Windows 10 / 11 (x64)</span>
+              <span>·</span>
+              <span>GPL-3.0</span>
+              <span>·</span>
+              <span id="release-size">~36 MB</span>
+              <span class="meta-sep-date" id="release-date-sep" hidden>·</span>
+              <span id="release-date" hidden></span>
+              <span class="meta-sep-dl" id="release-dl-sep" hidden>·</span>
+              <span id="release-downloads" hidden></span>
+            </div>
+
+            <div class="release-notes-box" id="release-notes-box">
+              <div class="release-notes-head">
+                <span class="mono release-notes-label" data-i18n="dl_notes_title">ЧТО НОВОГО В РЕЛИЗЕ</span>
+                <a href="https://github.com/mesorg-dev/ByteStrap/releases/latest" target="_blank" rel="noopener" class="mono release-notes-link" id="release-html-link" data-i18n="dl_notes_open">Открыть на GitHub →</a>
+              </div>
+              <div class="release-notes-body" id="release-notes-body">
+                <p class="release-notes-loading mono" data-i18n="dl_notes_loading">Загрузка списка изменений с GitHub…</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="download-right">
+            <a href="https://github.com/mesorg-dev/ByteStrap/releases/latest" target="_blank" rel="noopener" class="btn btn-primary btn-xl" id="direct-download-btn">
+              <svg class="btn-icon" viewBox="0 0 18 18" aria-hidden="true">
+                <path d="M9 2.5V11.5M9 11.5L5.2 7.7M9 11.5L12.8 7.7M3 14.5H15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+              <span id="direct-download-label" data-i18n="dl_btn">Скачать ByteStrap.exe</span>
+            </a>
+            <div class="download-links">
+              <a href="https://github.com/mesorg-dev/ByteStrap/releases" target="_blank" rel="noopener" data-i18n="dl_all_releases">Все релизы на GitHub</a>
+              <span>·</span>
+              <a href="https://t.me/mesorgdev" target="_blank" rel="noopener" data-i18n="dl_telegram">Канал в Telegram</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="section" id="faq">
+      <div class="container faq-wrap">
+        <div class="section-head">
+          <span class="section-eyebrow mono">FAQ</span>
+          <h2 class="section-title" data-i18n="faq_title">Частые вопросы</h2>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary data-i18n="faq_q1">Безопасно ли использовать ByteStrap?</summary>
+            <p data-i18n="faq_a1">Да. ByteStrap не вмешивается в память процесса Roblox и не является читом — это кастомный bootstrapper-лаунчер на Rust. Весь исходный код открыт на GitHub под лицензией GPL-3.0.</p>
+          </details>
+          <details class="faq-item">
+            <summary data-i18n="faq_q2">Почему часть FastFlags помечена предупреждением?</summary>
+            <p data-i18n="faq_a2">Roblox игнорирует клиентские флаги, которые не входят в официальный allowlist. ByteStrap честно подсвечивает такие флаги жёлтым индикатором, чтобы вы знали, какие параметры реально применяются клиентом.</p>
+          </details>
+          <details class="faq-item">
+            <summary data-i18n="faq_q3">Как работают моды и можно ли всё откатить?</summary>
+            <p data-i18n="faq_a3">Каждая папка в каталоге Mods/ отображается в лаунчере отдельным модом. Вы задаёте порядок применения, включаете нужные паки и в любой момент можете нажать «Откатить», чтобы вернуть оригинальные файлы Roblox.</p>
+          </details>
+          <details class="faq-item">
+            <summary data-i18n="faq_q4">Что нужно для работы на Windows?</summary>
+            <p data-i18n="faq_a4">Windows 10 или Windows 11 (x64). Никаких дополнительных рантаймов вроде .NET или WebView2 устанавливать не требуется — интерфейс работает нативно через Slint и OpenGL/FemtoVG.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <svg class="star-icon-sm" viewBox="0 0 18 18" aria-hidden="true">
+          <path d="M9 0.8 C9.8 4.6 10.6 5.9 12.1 6.9 C13.6 7.9 15.4 8.6 17.2 9 C15.4 9.4 13.6 10.1 12.1 11.1 C10.6 12.1 9.8 13.4 9 17.2 C8.2 13.4 7.4 12.1 5.9 11.1 C4.4 10.1 2.6 9.4 0.8 9 C2.6 8.6 4.4 7.9 5.9 6.9 C7.4 5.9 8.2 4.6 9 0.8 Z" />
+        </svg>
+        <span>ByteStrap</span>
+        <span class="footer-copy mono">· GPL-3.0 · Not affiliated with Roblox Corporation</span>
+      </div>
+      <div class="footer-links mono">
+        <a href="lavender.html" data-i18n="footer_lavender">Lavender Variant</a>
+        <a href="https://github.com/mesorg-dev/ByteStrap" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/mesorg-dev/ByteStrap/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://t.me/mesorgdev" target="_blank" rel="noopener">Telegram</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+name: site-shots
+
+# Автоматически переснимает скриншоты интерфейса лаунчера при изменении UI
+# и обновляет картинки сайта в docs/assets/shots/.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "src/app_slint.rs"
+      - "assets/**"
+      - ".github/workflows/site-shots.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: site-shots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-screenshots:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Render UI screenshots
+        shell: pwsh
+        run: |
+          $env:BYTESTRAP_SHOTS = "1"
+          cargo test --locked take_page_shots -- --nocapture
+
+      - name: Copy screenshots to docs/assets/shots
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dest = "docs/assets/shots"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+
+          $map = @{
+            "0-home.png"          = "home.png"
+            "1-games-servers.png" = "games.png"
+            "2-flags.png"         = "flags.png"
+            "4-mods.png"          = "mods.png"
+            "6-settings.png"      = "settings.png"
+          }
+
+          foreach ($kv in $map.GetEnumerator()) {
+            $src = Join-Path "target/shots" $kv.Key
+            if (-not (Test-Path $src)) {
+              throw "Missing rendered screenshot: $src"
+            }
+            Copy-Item $src (Join-Path $dest $kv.Value) -Force
+          }
+
+      - name: Commit updated screenshots
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git status --short docs/assets/shots
+          $changes = git status --porcelain docs/assets/shots
+          if ([string]::IsNullOrWhiteSpace($changes)) {
+            Write-Host "No screenshot changes detected."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/assets/shots/*.png
+          git commit -m "chore(site): update launcher screenshots"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push
